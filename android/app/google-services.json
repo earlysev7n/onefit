@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "445848368960",
+    "project_id": "onefit-392b8",
+    "storage_bucket": "onefit-392b8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:445848368960:android:85ee92b91c5f39ca49eca5",
+        "android_client_info": {
+          "package_name": "com.example.onefit"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDMyWjb-to9nSoL_TChB-jqcrlY9oEzObY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

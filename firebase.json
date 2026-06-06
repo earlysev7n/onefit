@@ -1,0 +1,25 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "onefit-392b8",
+          "appId": "1:445848368960:android:85ee92b91c5f39ca49eca5",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "onefit-392b8",
+          "configurations": {
+            "android": "1:445848368960:android:85ee92b91c5f39ca49eca5"
+          }
+        }
+      }
+    }
+  }
+}
