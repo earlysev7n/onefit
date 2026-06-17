@@ -13,6 +13,7 @@ import '../services/exercise_db_service.dart';
 import '../models/workout_log.dart';
 import '../models/exercise_stat.dart';
 import '../algorithms/adaptation_engine.dart';
+import '../algorithms/progression.dart';
 import 'recipe_screen.dart';
 import 'food_log_screen.dart';
 import 'package:provider/provider.dart';
@@ -157,6 +158,22 @@ class _WorkoutTabState extends State<_WorkoutTab>
   VoidCallback? _pendingRestCallback;
   bool _waitingForReady = false;
 
+  // ── Warm-up phase ──────────────────────────────────────────────────────────
+  // The session enters a gated warm-up phase before the exercise flow: exercises
+  // stay locked/greyed until the warm-up finishes or is skipped.
+  bool _sessionStarted = false; // Start Workout pressed (covers warm-up + lifts)
+  bool _warmupComplete = false; // warm-up done/skipped → exercises unlocked
+  bool _warmupRunning = false; // a warm-up move is actively counting down
+  int _activeWarmupIndex = -1;
+  // Resolved per session: Home → 3 bodyweight cardio moves; Gym → 1 treadmill.
+  List<({Exercise? exercise, String label, int seconds})> _warmupMoves = [];
+  int _warmupRemaining = 0;
+  int _warmupTotal = 0;
+  Timer? _warmupTimer;
+
+  // Exercise indices whose step-by-step instructions are expanded on the card.
+  final Set<int> _expandedSteps = {};
+
   // ── Elapsed timer ──────────────────────────────────────────────────────────
   DateTime? _workoutStartedAt;
   Timer? _workoutTimer;
@@ -173,6 +190,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
   final Map<int, int> _topSetReps = {};
   // Per-exercise last/PR summary (keyed by exercise id) for the inline target.
   Map<String, ExerciseStat> _exerciseStats = {};
+  // Working weight (kg) the user entered for a compound at the start-of-session
+  // prompt (keyed by exercise id). Feeds the specific warm-up ramp when there's
+  // no prior history. Session-scoped; cleared on reset.
+  final Map<String, double> _sessionWorkingKg = {};
   // Persistent controllers for the active-card inputs (survive the 1 Hz rebuild).
   final TextEditingController _weightController = TextEditingController();
   final TextEditingController _repsController = TextEditingController();
@@ -216,6 +237,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
   void dispose() {
     _restTimer?.cancel();
     _workoutTimer?.cancel();
+    _warmupTimer?.cancel();
     _weightController.dispose();
     _repsController.dispose();
     super.dispose();
@@ -477,6 +499,44 @@ class _WorkoutTabState extends State<_WorkoutTab>
     if (r != null && r > 0) _topSetReps[_activeExerciseIndex] = r;
   }
 
+  static const _lowerBodyMuscles = {'quads', 'glutes', 'hamstrings', 'calves'};
+
+  /// Next prescribed working set for [we] via double progression, derived from
+  /// the last logged top set. Null when there's no baseline or a timed/bodyweight
+  /// rep prescription.
+  ProgressionTarget? _targetFor(WorkoutExercise we) {
+    final stat = _exerciseStats[we.exercise.id];
+    if (stat == null) return null;
+    final isLowerOrCompound =
+        GreedyAlgorithm.isStapleCompound(we.exercise) ||
+        we.exercise.primaryMuscles.any(_lowerBodyMuscles.contains);
+    return nextTarget(
+      lastWeightKg: stat.lastWeightKg,
+      lastReps: stat.lastReps,
+      repRange: we.reps,
+      isLowerOrCompound: isLowerOrCompound,
+    );
+  }
+
+  /// Pre-fills the working-weight/reps inputs with the progression target for the
+  /// exercise at [exIdx] (display units), so the user just confirms. Clears when
+  /// there is no target.
+  void _prefillTargetFor(int exIdx) {
+    if (_selectedDay < 0 || _selectedDay >= _plan.length) return;
+    final day = _plan[_selectedDay];
+    if (exIdx < 0 || exIdx >= day.exercises.length) return;
+    final target = _targetFor(day.exercises[exIdx]);
+    if (target == null) {
+      _weightController.clear();
+      _repsController.clear();
+      return;
+    }
+    final w = _fromKg(target.weightKg);
+    _weightController.text =
+        w % 1 == 0 ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
+    _repsController.text = target.reps.toString();
+  }
+
   Future<void> _togglePin(String focus, Exercise ex) async {
     final profile = _profile;
     if (profile == null) return;
@@ -617,6 +677,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         borderSide: BorderSide.none,
       ),
     );
+    final target = _targetFor(we);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -627,6 +688,29 @@ class _WorkoutTabState extends State<_WorkoutTab>
             fontSize: 12,
           ),
         ),
+        if (target != null) ...[
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(
+                target.isIncrease
+                    ? Icons.trending_up_rounded
+                    : Icons.flag_rounded,
+                color: const Color(0xFF00C97B),
+                size: 14,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Target: ${_fmtWeight(target.weightKg)} × ${target.reps}',
+                style: GoogleFonts.inter(
+                  color: const Color(0xFF00C97B),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 6),
         Row(
           children: [
@@ -659,6 +743,448 @@ class _WorkoutTabState extends State<_WorkoutTab>
           ],
         ),
       ],
+    );
+  }
+
+  /// The weight a warm-up ramp / progression should be based on: the
+  /// progression target if available, then the last logged top set, then the
+  /// weight entered at this session's start-of-workout prompt.
+  double? _workingWeightKg(WorkoutExercise we) {
+    final t = _targetFor(we);
+    if (t != null) return t.weightKg;
+    final stat = _exerciseStats[we.exercise.id];
+    if (stat != null && stat.lastWeightKg > 0) return stat.lastWeightKg;
+    return _sessionWorkingKg[we.exercise.id];
+  }
+
+  /// Equipment that adds external load — only these can have a percentage ramp.
+  static const _loadableEquipment = {
+    'barbell',
+    'ez barbell',
+    'dumbbells',
+    'kettlebells',
+    'machine',
+    'cable machine',
+  };
+
+  /// True for a heavy primary lift (NSCA: warm-up sets before EACH multi-joint
+  /// lift) — a staple compound that takes external load. Pure-bodyweight
+  /// compounds (push-ups, pull-ups) and accessories/isolation get no ramp.
+  bool _needsLoadRamp(WorkoutExercise we) {
+    // A strength load ramp never applies to cardio — guards against cardio
+    // machines that read as compound ("Rowing Machine" matches the "row"
+    // keyword; treadmill/bike trip the secondary-muscle proxy).
+    if (we.exercise.category.toLowerCase() == 'cardio') return false;
+    if (!GreedyAlgorithm.isStapleCompound(we.exercise)) return false;
+    return we.exercise.equipment
+        .any((e) => _loadableEquipment.contains(e.toLowerCase()));
+  }
+
+  /// Display-only warm-up ramp shown above the working-set input on the active
+  /// first-compound card. Warm-ups are not logged as performance.
+  Widget _buildWarmupRamp(WorkoutExercise we) {
+    final workingKg = _workingWeightKg(we);
+    if (workingKg == null) return const SizedBox.shrink();
+    final ramp = warmupRamp(workingKg);
+    if (ramp.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF222222),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.local_fire_department_rounded,
+                color: Color(0xFFFFA726),
+                size: 14,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Warm-up',
+                style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final s in ramp)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(
+                '${s.percent}%   ·   ${_fmtWeight(s.weightKg)} × ${s.reps}',
+                style: GoogleFonts.inter(
+                  color: const Color(0xFF888888),
+                  fontSize: 12,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Resolves the session's warm-up moves from the cache (NSCA general warm-up).
+  /// Home → up to 3 bodyweight cardio moves (~1 min each); Gym → one treadmill
+  /// walk/run (~4 min). Falls back to ProfileProvider, then to 'Home'.
+  List<({Exercise? exercise, String label, int seconds})> _resolveWarmupMoves() {
+    final location = _profile?.workoutLocation ??
+        context.read<ProfileProvider>().profile?.workoutLocation ??
+        'Home';
+    final cardio = _allExercises
+        .where((e) => e.category.toLowerCase() == 'cardio')
+        .toList();
+    if (location == 'Gym') {
+      Exercise? tread;
+      for (final e in cardio) {
+        final n = e.name.toLowerCase();
+        if (n.contains('treadmill') || n.contains('run') || n.contains('walk')) {
+          tread = e;
+          break;
+        }
+      }
+      return [(exercise: tread, label: 'Treadmill walk/run', seconds: 240)];
+    }
+    final bodyweight = cardio
+        .where(
+          (e) =>
+              e.equipment.isEmpty ||
+              e.equipment.any((q) => q.toLowerCase() == 'bodyweight'),
+        )
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    return [
+      for (final e in bodyweight.take(3))
+        (exercise: e, label: e.name, seconds: 60),
+    ];
+  }
+
+  String _fmtWarmupDuration(int seconds) =>
+      seconds % 60 == 0 ? '${seconds ~/ 60} min' : '${seconds}s';
+
+  void _startWarmupPhase() {
+    if (_warmupMoves.isEmpty) {
+      _finishWarmup();
+      return;
+    }
+    setState(() {
+      _warmupRunning = true;
+      _activeWarmupIndex = 0;
+    });
+    _startWarmupTimer(_warmupMoves[0].seconds);
+    _scrollToActive();
+  }
+
+  void _startWarmupTimer(int seconds) {
+    _warmupTimer?.cancel();
+    setState(() {
+      _warmupTotal = seconds;
+      _warmupRemaining = seconds;
+    });
+    _warmupTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      if (_warmupRemaining <= 1) {
+        t.cancel();
+        _advanceWarmup();
+      } else {
+        setState(() => _warmupRemaining--);
+      }
+    });
+  }
+
+  void _advanceWarmup() {
+    _warmupTimer?.cancel();
+    if (_activeWarmupIndex + 1 < _warmupMoves.length) {
+      setState(() => _activeWarmupIndex++);
+      _startWarmupTimer(_warmupMoves[_activeWarmupIndex].seconds);
+    } else {
+      _finishWarmup();
+    }
+  }
+
+  /// Ends the warm-up phase (finished or skipped) and unlocks the exercise flow.
+  void _finishWarmup() {
+    _warmupTimer?.cancel();
+    setState(() {
+      _warmupRunning = false;
+      _warmupComplete = true;
+      _activeWarmupIndex = -1;
+      _activeExerciseIndex = 0;
+      _activeSetNumber = 1;
+    });
+    _prefillTargetFor(0);
+    _scrollToActive();
+  }
+
+  /// Warm-up block at the top of the active day. Before Start it lists the moves
+  /// with a Start button; once running it shows the active move as a full-size
+  /// card with an auto-advancing countdown. Skippable — never a gate.
+  Widget _buildGeneralWarmup() {
+    if (_warmupComplete || _warmupMoves.isEmpty) return const SizedBox.shrink();
+    return _warmupRunning ? _buildActiveWarmupCard() : _buildWarmupIntro();
+  }
+
+  Widget _buildWarmupIntro() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF2A2A2A)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.whatshot_rounded,
+                color: Color(0xFFFFA726),
+                size: 16,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Warm-up first',
+                style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: _finishWarmup,
+                child: Text(
+                  'Skip',
+                  style: GoogleFonts.inter(
+                    color: const Color(0xFF888888),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (final m in _warmupMoves)
+            _warmupMoveRow(
+              m.exercise,
+              m.label,
+              _fmtWarmupDuration(m.seconds),
+            ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _startWarmupPhase,
+              icon: const Icon(Icons.play_arrow_rounded, size: 18),
+              label: Text(
+                'Start warm-up',
+                style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00C97B),
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActiveWarmupCard() {
+    final m = _warmupMoves[_activeWarmupIndex];
+    final ex = m.exercise;
+    final gifUrl = (ex?.gifUrl != null && ex!.gifUrl!.isNotEmpty)
+        ? ex.gifUrl
+        : null;
+    final isLast = _activeWarmupIndex + 1 >= _warmupMoves.length;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFFFA726).withValues(alpha: 0.6),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.whatshot_rounded,
+                color: Color(0xFFFFA726),
+                size: 16,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Warm-up ${_activeWarmupIndex + 1} of ${_warmupMoves.length}',
+                style: GoogleFonts.inter(
+                  color: const Color(0xFFFFA726),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: _finishWarmup,
+                child: Text(
+                  'Skip warm-up',
+                  style: GoogleFonts.inter(
+                    color: const Color(0xFF888888),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            m.label,
+            style: GoogleFonts.spaceGrotesk(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 18,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: gifUrl != null
+                ? Image.network(
+                    gifUrl,
+                    key: ValueKey('gif_warmup_${ex!.id}'),
+                    height: 200,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                    headers: const {'User-Agent': 'OneFit/1.0'},
+                    loadingBuilder: (_, child, p) => p == null
+                        ? child
+                        : _gifPlaceholder(loading: true, height: 200),
+                    errorBuilder: (_, __, ___) => _gifPlaceholder(height: 200),
+                  )
+                : _gifPlaceholder(height: 200),
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: Text(
+              _formatCountdown(_warmupRemaining),
+              style: GoogleFonts.spaceGrotesk(
+                color: Colors.white,
+                fontSize: 44,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: _warmupTotal > 0 ? _warmupRemaining / _warmupTotal : 0,
+              backgroundColor: const Color(0xFF2E2E2E),
+              valueColor: const AlwaysStoppedAnimation(Color(0xFFFFA726)),
+              minHeight: 6,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: _advanceWarmup,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF00C97B),
+                side: const BorderSide(color: Color(0xFF00C97B)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                isLast ? 'Finish warm-up' : 'Next move',
+                style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// One row in the general warm-up: a small GIF thumbnail (if available) +
+  /// move name + suggested duration.
+  Widget _warmupMoveRow(Exercise? ex, String label, String duration) {
+    final hasGif = ex?.gifUrl?.isNotEmpty == true;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: hasGif
+                ? Image.network(
+                    ex!.gifUrl!,
+                    width: 44,
+                    height: 44,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                    headers: const {'User-Agent': 'OneFit/1.0'},
+                    errorBuilder: (_, __, ___) => _gifPlaceholder(height: 44),
+                  )
+                : Container(
+                    width: 44,
+                    height: 44,
+                    color: const Color(0xFF222222),
+                    child: const Icon(
+                      Icons.directions_run_rounded,
+                      color: Color(0xFF888888),
+                      size: 20,
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Text(
+            duration,
+            style: GoogleFonts.inter(
+              color: const Color(0xFF00C97B),
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -765,6 +1291,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
   void _resetWorkoutState() {
     _restTimer?.cancel();
     _workoutTimer?.cancel();
+    _warmupTimer?.cancel();
     _pendingRestCallback = null;
     _activeExerciseIndex = -1;
     _activeSetNumber = 0;
@@ -777,11 +1304,138 @@ class _WorkoutTabState extends State<_WorkoutTab>
     _completedExercises.clear();
     _topSetKg.clear();
     _topSetReps.clear();
+    _sessionWorkingKg.clear();
+    _sessionStarted = false;
+    _warmupComplete = false;
+    _warmupRunning = false;
+    _activeWarmupIndex = -1;
+    _warmupMoves = [];
+    _warmupRemaining = 0;
+    _warmupTotal = 0;
+    _expandedSteps.clear();
     _weightController.clear();
     _repsController.clear();
   }
 
-  void _startWorkout() {
+  /// Start-of-session prompt collecting working weights for the day's loadable
+  /// compounds so the specific warm-up can ramp from real numbers (NSCA). One
+  /// dialog, one field per lift; skippable — skipping just means no ramps.
+  Future<void> _promptWorkingWeights(List<WorkoutExercise> lifts) async {
+    final controllers = {
+      for (final we in lifts)
+        we.exercise.id: TextEditingController(
+          text: () {
+            final known = _workingWeightKg(we);
+            if (known == null) return '';
+            final v = _fromKg(known);
+            return v % 1 == 0 ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+          }(),
+        ),
+    };
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Set your working weights',
+          style: GoogleFonts.spaceGrotesk(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'For your warm-up ramp on each main lift. Leave blank to skip.',
+                style: GoogleFonts.inter(
+                  color: const Color(0xFF888888),
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 12),
+              for (final we in lifts) ...[
+                Text(
+                  we.exercise.name,
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                TextField(
+                  controller: controllers[we.exercise.id],
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  style: GoogleFonts.spaceGrotesk(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Weight ($_weightUnit)',
+                    hintStyle: GoogleFonts.inter(
+                      color: const Color(0xFF666666),
+                      fontSize: 13,
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFF222222),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'Skip',
+              style: GoogleFonts.inter(color: const Color(0xFF888888)),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              for (final we in lifts) {
+                final v = double.tryParse(
+                  controllers[we.exercise.id]!.text.trim(),
+                );
+                if (v != null && v > 0) {
+                  _sessionWorkingKg[we.exercise.id] = _toKg(v);
+                }
+              }
+              Navigator.pop(ctx);
+            },
+            child: Text(
+              'Save',
+              style: GoogleFonts.inter(
+                color: const Color(0xFF00C97B),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    for (final c in controllers.values) {
+      c.dispose();
+    }
+  }
+
+  Future<void> _startWorkout() async {
     // Safety guard: never start if the selected day has no exercises
     if (_selectedDay >= _plan.length || _plan[_selectedDay].exercises.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -799,16 +1453,40 @@ class _WorkoutTabState extends State<_WorkoutTab>
       );
       return;
     }
+    // NSCA specific warm-up: gather working weights for every loadable compound
+    // that has no known weight yet, so each can show a ramp. Skippable.
+    final needWeight = _plan[_selectedDay].exercises
+        .where((we) => _needsLoadRamp(we) && _workingWeightKg(we) == null)
+        .toList();
+    if (needWeight.isNotEmpty) {
+      await _promptWorkingWeights(needWeight);
+      if (!mounted) return;
+    }
+    // Resolve the warm-up so the gated warm-up phase can run before the lifts.
+    final warmups = _resolveWarmupMoves();
     setState(() {
-      _activeExerciseIndex = 0;
-      _activeSetNumber = 1;
+      _sessionStarted = true;
       _workoutStartedAt = DateTime.now();
       _elapsedSeconds = 0;
       _topSetKg.clear();
       _topSetReps.clear();
       _weightController.clear();
       _repsController.clear();
+      _warmupMoves = warmups;
+      _warmupRunning = false;
+      _activeWarmupIndex = -1;
+      if (warmups.isEmpty) {
+        // No warm-up available — go straight into the exercise flow.
+        _warmupComplete = true;
+        _activeExerciseIndex = 0;
+        _activeSetNumber = 1;
+      } else {
+        // Lock exercises until the warm-up is finished/skipped.
+        _warmupComplete = false;
+        _activeExerciseIndex = -1;
+      }
     });
+    if (warmups.isEmpty) _prefillTargetFor(0);
     _workoutTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _elapsedSeconds++);
     });
@@ -860,14 +1538,14 @@ class _WorkoutTabState extends State<_WorkoutTab>
   }
 
   void _iAmReady() {
-    // Clear the inputs so the next exercise starts blank with its own target.
-    _weightController.clear();
-    _repsController.clear();
     setState(() {
       _waitingForReady = false;
       _activeExerciseIndex++;
       _activeSetNumber = 1;
     });
+    // Pre-fill the next exercise with its own progression target (clears when
+    // there is none).
+    _prefillTargetFor(_activeExerciseIndex);
     _scrollToActive();
   }
 
@@ -1874,7 +2552,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
   Widget _buildWorkoutDay(WorkoutDay day) {
     final isToday = _selectedDay == appNow().weekday - 1;
     final isCompleted = _todayLog != null && isToday;
-    final workoutStarted = _activeExerciseIndex >= 0;
+    // The session covers the warm-up phase + the lifts; exercises stay locked
+    // until the warm-up finishes/skips.
+    final workoutStarted = _sessionStarted;
+    final exercisesLocked = _sessionStarted && !_warmupComplete;
 
     // Build per-exercise cards
     final exerciseCards = <Widget>[];
@@ -2112,8 +2793,22 @@ class _WorkoutTabState extends State<_WorkoutTab>
             const SizedBox(height: 16),
           ],
 
-          // Exercise cards
-          ...exerciseCards,
+          // General (cardio) warm-up — top of the active day, skippable.
+          if (workoutStarted && !isCompleted) _buildGeneralWarmup(),
+
+          // Exercise cards — locked/greyed and non-interactive during warm-up.
+          if (exercisesLocked)
+            IgnorePointer(
+              child: Opacity(
+                opacity: 0.4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: exerciseCards,
+                ),
+              ),
+            )
+          else
+            ...exerciseCards,
         ],
       ),
     );
@@ -2225,6 +2920,66 @@ class _WorkoutTabState extends State<_WorkoutTab>
           ),
         ],
       ),
+    );
+  }
+
+  /// Collapsible step-by-step instructions on an exercise card. Collapsed by
+  /// default (keeps cards compact); tap to reveal. Available on active and
+  /// non-active cards, keyed by exercise index.
+  Widget _buildStepsExpander(Exercise ex, int exIndex) {
+    final expanded = _expandedSteps.contains(exIndex);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() {
+            if (expanded) {
+              _expandedSteps.remove(exIndex);
+            } else {
+              _expandedSteps.add(exIndex);
+            }
+          }),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.menu_book_rounded,
+                color: Color(0xFF888888),
+                size: 14,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Steps',
+                style: GoogleFonts.inter(
+                  color: const Color(0xFF888888),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Icon(
+                expanded
+                    ? Icons.keyboard_arrow_up_rounded
+                    : Icons.keyboard_arrow_down_rounded,
+                color: const Color(0xFF888888),
+                size: 18,
+              ),
+            ],
+          ),
+        ),
+        if (expanded)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              ex.instructions,
+              style: GoogleFonts.inter(
+                color: const Color(0xFF888888),
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -2401,6 +3156,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
               // ── Active card ──────────────────────────────────────────────
               const SizedBox(height: 12),
               gifSection,
+              if (ex.instructions.trim().isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildStepsExpander(ex, number - 1),
+              ],
               const SizedBox(height: 16),
 
               if (_inRest) ...[
@@ -2475,6 +3234,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   ],
                 ),
                 const SizedBox(height: 16),
+                if (_activeSetNumber == 1 && _needsLoadRamp(we))
+                  _buildWarmupRamp(we),
                 _buildWeightInput(we),
                 const SizedBox(height: 14),
                 SizedBox(
@@ -2517,15 +3278,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 ],
               ),
               _lastPrLine(ex),
-              const SizedBox(height: 12),
-              Text(
-                ex.instructions,
-                style: GoogleFonts.inter(
-                  color: const Color(0xFF888888),
-                  fontSize: 13,
-                  height: 1.5,
-                ),
-              ),
+              if (ex.instructions.trim().isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildStepsExpander(ex, number - 1),
+              ],
               const SizedBox(height: 12),
               gifSection,
             ],

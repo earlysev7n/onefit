@@ -324,7 +324,16 @@ class GreedyAlgorithm {
       if (selected.length >= count) break;
     }
 
-    return selected
+    // Compound-first: stable-sort so multi-joint staple lifts lead the day
+    // (they are what the specific warm-up ramps), keeping each group's existing
+    // order. Pins were added first and are typically compounds, so they stay up
+    // top. Pure reorder — selection/counts/balance are unchanged.
+    final ordered = <Exercise>[
+      ...selected.where(isStapleCompound),
+      ...selected.where((e) => !isStapleCompound(e)),
+    ];
+
+    return ordered
         .map(
           (e) => WorkoutExercise(
             exercise: e,
