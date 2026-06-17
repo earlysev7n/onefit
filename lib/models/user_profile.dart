@@ -26,6 +26,13 @@ class UserProfile {
   /// week and by manual edits. Clamped to ±500 by the provider to prevent drift.
   final int calorieAdjustment;
 
+  /// Anchor lifts the user wants guaranteed in a given day focus, keyed by the
+  /// split focus name (e.g. "Upper Body" → ["<exerciseId>"]). The generator
+  /// force-includes these first (still gated by eligibility) so a key lift like
+  /// bench press is always present, which is what makes progressive overload
+  /// trackable. Defaults empty for backward-compatible Firestore reads.
+  final Map<String, List<String>> pinnedExercises;
+
   UserProfile({
     required this.uid,
     required this.name,
@@ -45,6 +52,7 @@ class UserProfile {
     this.workoutSplit = 'Full Body Training',
     this.avgHoursSlept = 7.0,
     this.calorieAdjustment = 0,
+    this.pinnedExercises = const {},
   });
 
   // Mifflin-St Jeor Formula
@@ -193,6 +201,10 @@ class UserProfile {
       workoutSplit: map['workoutSplit'] ?? 'Full Body Training',
       avgHoursSlept: (map['avgHoursSlept'] ?? 7.0).toDouble(),
       calorieAdjustment: map['calorieAdjustment'] ?? 0,
+      pinnedExercises: (map['pinnedExercises'] as Map?)?.map(
+            (k, v) => MapEntry(k as String, List<String>.from(v ?? const [])),
+          ) ??
+          const {},
     );
   }
 
@@ -216,6 +228,7 @@ class UserProfile {
       'workoutSplit': workoutSplit,
       'avgHoursSlept': avgHoursSlept,
       'calorieAdjustment': calorieAdjustment,
+      'pinnedExercises': pinnedExercises,
     };
   }
 
@@ -238,6 +251,7 @@ class UserProfile {
     String? workoutSplit,
     double? avgHoursSlept,
     int? calorieAdjustment,
+    Map<String, List<String>>? pinnedExercises,
   }) {
     return UserProfile(
       uid: uid ?? this.uid,
@@ -258,6 +272,7 @@ class UserProfile {
       workoutSplit: workoutSplit ?? this.workoutSplit,
       avgHoursSlept: avgHoursSlept ?? this.avgHoursSlept,
       calorieAdjustment: calorieAdjustment ?? this.calorieAdjustment,
+      pinnedExercises: pinnedExercises ?? this.pinnedExercises,
     );
   }
 }

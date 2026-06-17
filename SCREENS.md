@@ -126,18 +126,17 @@ Navigation uses `navigatorKey` (a global `GlobalKey<NavigatorState>`) with `push
 | Fitness goal | Chip group | Weight Loss / Muscle Gain / Endurance / General Fitness |
 | Experience level | Chip group | Beginner / Intermediate / Advanced |
 | Workout location | Toggle chip | Home / Gym — drives equipment filter |
-| Equipment available | Multi-chip (Home only) | Dumbbells, Kettlebells, Resistance Bands, Pull-up Bar, Bodyweight |
+| Equipment available | Multi-chip (Home only) | Dumbbells, Kettlebells, Resistance Bands, Pull-up Bar, Bodyweight. Leaving it empty shows an italic hint ("No equipment selected — we'll build bodyweight-only workouts.") and saves as `['Bodyweight']` so the bodyweight-only fallback is explicit. Gym saves `[]` (all equipment assumed). |
 | Activity level | **Dropdown + "?" info** | Sedentary → Extra Active; drives `activityMultiplier` → TDEE → calorie goal |
 | Workout days/week | 1–7 number chips | Exact number of training days placed in the 7-day schedule |
 | Time per session | Chip group 30/45/60/90 min | Drives exercises-per-day in the greedy algorithm |
-| Workout split | **10 selectable description cards** | Determines the weekly focus cycle (PPL, Bro Split, etc.) |
+| Workout split | **5 selectable description cards** | Full Body, Upper/Lower, PPL, Functional, Strength + Conditioning — determines the weekly focus cycle. (Reduced from 10; profiles holding a removed split fall back to Full Body on edit/generation.) |
 
 **"?" help-hint pattern:** every complex field has a small `Icons.help_outline` button beside its label. Tapping opens a styled bottom sheet listing each option with a plain-English description. Implemented via `_buildLabelWithHelp(title, Map<String,String> helpMap)`.
 
 **Incompatibility validation:** `_splitDaysError()` checks whether `_workoutDays` meets the minimum required for `_workoutSplit`:
-- Bro Split / Body Part Split → min 5 days
 - PPL → min 3 days
-- Upper/Lower / HIIT+Strength / Strength+Conditioning → min 2 days
+- Upper/Lower / Strength+Conditioning → min 2 days
 
 Two feedback layers: a **live red banner** inside Step 2 that appears as soon as the user makes an impossible selection, and an **AlertDialog with a full explanation** that blocks "Next" until fixed.
 
@@ -231,7 +230,7 @@ Switching tabs programmatically:
 1. Loads user profile from Firestore.
 2. Computes the current ISO week ID via `FirestoreService.weekIdFor(now)`.
 3. **Tries to load a persisted plan** for this week from `PlanProvider.loadWorkoutPlan(uid, weekId)`. If found → uses it (edits survive restarts).
-4. If no persisted plan: fetches all exercises from `ExerciseDBService`, runs `AdaptationEngine.compute(...)` with last week's nutrition adherence, workout completion, and the user's `avgHoursSlept`, then calls `GreedyAlgorithm.generatePlan(...)`.
+4. If no persisted plan: fetches all exercises from `ExerciseDBService`, then — **only when last week has real history** (a persisted `workout_plans/{lastWeekId}` doc or ≥1 workout log; otherwise a new user's empty week reads as 0% completion and would wrongly trigger `'down'`) — runs `AdaptationEngine.compute(...)` with last week's nutrition adherence, workout completion, and the user's `avgHoursSlept`. With no history it uses a neutral result (`'same'`, 0 kcal). Then calls `GreedyAlgorithm.generatePlan(...)`.
 5. Saves the new plan via `PlanProvider.persistWorkoutPlan(uid, weekId)`.
 
 **Plan shape:** `List<WorkoutDay>` — 7 entries, Mon–Sun. Days marked `isRest: true` show a rest card; training days show their exercises.
@@ -257,15 +256,19 @@ Each set completion: `_doneSet(we)` → if more sets remain, starts the rest cou
 Toggle the "Edit session" button (visible before a workout starts). While editing:
 - Each exercise card gets a **× delete button** (top-right corner) → `PlanProvider.removeExercise`.
 - An **"Edit params"** button (bottom-right) → opens a bottom sheet with ±steppers for sets and rest seconds, and a text field for reps/duration → `PlanProvider.updateExerciseParams`.
-- An **"Add exercise"** button at the bottom of the day → `_showExercisePicker()` — a `DraggableScrollableSheet` listing all exercises filtered by that day's muscle focus → `PlanProvider.addExercise`.
+- An **"Add exercise"** button at the bottom of the day → `_showExercisePicker()` — a `DraggableScrollableSheet` listing exercises filtered by that day's muscle focus **and** by `_usableByUser` (= `GreedyAlgorithm.isEligibleForUser` + `difficultyAllowed` — gender/location/equipment/bench/level), the same hard constraints generation uses. `_fillExerciseGap` and `_applyVolumeDebt` apply the same filter → `PlanProvider.addExercise`.
 - All edits call `PlanProvider.persistWorkoutPlan` immediately so they're durable.
+- **Live load tracking (progressive overload):** the active exercise card shows a working-weight + reps input (unit-aware via `UserProfile.unitSystem`), pre-hinted with the last logged top set ("Last: 60 kg × 8 · PR 70 kg") from `_exerciseStats`. Captured on each "Done Set"; on completion folded into `WorkoutLogExercise.weightKg/repsDone` and upserted to `exercise_stats` (`saveExerciseStat`), with a PR snackbar when a best is beaten. Non-active cards show a "Last/PR" caption.
+- **Pin anchor lifts:** a pin icon on each (non-active) exercise card toggles `UserProfile.pinnedExercises[focus]` via `ProfileProvider.save`; the generator force-includes pinned lifts first on that focus's days (survives regeneration).
+- **Post-workout rating:** finishing a workout opens a 1–5 perceived-difficulty sheet (`_askWorkoutRating`); stored on `WorkoutLog.rating` and averaged into next week's `AdaptationEngine` autoregulation.
 
 **State:**
-`_plan`, `_profile`, `_isLoading`, `_error`, `_selectedDay`, `_todayLog`, `_weekDone`, `_editMode`, `_allExercises` (cached from last generate for the picker), meal state (`_pending`, `_edamamRecipes`, `_loggedFoods`, `_loadingMeals`).
+`_plan`, `_profile`, `_isLoading`, `_error`, `_selectedDay`, `_todayLog`, `_weekDone`, `_editMode`, `_allExercises` (cached from last generate for the picker), load-tracking state (`_topSetKg`, `_topSetReps`, `_exerciseStats`, `_weightController`, `_repsController`), meal state (`_pending`, `_edamamRecipes`, `_loggedFoods`, `_loadingMeals`).
 
 **Connections:**
 - `PlanProvider` — in-memory plan, persist/load, edit methods.
-- `FirestoreService` — `saveWeeklyWorkoutPlan`, `loadWeeklyWorkoutPlan`, `saveWorkoutLog`, `getWorkoutsCompletedCount`, `getWorkoutLogsForDateRange`.
+- `ProfileProvider` — reads/saves the profile, including `pinnedExercises`.
+- `FirestoreService` — `saveWeeklyWorkoutPlan`, `loadWeeklyWorkoutPlan`, `saveWorkoutLog`, `getWorkoutLogsForDateRange`, `saveExerciseStat`/`getExerciseStats` (per-exercise last/PR).
 - `ExerciseDBService` — fetches all exercises (Firestore-cached 30 days).
 - `GreedyAlgorithm` — generates the plan.
 - `AdaptationEngine` — computes `difficultyBias` and `calorieBiasKcal`.
@@ -530,7 +533,11 @@ Calorie split: Breakfast 25%, Lunch 35%, Dinner 30%, Snack 10% of `profile.calor
 
 ```
 allExercises
-  │  Filter: goal match + location match + equipment match
+  │  HARD FILTER — static isEligibleForUser(e, profile):
+  │    gender-tagged variants (no "(male)" moves for Female users & vice versa)
+  │    Gym → all equipment available (gym profiles store equipment: [])
+  │    Home → must list 'home' + intersect user's equipment (bodyweight always OK)
+  │    Home bench rule → free-weight incline/decline/bench moves excluded
   ↓
 filtered exercises
   │
@@ -540,11 +547,14 @@ filtered exercises
   │           → 7-element list e.g. ['Full Body', 'Rest', 'Full Body', ...]
   │
   └─ For each training day:
-       _selectExercisesForDay(filtered, targetMuscles, profile, muscleHitCount, count)
-         │  Score each exercise: goal+30, location+30, equipment+20, difficulty+10,
-         │                        target muscle bonus +25, muscle-repetition penalty −15/hit
-         │  Difficulty filter: matches level (+ one tier up if difficultyBias='up')
-         │  Take top N unique by score
+       _selectExercisesForDay(filtered, targetMuscles, profile, muscleHitCount, count, difficultyBias)
+         │  STRICT difficulty gate (static difficultyAllowed): Beginner → beginner
+         │    only; Intermediate → beginner+intermediate; Advanced → all
+         │  INCREMENTAL GREEDY: pick best → update day-local muscle hits →
+         │    re-score → repeat (prevents one muscle sweeping a whole day)
+         │  Per-muscle/day cap: ceil(count / targetMuscles.length), min 2
+         │  Score: focus +50, goal +15, exact-tier difficulty +10,
+         │         day-local muscle penalty −25/hit, weekly penalty −15/hit
          └─ Wrap each in WorkoutExercise(sets, reps, restSeconds)
 ```
 
@@ -552,16 +562,16 @@ filtered exercises
 
 | Decision | Driver |
 |---|---|
-| Training day positions (which of Mon–Sun) | `workoutDaysPerWeek` (evenly spaced) |
+| Training day positions (which of Mon–Sun) | `workoutDaysPerWeek` (evenly spaced) — **hard constraint, never reduced by adaptation** |
 | Focus per day | `workoutSplit` → cycles through split's sequence |
-| Exercises per day | `sessionMinutes` (30→3, 45→5, 60→6, 90→8) ± experience ± `recoveryScore` |
-| Sets | Goal + experience; −1 if `recoveryScore < 0.8` |
+| Exercises per day | `sessionMinutes` (30→3, 45→5, 60→6, 90→8) ± experience ± `recoveryScore`; −1 if `difficultyBias='down'` |
+| Sets | Goal + experience; −1 if `recoveryScore < 0.8`; ±1 for `difficultyBias` 'up'/'down' (clamped 2–6) |
 | Reps / duration | Goal + split style (HIIT/Circuit → timed; Muscle Gain → 8–12 heavy) |
 | Rest seconds | Goal + split style (HIIT → 30 s; Muscle Gain → 90 s) |
 
-**`difficultyBias`** (from `AdaptationEngine`):
-- `'up'` — allows exercises one tier above the user's level.
-- `'down'` — converts the last training day to Rest.
+**`difficultyBias`** (from `AdaptationEngine`) — modulates per-day volume only; the user's selected training days are never added or removed:
+- `'up'` — +1 set per exercise (clamped ≤ 6).
+- `'down'` — −1 exercise per day and −1 set per exercise (clamped ≥ 2).
 - `'same'` — no change.
 
 **Serialisation:** `WorkoutDay.toMap()`/`fromMap()` and `WorkoutExercise.toMap()`/`fromMap()` — used for Firestore persistence.

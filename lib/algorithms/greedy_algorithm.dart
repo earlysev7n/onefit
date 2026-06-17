@@ -61,33 +61,112 @@ class WorkoutExercise {
 }
 
 class GreedyAlgorithm {
-  //  SCORING
+  // ── ELIGIBILITY — hard constraints, shared with PlansScreen edit paths ─────
+  static final _maleTag = RegExp(r'\bmale\b'); // does NOT match "female"
+  static final _femaleTag = RegExp(r'\bfemale\b');
+  static final _benchTag = RegExp(r'\b(incline|decline|bench)\b');
+  static const _freeWeights = {
+    'dumbbells', 'barbell', 'ez barbell', 'kettlebells',
+  };
+
+  /// What the user can physically do: gender-tagged demo variants, location,
+  /// equipment, and bench availability. Goal and difficulty are NOT gated
+  /// here — goal is a scoring signal and the experience gate lives in
+  /// [difficultyAllowed]. Reused by PlansScreen's picker/gap-fill/volume-debt
+  /// paths so manual edits can't inject exercises the user can't perform.
+  static bool isEligibleForUser(Exercise e, UserProfile p) {
+    final name = e.name.toLowerCase();
+
+    // The catalog duplicates many moves as "(male)" / "(female)" demo
+    // variants — keep only the variant matching the user.
+    if (p.gender == 'Female' && _maleTag.hasMatch(name)) return false;
+    if (p.gender == 'Male' && _femaleTag.hasMatch(name)) return false;
+
+    // At a gym every equipment type (and a bench) is available. Gym profiles
+    // store equipment: [] (see ProfileInputScreen), so equipment must not be
+    // matched against the user's list here.
+    if (p.workoutLocation == 'Gym') return true;
+
+    // Home: exercise must be doable at home...
+    if (!e.locations.contains('home')) return false;
+
+    // ...with equipment the user owns (bodyweight always available).
+    final exEquip = e.equipment.map((x) => x.toLowerCase()).toList();
+    final isBodyweight = exEquip.contains('bodyweight');
+    if (!isBodyweight) {
+      final userEquip = p.equipment.map((x) => x.toLowerCase()).toSet();
+      if (!exEquip.any(userEquip.contains)) return false;
+
+      // Free-weight incline/decline/bench moves need a bench, which is not a
+      // home equipment option. Bodyweight variants (decline push-up etc.)
+      // stay eligible — a couch or stairs will do.
+      if (_benchTag.hasMatch(name) && exEquip.any(_freeWeights.contains)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Canonical multi-joint lift names. The catalog has no `mechanic` field, so
+  // staple compounds are detected by name keyword or a secondary-muscle proxy.
+  static final _compoundKeywords = RegExp(
+    r'\b(squat|deadlift|bench|press|row|pull[- ]?up|chin[- ]?up|push[- ]?up|dip|lunge|thrust|clean|snatch|jerk)\b',
+  );
+
+  /// Staple compound (multi-joint) lifts — squat/bench/deadlift/row/press etc.,
+  /// or anything hitting ≥2 secondary muscles. Used to prioritise compounds in
+  /// generation (ACSM progression guidance; Simão 2012 on exercise order).
+  static bool isStapleCompound(Exercise e) {
+    if (_compoundKeywords.hasMatch(e.name.toLowerCase())) return true;
+    return e.secondaryMuscles.length >= 2;
+  }
+
+  /// STRICT experience gate — Beginner → beginner only; Intermediate →
+  /// beginner + intermediate; Advanced → all. No cross-tier progression.
+  static bool difficultyAllowed(String exDifficulty, String level) {
+    if (level == 'Beginner') return exDifficulty == 'beginner';
+    if (level == 'Intermediate') {
+      return exDifficulty == 'beginner' || exDifficulty == 'intermediate';
+    }
+    return true;
+  }
+
+  //  SCORING — runs over candidates that already passed the hard filters, so
+  //  location/equipment carry no score weight (they'd be constants).
   double _scoreExercise({
     required Exercise exercise,
     required UserProfile profile,
-    required Map<String, int> muscleHitCount, // tracks muscle group usage
+    required List<String> targetMuscles,
+    required Map<String, int> weeklyHits,
+    required Map<String, int> dayHits,
   }) {
     double score = 0;
 
-    // 1. Goal match
-    final goalKey = _goalKey(profile.fitnessGoal);
-    if (exercise.goals.contains(goalKey)) score += 40;
+    // 1. Day focus dominates — a Chest day must stay a chest day.
+    if (exercise.primaryMuscles.any(targetMuscles.contains)) score += 50;
 
-    // 2. Location match
-    final loc = profile.workoutLocation.toLowerCase();
-    if (exercise.locations.contains(loc)) score += 30;
+    // 2. Goal tag is a soft nudge only. At its old weight (+40) it buried the
+    //    focus bonus and let one goal-tagged muscle (abs, for weight loss)
+    //    sweep every slot of a day.
+    if (exercise.goals.contains(_goalKey(profile.fitnessGoal))) score += 15;
 
-    // 3. Equipment match
-    if (_equipmentMatches(exercise, profile)) score += 20;
+    // 2b. Compound (multi-joint) bonus — staples like squat/bench/row recruit
+    //     more muscle mass and belong early in a session (ACSM; Simão 2012).
+    //     Kept below the focus bonus (+50) so the day's focus still dominates,
+    //     but above isolation so the big lift is picked first.
+    if (isStapleCompound(exercise)) score += 12;
 
-    // 4. Difficulty match
-    if (_difficultyMatches(exercise.difficulty, profile.experienceLevel))
+    // 3. Prefer exercises at exactly the user's tier (the gate already
+    //    excluded anything above it).
+    if (exercise.difficulty == profile.experienceLevel.toLowerCase()) {
       score += 10;
+    }
 
-    // 5. Muscle balance penalty
+    // 4. Muscle balance: a strong day-local penalty forces variety within a
+    //    session; a milder weekly penalty spreads volume across the week.
     for (final muscle in exercise.primaryMuscles) {
-      final hits = muscleHitCount[muscle] ?? 0;
-      score -= hits * 15;
+      score -= (dayHits[muscle] ?? 0) * 25;
+      score -= (weeklyHits[muscle] ?? 0) * 15;
     }
 
     return score;
@@ -99,25 +178,18 @@ class GreedyAlgorithm {
     required UserProfile profile,
     String difficultyBias = 'same', // 'up' | 'down' | 'same'
   }) {
-    // Filter exercises that are valid for this user
-    final filtered = allExercises.where((e) {
-      final goalKey = _goalKey(profile.fitnessGoal);
-      final loc = profile.workoutLocation.toLowerCase();
-      return e.goals.contains(goalKey) &&
-          e.locations.contains(loc) &&
-          _equipmentMatches(e, profile);
-    }).toList();
+    // Hard constraints: gender variant + location + equipment + bench (what
+    // the user can physically do). Goal is a scoring signal, not a gate —
+    // gating on it collapses the candidate pool (e.g. a Weight-Loss user
+    // would be excluded from all chest/back/arm work).
+    final filtered =
+        allExercises.where((e) => isEligibleForUser(e, profile)).toList();
 
-    // Build 7-day schedule from user's chosen split + available days
-    var schedule = _getSchedule(profile);
-
-    // Adaptation: if user couldn't keep up, drop the last workout day to rest
-    if (difficultyBias == 'down') {
-      final lastWorkoutIdx = schedule.lastIndexWhere((d) => d != 'Rest');
-      if (lastWorkoutIdx >= 0) {
-        schedule = List.from(schedule)..[lastWorkoutIdx] = 'Rest';
-      }
-    }
+    // Build 7-day schedule from user's chosen split + available days.
+    // workoutDaysPerWeek is a hard constraint: adaptation never adds or
+    // removes training days — difficultyBias modulates per-day volume
+    // (exercise count and sets) instead, per ACSM progression guidance.
+    final schedule = _getSchedule(profile);
 
     final List<WorkoutDay> plan = [];
     final muscleHitCount = <String, int>{};
@@ -138,14 +210,15 @@ class GreedyAlgorithm {
         continue;
       }
 
-      final targetMuscles = _focusToMuscles(focus);
+      final targetMuscles = musclesForFocus(focus);
       final dayExercises = _selectExercisesForDay(
         exercises: filtered,
         targetMuscles: targetMuscles,
         profile: profile,
         muscleHitCount: muscleHitCount,
-        count: _exercisesPerDay(profile),
+        count: _exercisesPerDay(profile, difficultyBias),
         difficultyBias: difficultyBias,
+        dayFocus: focus,
       );
 
       for (final we in dayExercises) {
@@ -168,40 +241,86 @@ class GreedyAlgorithm {
     required UserProfile profile,
     required Map<String, int> muscleHitCount,
     required int count,
-    String difficultyBias = 'same',
+    required String difficultyBias,
+    required String dayFocus,
   }) {
-    // Hard constraint — if bias is 'up', also allow the next difficulty tier
-    final eligible = exercises.where((e) {
-      if (_difficultyMatches(e.difficulty, profile.experienceLevel)) return true;
-      if (difficultyBias == 'up') {
-        // Allow one tier above
-        if (profile.experienceLevel == 'Beginner' && e.difficulty == 'intermediate') return true;
-        if (profile.experienceLevel == 'Intermediate' && e.difficulty == 'advanced') return true;
-      }
-      return false;
-    }).toList();
+    // Experience gate (see difficultyAllowed). The pool never starves because
+    // difficulty inference defaults to 'beginner' (difficulty_inference.dart).
+    final eligible = exercises
+        .where((e) => difficultyAllowed(e.difficulty, profile.experienceLevel))
+        .toList();
 
-    // Prefer exercises that hit target muscles
-    final scored = eligible.map((e) {
-      double s = _scoreExercise(
-        exercise: e,
-        profile: profile,
-        muscleHitCount: muscleHitCount,
-      );
+    // Cap how often one primary muscle can headline a single session: a
+    // Full Body day (6 targets, 5 slots) caps at 2 per muscle, a Chest &
+    // Triceps day (2 targets, 5 slots) at 3. Without a cap (and with the
+    // old score-once-take-top-N selection) the highest-scoring muscle
+    // swept every slot — the "Monday is all abs" bug.
+    final perMuscleCap = targetMuscles.isEmpty
+        ? count
+        : (count / targetMuscles.length).ceil().clamp(2, count);
 
-      for (final m in e.primaryMuscles) {
-        if (targetMuscles.contains(m)) s += 25;
-      }
-      return MapEntry(e, s);
-    }).toList()..sort((a, b) => b.value.compareTo(a.value));
-
-    // Take top N unique exercises (no duplicates)
+    // True greedy: pick the best candidate, update the day-local muscle
+    // counts, re-score, repeat — so each pick is penalised by what the day
+    // already contains. Second pass without the cap covers tiny pools
+    // (limited home equipment) rather than returning a short day.
     final selected = <Exercise>[];
     final seenIds = <String>{};
-    for (final entry in scored) {
-      if (seenIds.contains(entry.key.id)) continue;
-      seenIds.add(entry.key.id);
-      selected.add(entry.key);
+    final dayHits = <String, int>{};
+
+    // Force-include the user's pinned anchor lifts for this focus FIRST, so a
+    // key lift (e.g. bench on Upper day) is always present and ordered first.
+    // Still gated by the hard constraints (a pin not in `eligible` — e.g. a home
+    // user who pinned a barbell lift — is silently skipped). Capped at count-1
+    // when there's room, so at least one generated slot remains for variety.
+    final pinnedIds = profile.pinnedExercises[dayFocus] ?? const <String>[];
+    if (pinnedIds.isNotEmpty) {
+      final cap = count > 1 ? count - 1 : count;
+      for (final id in pinnedIds) {
+        if (selected.length >= cap) break;
+        if (seenIds.contains(id)) continue;
+        Exercise? pin;
+        for (final e in eligible) {
+          if (e.id == id) { pin = e; break; }
+        }
+        if (pin == null) continue;
+        selected.add(pin);
+        seenIds.add(pin.id);
+        for (final m in pin.primaryMuscles) {
+          dayHits[m] = (dayHits[m] ?? 0) + 1;
+        }
+      }
+    }
+
+    for (final enforceCap in [true, false]) {
+      while (selected.length < count) {
+        Exercise? best;
+        double bestScore = double.negativeInfinity;
+        for (final e in eligible) {
+          if (seenIds.contains(e.id)) continue;
+          if (enforceCap &&
+              e.primaryMuscles
+                  .any((m) => (dayHits[m] ?? 0) >= perMuscleCap)) {
+            continue;
+          }
+          final s = _scoreExercise(
+            exercise: e,
+            profile: profile,
+            targetMuscles: targetMuscles,
+            weeklyHits: muscleHitCount,
+            dayHits: dayHits,
+          );
+          if (s > bestScore) {
+            bestScore = s;
+            best = e;
+          }
+        }
+        if (best == null) break; // pool exhausted under current constraints
+        selected.add(best);
+        seenIds.add(best.id);
+        for (final m in best.primaryMuscles) {
+          dayHits[m] = (dayHits[m] ?? 0) + 1;
+        }
+      }
       if (selected.length >= count) break;
     }
 
@@ -209,7 +328,7 @@ class GreedyAlgorithm {
         .map(
           (e) => WorkoutExercise(
             exercise: e,
-            sets: _getSets(profile),
+            sets: _getSets(profile, difficultyBias),
             reps: _getReps(profile, e.category),
             restSeconds: _getRestSeconds(profile),
           ),
@@ -241,12 +360,21 @@ class GreedyAlgorithm {
   }
 
   /// Maps each workout split to an ordered cycle of day focuses.
+  ///
+  /// Selectable splits (ProfileInputScreen): Full Body Training,
+  /// Upper / Lower Split, Push / Pull / Legs (PPL), Functional Training
+  /// Split, Strength + Conditioning Split. The remaining arms are legacy —
+  /// kept so profiles saved before the split list was reduced still generate
+  /// sanely until the user re-saves their profile.
   List<String> _splitFocusSequence(String split) {
     switch (split) {
       case 'Upper / Lower Split':
         return ['Upper Body', 'Lower Body'];
       case 'Push / Pull / Legs (PPL)':
         return ['Chest & Triceps', 'Back & Biceps', 'Legs'];
+      case 'Strength + Conditioning Split':
+        return ['Full Body', 'Cardio'];
+      // ── Legacy splits (no longer selectable) ──────────────────────────────
       case 'Bro Split':
       case 'Body Part Split':
         return [
@@ -260,40 +388,48 @@ class GreedyAlgorithm {
         return ['Full Body', 'Upper Body', 'Lower Body'];
       case 'HIIT + Strength Split':
         return ['Full Body', 'Cardio'];
-      case 'Strength + Conditioning Split':
-        return ['Full Body', 'Cardio'];
+      // ──────────────────────────────────────────────────────────────────────
       case 'Functional Training Split':
-      case 'Circuit Training Split':
+      case 'Circuit Training Split': // legacy
       case 'Full Body Training':
       default:
         return ['Full Body'];
     }
   }
 
-  Map<String, List<String>> get _focusMuscleMap => {
-    'Full Body': ['chest', 'back', 'quads', 'glutes', 'core', 'shoulders'],
-    'Full Body Cardio': ['full body', 'quads', 'glutes', 'core', 'hip flexors'],
-    'HIIT': ['full body', 'quads', 'glutes', 'core'],
-    'Cardio': ['full body', 'quads', 'glutes', 'core', 'hip flexors'],
+  // Muscle names below use the ExerciseDB `targetMuscles` vocabulary so the
+  // focus bonus in _selectExercisesForDay actually fires:
+  // abductors, abs, biceps, calves, cardiovascular system, delts, forearms,
+  // glutes, hamstrings, lats, pectorals, quads, spine, triceps, upper back.
+  static Map<String, List<String>> get _focusMuscleMap => {
+    'Full Body': ['pectorals', 'lats', 'quads', 'glutes', 'abs', 'delts'],
+    'Full Body Cardio': ['cardiovascular system', 'quads', 'glutes', 'abs'],
+    'HIIT': ['cardiovascular system', 'quads', 'glutes', 'abs'],
+    'Cardio': ['cardiovascular system', 'quads', 'glutes', 'abs'],
     'Upper Body': [
-      'chest',
-      'back',
-      'shoulders',
+      'pectorals',
+      'lats',
+      'delts',
       'biceps',
       'triceps',
       'upper back',
     ],
     'Lower Body': ['quads', 'glutes', 'hamstrings', 'calves'],
-    'Core': ['core', 'abs', 'obliques', 'lower abs'],
-    'Chest & Triceps': ['chest', 'triceps', 'upper chest'],
-    'Back & Biceps': ['lats', 'upper back', 'biceps', 'lower back'],
+    'Core': ['abs', 'spine'],
+    'Chest & Triceps': ['pectorals', 'triceps'],
+    'Back & Biceps': ['lats', 'upper back', 'biceps'],
     'Legs': ['quads', 'glutes', 'hamstrings', 'calves'],
-    'Shoulders & Arms': ['shoulders', 'biceps', 'triceps', 'rear delts'],
+    'Shoulders & Arms': ['delts', 'biceps', 'triceps'],
     'Arms': ['biceps', 'triceps', 'forearms'],
   };
 
-  List<String> _focusToMuscles(String focus) =>
-      _focusMuscleMap[focus] ?? ['full body'];
+  /// Public, reusable focus→muscle resolver (ExerciseDB `targetMuscles`
+  /// vocabulary). PlansScreen's picker/gap-fill/volume-debt paths call this so
+  /// they resolve muscles in the same vocabulary the generator scores against —
+  /// preventing the two from drifting (e.g. 'chest' vs 'pectorals').
+  static List<String> musclesForFocus(String focus) =>
+      _focusMuscleMap[focus] ??
+      const ['pectorals', 'lats', 'quads', 'glutes', 'abs', 'delts'];
 
   //  HELPERS
   String _goalKey(String goal) {
@@ -309,29 +445,10 @@ class GreedyAlgorithm {
     }
   }
 
-  bool _equipmentMatches(Exercise exercise, UserProfile profile) {
-    if (exercise.equipment.contains('bodyweight')) return true;
-    if (exercise.equipment.contains('gym') && profile.workoutLocation == 'Gym')
-      return true;
-    for (final eq in exercise.equipment) {
-      if (profile.equipment
-          .map((e) => e.toLowerCase())
-          .contains(eq.toLowerCase()))
-        return true;
-    }
-    return false;
-  }
-
-  bool _difficultyMatches(String exDifficulty, String level) {
-    if (level == 'Beginner') return exDifficulty == 'beginner';
-    if (level == 'Intermediate')
-      return exDifficulty == 'beginner' || exDifficulty == 'intermediate';
-    return true; // Advanced can do all
-  }
-
-  /// Exercise count per day — driven by sessionMinutes, nudged by experience
-  /// and scaled down by recoveryScore (poor sleep → fewer exercises).
-  int _exercisesPerDay(UserProfile profile) {
+  /// Exercise count per day — driven by sessionMinutes, nudged by experience,
+  /// scaled down by recoveryScore (poor sleep → fewer exercises), and reduced
+  /// by one when the weekly adaptation says 'down' (volume, not frequency).
+  int _exercisesPerDay(UserProfile profile, String difficultyBias) {
     // Base count from session length
     int base;
     if (profile.sessionMinutes <= 30) {
@@ -351,11 +468,15 @@ class GreedyAlgorithm {
     // Recovery reduction: under-slept → drop one exercise
     if (profile.recoveryScore < 0.8) base--;
 
+    // Adaptation: struggled last week → one fewer exercise per day
+    if (difficultyBias == 'down') base--;
+
     return base.clamp(2, 10);
   }
 
-  /// Sets per exercise — from goal/experience, reduced when recovery is low.
-  int _getSets(UserProfile profile) {
+  /// Sets per exercise — from goal/experience, reduced when recovery is low,
+  /// nudged ±1 by the weekly adaptation bias.
+  int _getSets(UserProfile profile, String difficultyBias) {
     int sets;
     if (profile.fitnessGoal == 'Muscle Gain') {
       switch (profile.experienceLevel) {
@@ -373,6 +494,9 @@ class GreedyAlgorithm {
     }
     // Recovery shave
     if (profile.recoveryScore < 0.8) sets--;
+    // Adaptation: great week → +1 set, rough week → −1 set
+    if (difficultyBias == 'up') sets++;
+    if (difficultyBias == 'down') sets--;
     return sets.clamp(2, 6);
   }
 

@@ -11,6 +11,7 @@ import '../algorithms/genetic_algorithm.dart';
 import '../services/firestore_service.dart';
 import '../services/exercise_db_service.dart';
 import '../models/workout_log.dart';
+import '../models/exercise_stat.dart';
 import '../algorithms/adaptation_engine.dart';
 import 'recipe_screen.dart';
 import 'food_log_screen.dart';
@@ -95,10 +96,17 @@ class PlansScreenState extends State<PlansScreen>
                 indicatorSize: TabBarIndicatorSize.tab,
                 labelColor: Colors.black,
                 unselectedLabelColor: const Color(0xFF888888),
-                labelStyle: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
-                unselectedLabelStyle: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w500),
+                labelStyle: GoogleFonts.spaceGrotesk(
+                  fontWeight: FontWeight.w700,
+                ),
+                unselectedLabelStyle: GoogleFonts.spaceGrotesk(
+                  fontWeight: FontWeight.w500,
+                ),
                 dividerColor: Colors.transparent,
-                tabs: const [Tab(text: 'Workout'), Tab(text: 'Meal')],
+                tabs: const [
+                  Tab(text: 'Workout'),
+                  Tab(text: 'Meal'),
+                ],
               ),
             ),
             const SizedBox(height: 12),
@@ -158,6 +166,17 @@ class _WorkoutTabState extends State<_WorkoutTab>
   final Set<int> _completedExercises = {};
   final GlobalKey _activeKey = GlobalKey();
 
+  // ── Load tracking (progressive overload) ────────────────────────────────────
+  // Top-set weight (kg) / reps the user entered this session, keyed by exercise
+  // index. Folded into the workout log + exercise_stats on completion.
+  final Map<int, double> _topSetKg = {};
+  final Map<int, int> _topSetReps = {};
+  // Per-exercise last/PR summary (keyed by exercise id) for the inline target.
+  Map<String, ExerciseStat> _exerciseStats = {};
+  // Persistent controllers for the active-card inputs (survive the 1 Hz rebuild).
+  final TextEditingController _weightController = TextEditingController();
+  final TextEditingController _repsController = TextEditingController();
+
   // ── Edit mode ──────────────────────────────────────────────────────────────
   bool _editMode = false;
   List<Exercise> _allExercises = []; // cached for the exercise picker
@@ -175,9 +194,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
       setState(() {
         _plan = provider.workoutPlan;
         _isLoading = false;
-        _selectedDay = currentDayIndex.clamp(0, provider.workoutPlan.length - 1);
+        _selectedDay = currentDayIndex.clamp(
+          0,
+          provider.workoutPlan.length - 1,
+        );
       });
       _loadWeekDone();
+      _loadExerciseStats();
       // Populate exercise cache in background so the picker works after a
       // hot-restart (when _generate() is skipped because the plan is in memory).
       ExerciseDBService().getExercises().then((ex) {
@@ -193,6 +216,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
   void dispose() {
     _restTimer?.cancel();
     _workoutTimer?.cancel();
+    _weightController.dispose();
+    _repsController.dispose();
     super.dispose();
   }
 
@@ -200,9 +225,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
   void _subscribeToTodayLog() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    FirestoreService()
-        .streamWorkoutLogForDate(uid, appNow())
-        .listen((log) {
+    FirestoreService().streamWorkoutLogForDate(uid, appNow()).listen((log) {
       if (mounted) setState(() => _todayLog = log);
     });
   }
@@ -211,11 +234,18 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     final now = appNow();
-    final weekStart = now.subtract(Duration(days: now.weekday - 1));
+    // Floor to midnight so the range aligns with midnight-stored log dates.
+    final today = DateTime(now.year, now.month, now.day);
+    final weekStart = today.subtract(Duration(days: today.weekday - 1));
     final weekEnd = weekStart.add(const Duration(days: 7));
     try {
-      final logs = await FirestoreService().getWorkoutLogsForDateRange(uid, weekStart, weekEnd);
-      if (mounted) setState(() => _weekDone = {for (final l in logs) l.dayName: true});
+      final logs = await FirestoreService().getWorkoutLogsForDateRange(
+        uid,
+        weekStart,
+        weekEnd,
+      );
+      if (mounted)
+        setState(() => _weekDone = {for (final l in logs) l.dayName: true});
     } catch (_) {}
   }
 
@@ -224,12 +254,18 @@ class _WorkoutTabState extends State<_WorkoutTab>
   Future<void> _forceRegenerate() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    await context.read<PlanProvider>().clearAndDeleteWorkoutPlan(uid, _currentWeekId);
+    await context.read<PlanProvider>().clearAndDeleteWorkoutPlan(
+      uid,
+      _currentWeekId,
+    );
     _generate();
   }
 
   Future<void> _generate() async {
-    setState(() { _isLoading = true; _error = null; });
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
       final fs = FirestoreService();
@@ -239,12 +275,17 @@ class _WorkoutTabState extends State<_WorkoutTab>
       if (profile == null) throw Exception('Profile not found');
 
       final now = appNow();
+      // Floor to midnight so weekly date ranges line up with logs (stored at
+      // midnight). Using the timed `now` would drop a boundary day's Monday
+      // log and leak this week's Monday into last week's aggregates.
+      final today = DateTime(now.year, now.month, now.day);
       final weekId = FirestoreService.weekIdFor(now);
       final planProvider = context.read<PlanProvider>();
 
       // ── Always fetch exercises first so the picker works on every path ────────
       final exercises = await ExerciseDBService().getExercises();
-      if (exercises.isEmpty) throw Exception('Could not load exercises. Check your connection.');
+      if (exercises.isEmpty)
+        throw Exception('Could not load exercises. Check your connection.');
       _allExercises = exercises; // cache for edit-mode picker
 
       // ── Try to load persisted plan for this week first ──────────────────────
@@ -265,8 +306,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
             focus: day.focus,
             isRest: day.isRest,
             exercises: day.exercises.map((we) {
-              final fresh = exerciseById[we.exercise.id]
-                  ?? exerciseByName[we.exercise.name.toLowerCase()];
+              final fresh =
+                  exerciseById[we.exercise.id] ??
+                  exerciseByName[we.exercise.name.toLowerCase()];
               return fresh != null
                   ? WorkoutExercise(
                       exercise: fresh,
@@ -280,9 +322,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
         }).toList();
         planProvider.setWorkoutPlan(rehydrated);
 
-        final thisWeekStart = now.subtract(Duration(days: now.weekday - 1));
+        final thisWeekStart = today.subtract(Duration(days: today.weekday - 1));
         final thisWeekEnd = thisWeekStart.add(const Duration(days: 7));
-        final weekLogs = await fs.getWorkoutLogsForDateRange(uid, thisWeekStart, thisWeekEnd);
+        final weekLogs = await fs.getWorkoutLogsForDateRange(
+          uid,
+          thisWeekStart,
+          thisWeekEnd,
+        );
         setState(() {
           _profile = profile;
           _plan = planProvider.workoutPlan;
@@ -291,24 +337,62 @@ class _WorkoutTabState extends State<_WorkoutTab>
           if (_selectedDay == -1) _selectedDay = 0;
           _weekDone = {for (final l in weekLogs) l.dayName: true};
         });
+        _loadExerciseStats();
         return;
       }
 
       // ── No persisted plan — generate a fresh one ─────────────────────────────
 
-      final weekStart = now.subtract(Duration(days: now.weekday - 1 + 7));
-      final lastWeekNutrition = await fs.getWeeklyNutritionSummary(uid, weekStart);
-      final lastWeekWorkouts = await fs.getWorkoutsCompletedCount(uid, weekStart);
+      final weekStart = today.subtract(Duration(days: today.weekday - 1 + 7));
+      final lastWeekNutrition = await fs.getWeeklyNutritionSummary(
+        uid,
+        weekStart,
+      );
+      final lastWeekLogs = await fs.getWorkoutLogsForDateRange(
+        uid,
+        weekStart,
+        weekStart.add(const Duration(days: 7)),
+      );
+      final lastWeekWorkouts = lastWeekLogs.length;
+      // Average perceived-difficulty rating from last week → autoregulation.
+      final lastWeekRatings = lastWeekLogs
+          .map((l) => l.rating)
+          .whereType<int>()
+          .toList();
+      final lastWeekAvgRating = lastWeekRatings.isEmpty
+          ? null
+          : lastWeekRatings.reduce((a, b) => a + b) / lastWeekRatings.length;
+
+      // Adaptation only applies when last week actually happened in the app —
+      // a plan existed or at least one workout was logged. Without this guard
+      // a brand-new user reads as 0% completion and gets a reduced first plan.
+      final lastWeekId = FirestoreService.weekIdFor(weekStart);
+      final hadLastWeekPlan =
+          await fs.loadWeeklyWorkoutPlan(uid, lastWeekId) != null;
+      final hasHistory = hadLastWeekPlan || lastWeekWorkouts > 0;
+
       // Use real planned days from profile for the completion denominator
       final plannedDays = profile.workoutDaysPerWeek;
-      final adaptation = AdaptationEngine().compute(
-        lastWeekCalorieAdherence: (lastWeekNutrition['daysLogged'] as int) > 0
-            ? ((lastWeekNutrition['avgCalories'] as double) / profile.calorieGoal * 100)
-            : 100.0,
-        lastWeekWorkoutCompletion: plannedDays > 0 ? lastWeekWorkouts / plannedDays : 1.0,
-        currentExperienceLevel: profile.experienceLevel,
-        avgHoursSlept: profile.avgHoursSlept,
-      );
+      final adaptation = hasHistory
+          ? AdaptationEngine().compute(
+              lastWeekCalorieAdherence:
+                  (lastWeekNutrition['daysLogged'] as int) > 0
+                  ? ((lastWeekNutrition['avgCalories'] as double) /
+                        profile.calorieGoal *
+                        100)
+                  : 100.0,
+              lastWeekWorkoutCompletion: plannedDays > 0
+                  ? lastWeekWorkouts / plannedDays
+                  : 1.0,
+              currentExperienceLevel: profile.experienceLevel,
+              avgHoursSlept: profile.avgHoursSlept,
+              lastWeekAvgRating: lastWeekAvgRating,
+            )
+          : const AdaptationResult(
+              calorieBiasKcal: 0,
+              difficultyBias: 'same',
+              notes: '',
+            );
 
       final plan = GreedyAlgorithm().generatePlan(
         allExercises: exercises,
@@ -325,14 +409,18 @@ class _WorkoutTabState extends State<_WorkoutTab>
       // after the plan is durably persisted — the persisted-plan branch above
       // returns early on future loads, so this runs at most once per weekId.
       if (adaptation.calorieBiasKcal != 0 && mounted) {
-        await context
-            .read<ProfileProvider>()
-            .applyCalorieAdjustment(adaptation.calorieBiasKcal);
+        await context.read<ProfileProvider>().applyCalorieAdjustment(
+          adaptation.calorieBiasKcal,
+        );
       }
 
-      final thisWeekStart = now.subtract(Duration(days: now.weekday - 1));
+      final thisWeekStart = today.subtract(Duration(days: today.weekday - 1));
       final thisWeekEnd = thisWeekStart.add(const Duration(days: 7));
-      final weekLogs = await fs.getWorkoutLogsForDateRange(uid, thisWeekStart, thisWeekEnd);
+      final weekLogs = await fs.getWorkoutLogsForDateRange(
+        uid,
+        thisWeekStart,
+        thisWeekEnd,
+      );
 
       setState(() {
         _profile = profile;
@@ -342,12 +430,269 @@ class _WorkoutTabState extends State<_WorkoutTab>
         if (_selectedDay == -1) _selectedDay = 0;
         _weekDone = {for (final l in weekLogs) l.dayName: true};
       });
+      _loadExerciseStats();
     } catch (e) {
-      setState(() { _error = e.toString(); _isLoading = false; });
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
     }
   }
 
-  Future<void> _saveWorkoutLog(WorkoutDay day, int durationMinutes) async {
+  /// Batch-loads per-exercise last/PR stats for every exercise in the plan so
+  /// each card can show a "Last: X" target and PR badge.
+  Future<void> _loadExerciseStats() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final ids = <String>{
+      for (final d in _plan)
+        for (final we in d.exercises) we.exercise.id,
+    }.toList();
+    if (ids.isEmpty) return;
+    try {
+      final stats = await FirestoreService().getExerciseStats(uid, ids);
+      if (mounted) setState(() => _exerciseStats = stats);
+    } catch (_) {
+      /* non-fatal: cards just won't show a target */
+    }
+  }
+
+  // ── Load tracking helpers ───────────────────────────────────────────────────
+  bool get _imperial => _profile?.unitSystem == 'imperial';
+  String get _weightUnit => _imperial ? 'lbs' : 'kg';
+  double _toKg(double v) => _imperial ? v / 2.20462 : v;
+  double _fromKg(double kg) => _imperial ? kg * 2.20462 : kg;
+  String _fmtWeight(double kg) {
+    final v = _fromKg(kg);
+    return '${v.toStringAsFixed(v % 1 == 0 ? 0 : 1)} $_weightUnit';
+  }
+
+  /// Stores whatever weight/reps are currently typed for the active exercise.
+  /// Called on every "Done Set" so the latest entry becomes the logged top set.
+  void _captureActiveInput() {
+    if (_activeExerciseIndex < 0) return;
+    final w = double.tryParse(_weightController.text.trim());
+    if (w != null && w > 0) _topSetKg[_activeExerciseIndex] = _toKg(w);
+    final r = int.tryParse(_repsController.text.trim());
+    if (r != null && r > 0) _topSetReps[_activeExerciseIndex] = r;
+  }
+
+  Future<void> _togglePin(String focus, Exercise ex) async {
+    final profile = _profile;
+    if (profile == null) return;
+    final map = {
+      for (final e in profile.pinnedExercises.entries)
+        e.key: List<String>.from(e.value),
+    };
+    final list = map[focus] ?? <String>[];
+    final wasPinned = list.contains(ex.id);
+    wasPinned ? list.remove(ex.id) : list.add(ex.id);
+    if (list.isEmpty) {
+      map.remove(focus);
+    } else {
+      map[focus] = list;
+    }
+    final updated = profile.copyWith(pinnedExercises: map);
+    await context.read<ProfileProvider>().save(updated);
+    if (!mounted) return;
+    setState(() => _profile = updated);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          wasPinned
+              ? '${ex.name} unpinned from $focus'
+              : '${ex.name} pinned always included in $focus workouts',
+          style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+        ),
+        backgroundColor: const Color(0xFF00C97B),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  /// Post-workout perceived-difficulty rating (1 too easy … 5 too hard).
+  Future<int?> _askWorkoutRating() {
+    const labels = ['Too easy', 'Easy', 'Just right', 'Hard', 'Too hard'];
+    return showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'How did that feel?',
+              style: GoogleFonts.spaceGrotesk(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "Tunes next week's difficulty.",
+              style: GoogleFonts.inter(
+                color: const Color(0xFF888888),
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...List.generate(
+              5,
+              (i) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Text(
+                  '${i + 1}',
+                  style: GoogleFonts.spaceGrotesk(
+                    color: const Color(0xFF00C97B),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+                title: Text(
+                  labels[i],
+                  style: GoogleFonts.inter(color: Colors.white),
+                ),
+                onTap: () => Navigator.pop(ctx, i + 1),
+              ),
+            ),
+            Center(
+              child: TextButton(
+                onPressed: () => Navigator.pop(ctx, null),
+                child: Text(
+                  'Skip',
+                  style: GoogleFonts.inter(color: const Color(0xFF888888)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _pinButton(String focus, Exercise ex) {
+    final pinned = (_profile?.pinnedExercises[focus] ?? const <String>[])
+        .contains(ex.id);
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+      onPressed: () => _togglePin(focus, ex),
+      tooltip: pinned ? 'Unpin from $focus' : 'Always include in $focus',
+      icon: Icon(
+        pinned ? Icons.star : Icons.star_outline,
+        color: pinned ? const Color(0xFF00C97B) : const Color(0xFF666666),
+        size: 20,
+      ),
+    );
+  }
+
+  /// Inline working-weight + reps input shown on the active exercise card,
+  /// pre-hinted with the last logged top set as the progressive-overload target.
+  Widget _buildWeightInput(WorkoutExercise we) {
+    final stat = _exerciseStats[we.exercise.id];
+    final hint = (stat != null && stat.lastWeightKg > 0)
+        ? 'Last: ${_fmtWeight(stat.lastWeightKg)}'
+              '${stat.lastReps != null ? ' × ${stat.lastReps}' : ''}'
+              '   ·   PR ${_fmtWeight(stat.bestWeightKg)}'
+        : 'Log your working weight to track progress';
+    InputDecoration deco(String h) => InputDecoration(
+      hintText: h,
+      hintStyle: GoogleFonts.inter(
+        color: const Color(0xFF666666),
+        fontSize: 13,
+      ),
+      filled: true,
+      fillColor: const Color(0xFF222222),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          hint,
+          style: GoogleFonts.inter(
+            color: const Color(0xFF888888),
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _weightController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+                decoration: deco('Weight ($_weightUnit)'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 88,
+              child: TextField(
+                controller: _repsController,
+                keyboardType: TextInputType.number,
+                style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+                decoration: deco('Reps'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Small "Last / PR" caption under the stat boxes on the normal card.
+  Widget _lastPrLine(Exercise ex) {
+    final stat = _exerciseStats[ex.id];
+    if (stat == null || stat.lastWeightKg <= 0) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.history_rounded, color: Color(0xFF888888), size: 14),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Last: ${_fmtWeight(stat.lastWeightKg)}'
+              '${stat.lastReps != null ? ' × ${stat.lastReps}' : ''}'
+              '   ·   PR ${_fmtWeight(stat.bestWeightKg)}',
+              style: GoogleFonts.inter(
+                color: const Color(0xFF888888),
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveWorkoutLog(
+    WorkoutDay day,
+    int durationMinutes, {
+    int? rating,
+  }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     final now = appNow();
@@ -360,22 +705,59 @@ class _WorkoutTabState extends State<_WorkoutTab>
       focus: day.focus,
       durationMinutes: durationMinutes,
       completedAt: now,
-      exercises: day.exercises.map((we) => WorkoutLogExercise(
-        name: we.exercise.name,
-        sets: we.sets,
-        reps: we.reps,
-        restSeconds: we.restSeconds,
-        primaryMuscles: we.exercise.primaryMuscles,
-      )).toList(),
+      rating: rating,
+      exercises: [
+        for (int i = 0; i < day.exercises.length; i++)
+          WorkoutLogExercise(
+            name: day.exercises[i].exercise.name,
+            sets: day.exercises[i].sets,
+            reps: day.exercises[i].reps,
+            restSeconds: day.exercises[i].restSeconds,
+            primaryMuscles: day.exercises[i].exercise.primaryMuscles,
+            weightKg: _topSetKg[i],
+            repsDone: _topSetReps[i],
+          ),
+      ],
     );
-    await FirestoreService().saveWorkoutLog(log);
+    final fs = FirestoreService();
+    await fs.saveWorkoutLog(log);
+
+    // Persist per-exercise top sets and detect PRs against the cached bests.
+    final prs = <String>[];
+    for (int i = 0; i < day.exercises.length; i++) {
+      final kg = _topSetKg[i];
+      if (kg == null) continue;
+      final ex = day.exercises[i].exercise;
+      final prevBest = _exerciseStats[ex.id]?.bestWeightKg ?? 0;
+      if (kg > prevBest) prs.add(ex.name);
+      await fs.saveExerciseStat(
+        userId: uid,
+        exerciseId: ex.id,
+        name: ex.name,
+        weightKg: kg,
+        reps: _topSetReps[i],
+      );
+    }
+    _loadExerciseStats(); // refresh last/PR cache for the cards
+
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('All done! ${day.focus} logged · ${durationMinutes}m'),
-        backgroundColor: const Color(0xFF00C97B),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ));
+      final msg = prs.isNotEmpty
+          ? '🏆 New PR: ${prs.first}'
+                '${prs.length > 1 ? ' +${prs.length - 1} more' : ''}!'
+          : 'All done! ${day.focus} logged · ${durationMinutes}m';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            msg,
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: const Color(0xFF00C97B),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
     }
   }
 
@@ -393,6 +775,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
     _workoutStartedAt = null;
     _elapsedSeconds = 0;
     _completedExercises.clear();
+    _topSetKg.clear();
+    _topSetReps.clear();
+    _weightController.clear();
+    _repsController.clear();
   }
 
   void _startWorkout() {
@@ -406,7 +792,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
           ),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
       return;
@@ -416,6 +804,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
       _activeSetNumber = 1;
       _workoutStartedAt = DateTime.now();
       _elapsedSeconds = 0;
+      _topSetKg.clear();
+      _topSetReps.clear();
+      _weightController.clear();
+      _repsController.clear();
     });
     _workoutTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _elapsedSeconds++);
@@ -424,34 +816,53 @@ class _WorkoutTabState extends State<_WorkoutTab>
   }
 
   void _doneSet(WorkoutExercise we) {
+    // Capture the typed working weight/reps as this exercise's top set.
+    _captureActiveInput();
     if (_activeSetNumber < we.sets) {
-      _startRestTimer(we.restSeconds, onComplete: () {
-        if (mounted) setState(() { _activeSetNumber++; _inRest = false; });
-      });
+      _startRestTimer(
+        we.restSeconds,
+        onComplete: () {
+          if (mounted)
+            setState(() {
+              _activeSetNumber++;
+              _inRest = false;
+            });
+        },
+      );
     } else {
       final day = _plan[_selectedDay];
       final completedIndex = _activeExerciseIndex;
       if (_activeExerciseIndex + 1 < day.exercises.length) {
-        _startRestTimer(we.restSeconds, onComplete: () {
-          if (mounted) {
-            setState(() {
-              _completedExercises.add(completedIndex);
-              _inRest = false;
-              _waitingForReady = true;
-            });
-            _scrollToActive();
-          }
-        });
+        _startRestTimer(
+          we.restSeconds,
+          onComplete: () {
+            if (mounted) {
+              setState(() {
+                _completedExercises.add(completedIndex);
+                _inRest = false;
+                _waitingForReady = true;
+              });
+              _scrollToActive();
+            }
+          },
+        );
       } else {
-        _startRestTimer(0, onComplete: () {
-          if (mounted) setState(() => _completedExercises.add(completedIndex));
-          _autoComplete(day);
-        });
+        _startRestTimer(
+          0,
+          onComplete: () {
+            if (mounted)
+              setState(() => _completedExercises.add(completedIndex));
+            _autoComplete(day);
+          },
+        );
       }
     }
   }
 
   void _iAmReady() {
+    // Clear the inputs so the next exercise starts blank with its own target.
+    _weightController.clear();
+    _repsController.clear();
     setState(() {
       _waitingForReady = false;
       _activeExerciseIndex++;
@@ -463,19 +874,35 @@ class _WorkoutTabState extends State<_WorkoutTab>
   void _startRestTimer(int seconds, {required VoidCallback onComplete}) {
     _restTimer?.cancel();
     _pendingRestCallback = onComplete;
-    if (seconds == 0) { onComplete(); return; }
-    setState(() { _inRest = true; _restRemaining = seconds; _restTotal = seconds; });
+    if (seconds == 0) {
+      onComplete();
+      return;
+    }
+    setState(() {
+      _inRest = true;
+      _restRemaining = seconds;
+      _restTotal = seconds;
+    });
     _restTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) { t.cancel(); return; }
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
       setState(() => _restRemaining--);
-      if (_restRemaining <= 0) { t.cancel(); onComplete(); }
+      if (_restRemaining <= 0) {
+        t.cancel();
+        onComplete();
+      }
     });
   }
 
   void _skipRest() {
     _restTimer?.cancel();
     final cb = _pendingRestCallback;
-    setState(() { _inRest = false; _pendingRestCallback = null; });
+    setState(() {
+      _inRest = false;
+      _pendingRestCallback = null;
+    });
     cb?.call();
   }
 
@@ -484,15 +911,22 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final mins = _workoutStartedAt != null
         ? DateTime.now().difference(_workoutStartedAt!).inMinutes.clamp(1, 999)
         : 45;
-    if (mounted) setState(() { _weekDone[day.dayName] = true; _inRest = false; _waitingForReady = false; });
-    await _saveWorkoutLog(day, mins);
+    if (mounted)
+      setState(() {
+        _weekDone[day.dayName] = true;
+        _inRest = false;
+        _waitingForReady = false;
+      });
+    final rating = mounted ? await _askWorkoutRating() : null;
+    await _saveWorkoutLog(day, mins, rating: rating);
   }
 
   void _scrollToActive() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = _activeKey.currentContext;
       if (ctx != null) {
-        Scrollable.ensureVisible(ctx,
+        Scrollable.ensureVisible(
+          ctx,
           duration: const Duration(milliseconds: 400),
           curve: Curves.easeOut,
           alignment: 0.1,
@@ -536,7 +970,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
               ],
               const Spacer(),
               IconButton(
-                icon: const Icon(Icons.refresh_rounded, color: Color(0xFF00C97B)),
+                icon: const Icon(
+                  Icons.refresh_rounded,
+                  color: Color(0xFF00C97B),
+                ),
                 onPressed: _forceRegenerate,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
@@ -573,10 +1010,14 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       margin: const EdgeInsets.only(right: 8),
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? (isRest ? const Color(0xFF444444) : const Color(0xFF00C97B))
+                            ? (isRest
+                                  ? const Color(0xFF444444)
+                                  : const Color(0xFF00C97B))
                             : const Color(0xFF1A1A1A),
                         borderRadius: BorderRadius.circular(14),
-                        border: isSelected ? null : Border.all(color: const Color(0xFF2E2E2E)),
+                        border: isSelected
+                            ? null
+                            : Border.all(color: const Color(0xFF2E2E2E)),
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -586,12 +1027,16 @@ class _WorkoutTabState extends State<_WorkoutTab>
                             style: GoogleFonts.spaceGrotesk(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
-                              color: isSelected ? (isRest ? Colors.white : Colors.black) : Colors.white,
+                              color: isSelected
+                                  ? (isRest ? Colors.white : Colors.black)
+                                  : Colors.white,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Icon(
-                            isRest ? Icons.bedtime_rounded : Icons.fitness_center_rounded,
+                            isRest
+                                ? Icons.bedtime_rounded
+                                : Icons.fitness_center_rounded,
                             size: 14,
                             color: isSelected
                                 ? (isRest ? Colors.white70 : Colors.black54)
@@ -661,7 +1106,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
           ),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
       return; // stay in edit mode
@@ -675,11 +1122,15 @@ class _WorkoutTabState extends State<_WorkoutTab>
         barrierDismissible: false,
         builder: (_) => AlertDialog(
           backgroundColor: const Color(0xFF1A1A1A),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: Text(
             'Session is shorter',
             style: GoogleFonts.spaceGrotesk(
-                color: Colors.white, fontWeight: FontWeight.w700),
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           content: Text(
             'You removed $removed exercise${removed == 1 ? '' : 's'}. '
@@ -687,7 +1138,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
             'leave the session shorter — skipped volume will be added to your '
             'next workout day${removed > 1 ? 's' : ''}.',
             style: GoogleFonts.inter(
-                color: const Color(0xFF888888), fontSize: 14, height: 1.5),
+              color: const Color(0xFF888888),
+              fontSize: 14,
+              height: 1.5,
+            ),
           ),
           actions: [
             TextButton(
@@ -696,9 +1150,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 _fillExerciseGap(day, removed);
                 setState(() => _editMode = false);
               },
-              child: Text('Fill the gap',
-                  style: GoogleFonts.inter(color: const Color(0xFF00C97B),
-                      fontWeight: FontWeight.w600)),
+              child: Text(
+                'Fill the gap',
+                style: GoogleFonts.inter(
+                  color: const Color(0xFF00C97B),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
             TextButton(
               onPressed: () {
@@ -706,10 +1164,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 _applyVolumeDebt(removed); // penalise upcoming days
                 setState(() => _editMode = false);
               },
-              child: Text('Leave shorter',
-                  style: GoogleFonts.inter(
-                      color: const Color(0xFF888888),
-                      fontWeight: FontWeight.w600)),
+              child: Text(
+                'Leave shorter',
+                style: GoogleFonts.inter(
+                  color: const Color(0xFF888888),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ],
         ),
@@ -718,6 +1179,103 @@ class _WorkoutTabState extends State<_WorkoutTab>
     }
 
     setState(() => _editMode = false);
+  }
+
+  /// Same hard constraints as plan generation (gender variant, location,
+  /// equipment, bench, experience level) so the picker/gap-fill/volume-debt
+  /// paths can't inject exercises the user can't perform. Permissive only
+  /// while the profile hasn't loaded yet.
+  bool _usableByUser(Exercise e) {
+    final p = _profile;
+    if (p == null) return true;
+    return GreedyAlgorithm.isEligibleForUser(e, p) &&
+        GreedyAlgorithm.difficultyAllowed(e.difficulty, p.experienceLevel);
+  }
+
+  /// Manual-picker eligibility: hard constraints only (gender / location /
+  /// equipment / Home bench rule), WITHOUT the strict experience gate. The user
+  /// may deliberately add an above-tier exercise from the picker (with a
+  /// warning) — the automatic generation / gap-fill / volume-debt paths keep the
+  /// full [_usableByUser] gate so the algorithm never auto-injects above-tier
+  /// moves.
+  bool _pickableByUser(Exercise e) {
+    final p = _profile;
+    if (p == null) return true;
+    return GreedyAlgorithm.isEligibleForUser(e, p);
+  }
+
+  /// True when [e] is above the user's experience tier (informational badge +
+  /// confirm in the picker).
+  bool _isAboveUserTier(Exercise e) {
+    final p = _profile;
+    if (p == null) return false;
+    return !GreedyAlgorithm.difficultyAllowed(e.difficulty, p.experienceLevel);
+  }
+
+  /// Small difficulty chip for picker rows. Amber when the move is above the
+  /// user's tier, muted green when it's at or below.
+  Widget _difficultyBadge(String difficulty, bool aboveTier) {
+    final color = aboveTier ? const Color(0xFFFFA726) : const Color(0xFF00C97B);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        difficulty[0].toUpperCase() + difficulty.substring(1),
+        style: GoogleFonts.inter(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  /// Informed-consent confirm when the user picks an above-tier exercise.
+  Future<bool?> _confirmAboveTier(Exercise e) {
+    final level = _profile?.experienceLevel ?? 'your';
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Text(
+          'Above your level',
+          style: GoogleFonts.spaceGrotesk(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
+          '"${e.name}" is rated ${e.difficulty}, above your '
+          '$level level. Make sure you can perform it safely — add it anyway?',
+          style: GoogleFonts.inter(color: const Color(0xFFBBBBBB), fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.inter(color: const Color(0xFF888888)),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Add anyway',
+              style: GoogleFonts.inter(
+                color: const Color(0xFF00C97B),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Fills the gap left by removed exercises by pulling exercises from
@@ -729,6 +1287,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
     final candidates = _allExercises.where((e) {
       if (existingIds.contains(e.id)) return false;
+      if (!_usableByUser(e)) return false;
       return targets.isEmpty || e.primaryMuscles.any(targets.contains);
     }).toList();
     candidates.shuffle();
@@ -737,7 +1296,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
     for (final ex in candidates) {
       if (added >= count) break;
       context.read<PlanProvider>().addExercise(
-        uid, _currentWeekId, _selectedDay,
+        uid,
+        _currentWeekId,
+        _selectedDay,
         WorkoutExercise(exercise: ex, sets: 3, reps: '10-12', restSeconds: 60),
       );
       added++;
@@ -759,6 +1320,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
       final existingIds = nextDay.exercises.map((e) => e.exercise.id).toSet();
       final candidates = _allExercises.where((e) {
         if (existingIds.contains(e.id)) return false;
+        if (!_usableByUser(e)) return false;
         return targets.isEmpty || e.primaryMuscles.any(targets.contains);
       }).toList();
       candidates.shuffle();
@@ -766,8 +1328,15 @@ class _WorkoutTabState extends State<_WorkoutTab>
       if (candidates.isNotEmpty) {
         final ex = candidates.first;
         context.read<PlanProvider>().addExercise(
-          uid, _currentWeekId, i,
-          WorkoutExercise(exercise: ex, sets: 3, reps: '12-15', restSeconds: 60),
+          uid,
+          _currentWeekId,
+          i,
+          WorkoutExercise(
+            exercise: ex,
+            sets: 3,
+            reps: '12-15',
+            restSeconds: 60,
+          ),
         );
         debtLeft--;
       }
@@ -807,7 +1376,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                     backgroundColor: Colors.redAccent,
                     behavior: SnackBarBehavior.floating,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 );
                 return;
@@ -826,7 +1396,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 color: Colors.redAccent.withValues(alpha: 0.9),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.close_rounded, size: 14, color: Colors.white),
+              child: const Icon(
+                Icons.close_rounded,
+                size: 14,
+                color: Colors.white,
+              ),
             ),
           ),
         ),
@@ -909,7 +1483,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
       ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.fromLTRB(
-          24, 24, 24, MediaQuery.of(ctx).viewInsets.bottom + 24,
+          24,
+          24,
+          24,
+          MediaQuery.of(ctx).viewInsets.bottom + 24,
         ),
         child: StatefulBuilder(
           builder: (ctx, setSt) => Column(
@@ -929,15 +1506,31 @@ class _WorkoutTabState extends State<_WorkoutTab>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Sets', style: GoogleFonts.inter(color: const Color(0xFF888888))),
+                  Text(
+                    'Sets',
+                    style: GoogleFonts.inter(color: const Color(0xFF888888)),
+                  ),
                   Row(
                     children: [
-                      _paramBtn(Icons.remove, () => setSt(() => sets = (sets - 1).clamp(1, 10))),
+                      _paramBtn(
+                        Icons.remove,
+                        () => setSt(() => sets = (sets - 1).clamp(1, 10)),
+                      ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Text('$sets', style: GoogleFonts.spaceGrotesk(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 18)),
+                        child: Text(
+                          '$sets',
+                          style: GoogleFonts.spaceGrotesk(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 18,
+                          ),
+                        ),
                       ),
-                      _paramBtn(Icons.add, () => setSt(() => sets = (sets + 1).clamp(1, 10))),
+                      _paramBtn(
+                        Icons.add,
+                        () => setSt(() => sets = (sets + 1).clamp(1, 10)),
+                      ),
                     ],
                   ),
                 ],
@@ -947,7 +1540,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Reps / Duration', style: GoogleFonts.inter(color: const Color(0xFF888888))),
+                  Text(
+                    'Reps / Duration',
+                    style: GoogleFonts.inter(color: const Color(0xFF888888)),
+                  ),
                   SizedBox(
                     width: 110,
                     child: TextField(
@@ -973,15 +1569,31 @@ class _WorkoutTabState extends State<_WorkoutTab>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Rest (sec)', style: GoogleFonts.inter(color: const Color(0xFF888888))),
+                  Text(
+                    'Rest (sec)',
+                    style: GoogleFonts.inter(color: const Color(0xFF888888)),
+                  ),
                   Row(
                     children: [
-                      _paramBtn(Icons.remove, () => setSt(() => rest = (rest - 15).clamp(0, 300))),
+                      _paramBtn(
+                        Icons.remove,
+                        () => setSt(() => rest = (rest - 15).clamp(0, 300)),
+                      ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Text('${rest}s', style: GoogleFonts.spaceGrotesk(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 18)),
+                        child: Text(
+                          '${rest}s',
+                          style: GoogleFonts.spaceGrotesk(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 18,
+                          ),
+                        ),
                       ),
-                      _paramBtn(Icons.add, () => setSt(() => rest = (rest + 15).clamp(0, 300))),
+                      _paramBtn(
+                        Icons.add,
+                        () => setSt(() => rest = (rest + 15).clamp(0, 300)),
+                      ),
                     ],
                   ),
                 ],
@@ -994,18 +1606,31 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   onPressed: () async {
                     Navigator.pop(ctx);
                     await context.read<PlanProvider>().updateExerciseParams(
-                      uid, _currentWeekId, dayIdx, exIdx,
-                      sets: sets, reps: reps.isEmpty ? we.reps : reps,
+                      uid,
+                      _currentWeekId,
+                      dayIdx,
+                      exIdx,
+                      sets: sets,
+                      reps: reps.isEmpty ? we.reps : reps,
                       restSeconds: rest,
                     );
-                    setState(() => _plan = context.read<PlanProvider>().workoutPlan);
+                    setState(
+                      () => _plan = context.read<PlanProvider>().workoutPlan,
+                    );
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF00C97B),
                     foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
-                  child: Text('Save', style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700)),
+                  child: Text(
+                    'Save',
+                    style: GoogleFonts.spaceGrotesk(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -1029,15 +1654,23 @@ class _WorkoutTabState extends State<_WorkoutTab>
   );
 
   void _showExercisePicker(WorkoutDay day) {
-    final targetMuscles = day.focus == 'Rest Day' ? <String>[] : _focusToMuscles(day.focus);
+    final targetMuscles = day.focus == 'Rest Day'
+        ? <String>[]
+        : _focusToMuscles(day.focus);
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final planProvider = context.read<PlanProvider>();
     // Use cached exercises from the last generated plan's full list;
     // fallback to exercises already in the plan if cache is unavailable.
+    // _pickableByUser applies hard constraints only (no experience gate) so the
+    // user may deliberately add an above-tier move, with a warning on tap.
     final allEx = _allExercises;
     final relevant = allEx.where((e) {
+      if (!_pickableByUser(e)) return false;
       if (targetMuscles.isEmpty) return true;
       return e.primaryMuscles.any((m) => targetMuscles.contains(m));
     }).toList()..sort((a, b) => a.name.compareTo(b.name));
+
+    final searchController = TextEditingController();
 
     showModalBottomSheet(
       context: context,
@@ -1050,81 +1683,170 @@ class _WorkoutTabState extends State<_WorkoutTab>
         expand: false,
         initialChildSize: 0.6,
         maxChildSize: 0.9,
-        builder: (_, sc) => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-              child: Text(
-                'Add exercise — ${day.focus}',
-                style: GoogleFonts.spaceGrotesk(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
+        builder: (_, sc) => StatefulBuilder(
+          builder: (context, setSheetState) {
+            final query = searchController.text.trim().toLowerCase();
+            final filtered = query.isEmpty
+                ? relevant
+                : relevant.where((e) {
+                    if (e.name.toLowerCase().contains(query)) return true;
+                    return e.primaryMuscles
+                        .any((m) => m.toLowerCase().contains(query));
+                  }).toList();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+                  child: Text(
+                    'Add exercise — ${day.focus}',
+                    style: GoogleFonts.spaceGrotesk(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            Expanded(
-              child: relevant.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No matching exercises found.',
-                        style: GoogleFonts.inter(color: const Color(0xFF888888)),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: TextField(
+                    controller: searchController,
+                    onChanged: (_) => setSheetState(() {}),
+                    style: GoogleFonts.inter(color: Colors.white),
+                    cursorColor: const Color(0xFF00C97B),
+                    decoration: InputDecoration(
+                      hintText: 'Search exercises',
+                      hintStyle: GoogleFonts.inter(
+                        color: const Color(0xFF888888),
                       ),
-                    )
-                  : ListView.builder(
-                      controller: sc,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: relevant.length,
-                      itemBuilder: (_, i) {
-                        final ex = relevant[i];
-                        return ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          title: Text(ex.name, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w500)),
-                          subtitle: Text(
-                            ex.primaryMuscles.join(', '),
-                            style: GoogleFonts.inter(color: const Color(0xFF888888), fontSize: 12),
+                      prefixIcon: const Icon(
+                        Icons.search,
+                        color: Color(0xFF888888),
+                      ),
+                      suffixIcon: searchController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(
+                                Icons.close,
+                                color: Color(0xFF888888),
+                              ),
+                              onPressed: () => setSheetState(
+                                () => searchController.clear(),
+                              ),
+                            ),
+                      filled: true,
+                      fillColor: const Color(0xFF0D0D0D),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                          color: Color(0xFF00C97B),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: filtered.isEmpty
+                      ? Center(
+                          child: Text(
+                            'No matching exercises found.',
+                            style: GoogleFonts.inter(
+                              color: const Color(0xFF888888),
+                            ),
                           ),
-                          trailing: const Icon(Icons.add_circle_outline, color: Color(0xFF00C97B)),
+                        )
+                      : ListView.builder(
+                          controller: sc,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: filtered.length,
+                          itemBuilder: (_, i) {
+                            final ex = filtered[i];
+                            final aboveTier = _isAboveUserTier(ex);
+                            return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          title: Text(
+                            ex.name,
+                            style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          subtitle: Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  ex.primaryMuscles.join(', '),
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    color: const Color(0xFF888888),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                              if (ex.difficulty.isNotEmpty) ...[
+                                const SizedBox(width: 8),
+                                _difficultyBadge(ex.difficulty, aboveTier),
+                              ],
+                            ],
+                          ),
+                          trailing: const Icon(
+                            Icons.add_circle_outline,
+                            color: Color(0xFF00C97B),
+                          ),
                           onTap: () async {
                             Navigator.pop(ctx);
+                            if (aboveTier) {
+                              final ok = await _confirmAboveTier(ex);
+                              if (ok != true) return;
+                            }
                             final we = WorkoutExercise(
                               exercise: ex,
                               sets: 3,
                               reps: '10-12',
                               restSeconds: 60,
                             );
-                            await context.read<PlanProvider>().addExercise(
-                              uid, _currentWeekId, _selectedDay, we,
+                            await planProvider.addExercise(
+                              uid,
+                              _currentWeekId,
+                              _selectedDay,
+                              we,
                             );
-                            setState(() => _plan = context.read<PlanProvider>().workoutPlan);
+                            if (!mounted) return;
+                            setState(
+                              () => _plan = planProvider.workoutPlan,
+                            );
                           },
                         );
                       },
                     ),
             ),
-          ],
+              ],
+            );
+          },
         ),
       ),
-    );
+    ).whenComplete(searchController.dispose);
   }
 
-  /// Muscle targets for a focus string (used by exercise picker).
-  List<String> _focusToMuscles(String focus) {
-    const map = {
-      'Full Body': ['chest', 'back', 'quads', 'glutes', 'core', 'shoulders'],
-      'Upper Body': ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'upper back'],
-      'Lower Body': ['quads', 'glutes', 'hamstrings', 'calves'],
-      'Chest & Triceps': ['chest', 'triceps', 'upper chest'],
-      'Back & Biceps': ['lats', 'upper back', 'biceps', 'lower back'],
-      'Legs': ['quads', 'glutes', 'hamstrings', 'calves'],
-      'Shoulders & Arms': ['shoulders', 'biceps', 'triceps', 'rear delts'],
-      'Arms': ['biceps', 'triceps', 'forearms'],
-      'Core': ['core', 'abs', 'obliques'],
-      'Cardio': ['full body', 'quads', 'glutes', 'core'],
-    };
-    return map[focus] ?? [];
-  }
+  /// Muscle targets for a focus string (used by exercise picker, gap-fill and
+  /// volume-debt). Delegates to [GreedyAlgorithm.musclesForFocus] so it resolves
+  /// muscles in the same ExerciseDB `targetMuscles` vocabulary the generator
+  /// uses — otherwise the picker filters for 'chest' while exercises are tagged
+  /// 'pectorals' and nothing matches.
+  List<String> _focusToMuscles(String focus) =>
+      GreedyAlgorithm.musclesForFocus(focus);
 
   Widget _buildRestDay() => Center(
     child: Column(
@@ -1132,9 +1854,19 @@ class _WorkoutTabState extends State<_WorkoutTab>
       children: [
         const Icon(Icons.bedtime_rounded, size: 64, color: Color(0xFF444444)),
         const SizedBox(height: 16),
-        Text('Rest Day', style: GoogleFonts.spaceGrotesk(fontSize: 24, fontWeight: FontWeight.w700, color: Colors.white)),
+        Text(
+          'Rest Day',
+          style: GoogleFonts.spaceGrotesk(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        ),
         const SizedBox(height: 8),
-        Text('Recovery is part of the plan.', style: GoogleFonts.inter(color: const Color(0xFF888888))),
+        Text(
+          'Recovery is part of the plan.',
+          style: GoogleFonts.inter(color: const Color(0xFF888888)),
+        ),
       ],
     ),
   );
@@ -1150,7 +1882,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
       final we = day.exercises[i];
       final bool isActive = (i == _activeExerciseIndex) && !_waitingForReady;
       final bool isDone = _completedExercises.contains(i);
-      final bool isReadySlot = _waitingForReady && (i == _activeExerciseIndex + 1);
+      final bool isReadySlot =
+          _waitingForReady && (i == _activeExerciseIndex + 1);
       final bool needsKey = isActive || isReadySlot;
 
       Widget card = isReadySlot
@@ -1191,36 +1924,74 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(day.dayName, style: GoogleFonts.spaceGrotesk(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
-                    Text(day.focus, style: GoogleFonts.inter(color: const Color(0xFF00C97B), fontWeight: FontWeight.w500)),
+                    Text(
+                      day.dayName,
+                      style: GoogleFonts.spaceGrotesk(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      day.focus,
+                      style: GoogleFonts.inter(
+                        color: const Color(0xFF00C97B),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ],
                 ),
               ),
               if (isToday && isCompleted)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF00C97B).withOpacity(0.15),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFF00C97B).withOpacity(0.4)),
+                    border: Border.all(
+                      color: const Color(0xFF00C97B).withOpacity(0.4),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.check_circle_rounded, color: Color(0xFF00C97B), size: 14),
+                      const Icon(
+                        Icons.check_circle_rounded,
+                        color: Color(0xFF00C97B),
+                        size: 14,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         'Completed · ${_todayLog!.durationMinutes} min',
-                        style: GoogleFonts.inter(color: const Color(0xFF00C97B), fontSize: 12, fontWeight: FontWeight.w600),
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFF00C97B),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ],
                   ),
                 )
               else
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(20)),
-                  child: Text('${day.exercises.length} exercises', style: GoogleFonts.inter(color: const Color(0xFF888888), fontSize: 13)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A1A),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${day.exercises.length} exercises',
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFF888888),
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -1233,7 +2004,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
               child: GestureDetector(
                 onTap: () => _toggleEditMode(day),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: _editMode
                         ? const Color(0xFF00C97B).withValues(alpha: 0.15)
@@ -1279,40 +2053,59 @@ class _WorkoutTabState extends State<_WorkoutTab>
               children: [
                 Text(
                   '${_completedExercises.length} / ${day.exercises.length}',
-                  style: GoogleFonts.spaceGrotesk(color: const Color(0xFF00C97B), fontSize: 13, fontWeight: FontWeight.w700),
+                  style: GoogleFonts.spaceGrotesk(
+                    color: const Color(0xFF00C97B),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
-                      value: day.exercises.isEmpty ? 0 : _completedExercises.length / day.exercises.length,
+                      value: day.exercises.isEmpty
+                          ? 0
+                          : _completedExercises.length / day.exercises.length,
                       backgroundColor: const Color(0xFF2E2E2E),
-                      valueColor: const AlwaysStoppedAnimation(Color(0xFF00C97B)),
+                      valueColor: const AlwaysStoppedAnimation(
+                        Color(0xFF00C97B),
+                      ),
                       minHeight: 6,
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
-                Text(_formatElapsed(_elapsedSeconds), style: GoogleFonts.inter(color: Colors.white54, fontSize: 12)),
+                Text(
+                  _formatElapsed(_elapsedSeconds),
+                  style: GoogleFonts.inter(color: Colors.white54, fontSize: 12),
+                ),
               ],
             ),
             const SizedBox(height: 12),
           ],
 
           // Start Workout button (today, not completed, not yet started, has exercises)
-          if (isToday && !isCompleted && !workoutStarted && day.exercises.isNotEmpty) ...[
+          if (isToday &&
+              !isCompleted &&
+              !workoutStarted &&
+              day.exercises.isNotEmpty) ...[
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: _startWorkout,
                 icon: const Icon(Icons.play_arrow_rounded),
-                label: Text('Start Workout', style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700)),
+                label: Text(
+                  'Start Workout',
+                  style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF00C97B),
                   foregroundColor: Colors.black,
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
               ),
             ),
@@ -1340,12 +2133,29 @@ class _WorkoutTabState extends State<_WorkoutTab>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Up Next', style: GoogleFonts.inter(color: const Color(0xFF00C97B), fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(
+            'Up Next',
+            style: GoogleFonts.inter(
+              color: const Color(0xFF00C97B),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(ex.name, style: GoogleFonts.spaceGrotesk(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+          Text(
+            ex.name,
+            style: GoogleFonts.spaceGrotesk(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           Text(
             '${ex.primaryMuscles.join(', ')} · ${we.sets} sets · ${we.reps} reps · ${we.restSeconds}s rest',
-            style: GoogleFonts.inter(color: const Color(0xFF888888), fontSize: 13),
+            style: GoogleFonts.inter(
+              color: const Color(0xFF888888),
+              fontSize: 13,
+            ),
           ),
           const SizedBox(height: 12),
           GestureDetector(
@@ -1366,17 +2176,27 @@ class _WorkoutTabState extends State<_WorkoutTab>
                           fit: BoxFit.cover,
                           gaplessPlayback: true,
                           headers: const {'User-Agent': 'OneFit/1.0'},
-                          loadingBuilder: (_, child, p) =>
-                              p == null ? child : _gifPlaceholder(loading: true, height: 140),
-                          errorBuilder: (_, __, ___) => _gifPlaceholder(height: 140),
+                          loadingBuilder: (_, child, p) => p == null
+                              ? child
+                              : _gifPlaceholder(loading: true, height: 140),
+                          errorBuilder: (_, __, ___) =>
+                              _gifPlaceholder(height: 140),
                         )
                       : _gifPlaceholder(height: 140),
                 ),
                 if (ex.gifUrl?.isNotEmpty == true)
                   Container(
-                    width: 44, height: 44,
-                    decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                    child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 26),
+                    width: 44,
+                    height: 44,
+                    decoration: const BoxDecoration(
+                      color: Colors.black54,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 26,
+                    ),
                   ),
               ],
             ),
@@ -1390,9 +2210,17 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 backgroundColor: const Color(0xFF00C97B),
                 foregroundColor: Colors.black,
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
-              child: Text("I'm Ready!", style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700, fontSize: 16)),
+              child: Text(
+                "I'm Ready!",
+                style: GoogleFonts.spaceGrotesk(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
             ),
           ),
         ],
@@ -1409,30 +2237,45 @@ class _WorkoutTabState extends State<_WorkoutTab>
     required bool workoutStarted,
   }) {
     final ex = we.exercise;
+    final String focus = _selectedDay < _plan.length
+        ? _plan[_selectedDay].focus
+        : '';
     final double gifHeight = isActive ? 200 : 160;
 
     // Number circle: checkmark when done, number otherwise
     Widget numberCircle = Container(
-      width: 32, height: 32,
+      width: 32,
+      height: 32,
       decoration: BoxDecoration(
-        color: isDone ? const Color(0xFF00C97B) : const Color(0xFF00C97B).withOpacity(0.15),
+        color: isDone
+            ? const Color(0xFF00C97B)
+            : const Color(0xFF00C97B).withOpacity(0.15),
         shape: BoxShape.circle,
       ),
       child: Center(
         child: isDone
             ? const Icon(Icons.check_rounded, color: Colors.black, size: 16)
-            : Text('$number', style: GoogleFonts.spaceGrotesk(color: const Color(0xFF00C97B), fontWeight: FontWeight.w700)),
+            : Text(
+                '$number',
+                style: GoogleFonts.spaceGrotesk(
+                  color: const Color(0xFF00C97B),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
       ),
     );
 
     // Treat empty-string gifUrl the same as null — empty string passes != null
     // but Image.network("") fails silently and never renders the animation.
-    final String? gifUrl =
-        (ex.gifUrl != null && ex.gifUrl!.isNotEmpty) ? ex.gifUrl : null;
+    final String? gifUrl = (ex.gifUrl != null && ex.gifUrl!.isNotEmpty)
+        ? ex.gifUrl
+        : null;
 
     // GIF section
     Widget gifSection = GestureDetector(
-      onTap: gifUrl != null ? () => _showGifDialog(context, gifUrl, ex.name) : null,
+      onTap: gifUrl != null
+          ? () => _showGifDialog(context, gifUrl, ex.name)
+          : null,
       child: isActive
           // Active: plain GIF (no overlay — they're using it)
           ? ClipRRect(
@@ -1446,9 +2289,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       fit: BoxFit.cover,
                       gaplessPlayback: true,
                       headers: const {'User-Agent': 'OneFit/1.0'},
-                      loadingBuilder: (_, child, p) =>
-                          p == null ? child : _gifPlaceholder(loading: true, height: gifHeight),
-                      errorBuilder: (_, __, ___) => _gifPlaceholder(height: gifHeight),
+                      loadingBuilder: (_, child, p) => p == null
+                          ? child
+                          : _gifPlaceholder(loading: true, height: gifHeight),
+                      errorBuilder: (_, __, ___) =>
+                          _gifPlaceholder(height: gifHeight),
                     )
                   : _gifPlaceholder(height: gifHeight),
             )
@@ -1467,24 +2312,39 @@ class _WorkoutTabState extends State<_WorkoutTab>
                           fit: BoxFit.cover,
                           gaplessPlayback: true,
                           headers: const {'User-Agent': 'OneFit/1.0'},
-                          loadingBuilder: (_, child, p) =>
-                              p == null ? child : _gifPlaceholder(loading: true, height: gifHeight),
-                          errorBuilder: (_, __, ___) => _gifPlaceholder(height: gifHeight),
+                          loadingBuilder: (_, child, p) => p == null
+                              ? child
+                              : _gifPlaceholder(
+                                  loading: true,
+                                  height: gifHeight,
+                                ),
+                          errorBuilder: (_, __, ___) =>
+                              _gifPlaceholder(height: gifHeight),
                         )
                       : _gifPlaceholder(height: gifHeight),
                 ),
                 if (gifUrl != null)
                   Container(
-                    width: 44, height: 44,
-                    decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                    child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 26),
+                    width: 44,
+                    height: 44,
+                    decoration: const BoxDecoration(
+                      color: Colors.black54,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 26,
+                    ),
                   ),
               ],
             ),
     );
 
     // Opacity: done = 55%, upcoming-while-workout-started = 65%, otherwise 100%
-    final double opacity = isDone ? 0.55 : (workoutStarted && !isActive ? 0.65 : 1.0);
+    final double opacity = isDone
+        ? 0.55
+        : (workoutStarted && !isActive ? 0.65 : 1.0);
 
     return AnimatedOpacity(
       opacity: opacity,
@@ -1496,7 +2356,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
           color: const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isActive ? const Color(0xFF00C97B).withOpacity(0.6) : const Color(0xFF2E2E2E),
+            color: isActive
+                ? const Color(0xFF00C97B).withOpacity(0.6)
+                : const Color(0xFF2E2E2E),
             width: isActive ? 1.5 : 1.0,
           ),
         ),
@@ -1512,11 +2374,25 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(ex.name, style: GoogleFonts.spaceGrotesk(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
-                      Text(ex.primaryMuscles.join(', '), style: GoogleFonts.inter(color: const Color(0xFF888888), fontSize: 12)),
+                      Text(
+                        ex.name,
+                        style: GoogleFonts.spaceGrotesk(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                      Text(
+                        ex.primaryMuscles.join(', '),
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFF888888),
+                          fontSize: 12,
+                        ),
+                      ),
                     ],
                   ),
                 ),
+                if (!isActive && focus.isNotEmpty) _pinButton(focus, ex),
                 _diffBadge(ex.difficulty),
               ],
             ),
@@ -1529,11 +2405,21 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
               if (_inRest) ...[
                 // Rest phase
-                Text('Rest', style: GoogleFonts.spaceGrotesk(color: Colors.white54, fontSize: 13)),
+                Text(
+                  'Rest',
+                  style: GoogleFonts.spaceGrotesk(
+                    color: Colors.white54,
+                    fontSize: 13,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   _formatCountdown(_restRemaining),
-                  style: GoogleFonts.spaceGrotesk(color: Colors.white, fontSize: 44, fontWeight: FontWeight.w700),
+                  style: GoogleFonts.spaceGrotesk(
+                    color: Colors.white,
+                    fontSize: 44,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 ClipRRect(
@@ -1549,7 +2435,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 Center(
                   child: TextButton(
                     onPressed: _skipRest,
-                    child: Text('Skip Rest', style: GoogleFonts.inter(color: const Color(0xFF00C97B), fontWeight: FontWeight.w600)),
+                    child: Text(
+                      'Skip Rest',
+                      style: GoogleFonts.inter(
+                        color: const Color(0xFF00C97B),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
               ] else ...[
@@ -1557,33 +2449,53 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    ...List.generate(we.sets, (i) => Container(
-                      width: 10, height: 10,
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: i < _activeSetNumber ? const Color(0xFF00C97B) : const Color(0xFF2E2E2E),
+                    ...List.generate(
+                      we.sets,
+                      (i) => Container(
+                        width: 10,
+                        height: 10,
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: i < _activeSetNumber
+                              ? const Color(0xFF00C97B)
+                              : const Color(0xFF2E2E2E),
+                        ),
                       ),
-                    )),
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       'Set $_activeSetNumber of ${we.sets}',
-                      style: GoogleFonts.spaceGrotesk(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+                      style: GoogleFonts.spaceGrotesk(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
+                _buildWeightInput(we),
+                const SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () => _doneSet(we),
                     icon: const Icon(Icons.check_rounded, size: 18),
-                    label: Text('Done Set', style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700, fontSize: 15)),
+                    label: Text(
+                      'Done Set',
+                      style: GoogleFonts.spaceGrotesk(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF00C97B),
                       foregroundColor: Colors.black,
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                   ),
                 ),
@@ -1597,11 +2509,23 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   const SizedBox(width: 8),
                   _statBox('Reps', we.reps, const Color(0xFF6C63FF)),
                   const SizedBox(width: 8),
-                  _statBox('Rest', '${we.restSeconds}s', const Color(0xFFFF6B35)),
+                  _statBox(
+                    'Rest',
+                    '${we.restSeconds}s',
+                    const Color(0xFFFF6B35),
+                  ),
                 ],
               ),
+              _lastPrLine(ex),
               const SizedBox(height: 12),
-              Text(ex.instructions, style: GoogleFonts.inter(color: const Color(0xFF888888), fontSize: 13, height: 1.5)),
+              Text(
+                ex.instructions,
+                style: GoogleFonts.inter(
+                  color: const Color(0xFF888888),
+                  fontSize: 13,
+                  height: 1.5,
+                ),
+              ),
               const SizedBox(height: 12),
               gifSection,
             ],
@@ -1611,21 +2535,37 @@ class _WorkoutTabState extends State<_WorkoutTab>
     );
   }
 
-  Widget _gifPlaceholder({bool loading = false, double height = 160}) => Container(
-    width: double.infinity,
-    height: height,
-    color: const Color(0xFF222222),
-    child: loading
-        ? const Center(child: CircularProgressIndicator(color: Color(0xFF00C97B), strokeWidth: 2))
-        : Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.play_circle_outline_rounded, color: Color(0xFF444444), size: 48),
-              const SizedBox(height: 10),
-              Text('Exercise Demo', style: GoogleFonts.inter(color: const Color(0xFF444444), fontWeight: FontWeight.w600)),
-            ],
-          ),
-  );
+  Widget _gifPlaceholder({bool loading = false, double height = 160}) =>
+      Container(
+        width: double.infinity,
+        height: height,
+        color: const Color(0xFF222222),
+        child: loading
+            ? const Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xFF00C97B),
+                  strokeWidth: 2,
+                ),
+              )
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.play_circle_outline_rounded,
+                    color: Color(0xFF444444),
+                    size: 48,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Exercise Demo',
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFF444444),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+      );
 
   void _showGifDialog(BuildContext context, String gifUrl, String name) {
     showDialog(
@@ -1638,7 +2578,15 @@ class _WorkoutTabState extends State<_WorkoutTab>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(name, style: GoogleFonts.spaceGrotesk(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16), textAlign: TextAlign.center),
+              Text(
+                name,
+                style: GoogleFonts.spaceGrotesk(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 12),
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
@@ -1647,16 +2595,26 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   fit: BoxFit.contain,
                   gaplessPlayback: true,
                   headers: const {'User-Agent': 'OneFit/1.0'},
-                  loadingBuilder: (_, child, p) =>
-                      p == null ? child : _gifPlaceholder(loading: true, height: 200),
-                  errorBuilder: (_, __, ___) =>
-                      const Icon(Icons.broken_image, color: Color(0xFF444444), size: 60),
+                  loadingBuilder: (_, child, p) => p == null
+                      ? child
+                      : _gifPlaceholder(loading: true, height: 200),
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.broken_image,
+                    color: Color(0xFF444444),
+                    size: 60,
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: Text('Close', style: GoogleFonts.inter(color: const Color(0xFF00C97B), fontWeight: FontWeight.w600)),
+                child: Text(
+                  'Close',
+                  style: GoogleFonts.inter(
+                    color: const Color(0xFF00C97B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),
@@ -1668,22 +2626,52 @@ class _WorkoutTabState extends State<_WorkoutTab>
   Widget _statBox(String label, String value, Color color) => Expanded(
     child: Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Column(
         children: [
-          Text(value, style: GoogleFonts.spaceGrotesk(color: color, fontWeight: FontWeight.w700, fontSize: 16)),
-          Text(label, style: GoogleFonts.inter(color: color.withOpacity(0.7), fontSize: 11)),
+          Text(
+            value,
+            style: GoogleFonts.spaceGrotesk(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+            ),
+          ),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              color: color.withOpacity(0.7),
+              fontSize: 11,
+            ),
+          ),
         ],
       ),
     ),
   );
 
   Widget _diffBadge(String d) {
-    final c = d == 'beginner' ? const Color(0xFF00C97B) : d == 'intermediate' ? const Color(0xFFFF6B35) : Colors.redAccent;
+    final c = d == 'beginner'
+        ? const Color(0xFF00C97B)
+        : d == 'intermediate'
+        ? const Color(0xFFFF6B35)
+        : Colors.redAccent;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: c.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
-      child: Text(d, style: GoogleFonts.inter(color: c, fontSize: 11, fontWeight: FontWeight.w600)),
+      decoration: BoxDecoration(
+        color: c.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        d,
+        style: GoogleFonts.inter(
+          color: c,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }
@@ -1793,10 +2781,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
   Future<void> _loadTodayLogs() async {
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
-      final logs = await FirestoreService().getFoodLogsForDate(
-        uid,
-        appNow(),
-      );
+      final logs = await FirestoreService().getFoodLogsForDate(uid, appNow());
       final grouped = <String, List<FoodItem>>{
         'breakfast': [],
         'lunch': [],
@@ -1878,11 +2863,13 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
   bool _guardIngredients() {
     if (_allIngredients.isNotEmpty) return true;
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Ingredient database not seeded yet.'),
-        backgroundColor: Colors.redAccent,
-        behavior: SnackBarBehavior.floating,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ingredient database not seeded yet.'),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
     return false;
   }
@@ -1891,17 +2878,25 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     if (_profile == null || !_guardIngredients()) return;
     setState(() => _loadingMeals.add(mealType));
     try {
-      final meal = _slotOf(_runGeneticPlan(), mealType)
-          .scaleToCalories(_mealTargetCals(mealType).toDouble());
+      final meal = _slotOf(
+        _runGeneticPlan(),
+        mealType,
+      ).scaleToCalories(_mealTargetCals(mealType).toDouble());
       _setPending(mealType, meal);
-      context.read<PlanProvider>().setMeal(mealType, meal, saveToFirestore: false);
+      context.read<PlanProvider>().setMeal(
+        mealType,
+        meal,
+        saveToFirestore: false,
+      );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Could not generate $mealType: $e'),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not generate $mealType: $e'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _loadingMeals.remove(mealType));
@@ -1910,9 +2905,12 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
 
   Future<void> _generateAll() async {
     if (_profile == null || !_guardIngredients()) return;
-    final toGenerate = ['breakfast', 'lunch', 'dinner', 'snack']
-        .where((m) => (_loggedFoods[m] ?? []).isEmpty)
-        .toList();
+    final toGenerate = [
+      'breakfast',
+      'lunch',
+      'dinner',
+      'snack',
+    ].where((m) => (_loggedFoods[m] ?? []).isEmpty).toList();
     if (toGenerate.isEmpty) return;
 
     setState(() => _loadingMeals.addAll(toGenerate));
@@ -1920,10 +2918,16 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
       // One GA run optimizes the whole day's macros jointly; pull each slot.
       final day = _runGeneticPlan();
       for (final mealType in toGenerate) {
-        final meal = _slotOf(day, mealType)
-            .scaleToCalories(_mealTargetCals(mealType).toDouble());
+        final meal = _slotOf(
+          day,
+          mealType,
+        ).scaleToCalories(_mealTargetCals(mealType).toDouble());
         _setPending(mealType, meal);
-        context.read<PlanProvider>().setMeal(mealType, meal, saveToFirestore: false);
+        context.read<PlanProvider>().setMeal(
+          mealType,
+          meal,
+          saveToFirestore: false,
+        );
       }
     } finally {
       if (mounted) setState(() => _loadingMeals.clear());
@@ -1936,7 +2940,11 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     try {
       // GA meals are ingredient lists — each ingredient is saved as its own
       // FoodItem (scaled to grams) via _saveMealToFirestore.
-      await context.read<PlanProvider>().setMeal(mealType, meal, saveToFirestore: true);
+      await context.read<PlanProvider>().setMeal(
+        mealType,
+        meal,
+        saveToFirestore: true,
+      );
       _setPending(mealType, null);
       await _loadTodayLogs();
       if (mounted)

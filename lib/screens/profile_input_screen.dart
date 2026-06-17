@@ -55,7 +55,11 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     'Extra Active': 'Very hard exercise + a physical job.',
   };
 
-  // 10 weekly split styles + one-line descriptions (shown on the cards)
+  // 5 weekly split styles + one-line descriptions (shown on the cards).
+  // Reduced from 10: Bro/Body Part need 5+ days, Hybrid duplicated the
+  // others, and HIIT/Circuit need interval logic the generator can't honor.
+  // Profiles saved with a removed split fall back to Full Body (see
+  // initState and GreedyAlgorithm._splitFocusSequence's default).
   final Map<String, String> _splitOptions = {
     'Full Body Training':
         'Every session trains the whole body; best at 2–3 days/week.',
@@ -63,18 +67,10 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
         'Alternate upper- and lower-body days; balanced for ~4 days/week.',
     'Push / Pull / Legs (PPL)':
         'Push, pull, then legs; ideal at 3 or 6 days/week.',
-    'Bro Split':
-        'One muscle group per day (chest, back, legs, shoulders, arms); 5 days.',
-    'Hybrid Split': 'Mixes full-body and upper/lower work; flexible schedules.',
-    'HIIT + Strength Split':
-        'Alternates strength days with high-intensity interval days.',
-    'Body Part Split': 'Focused single-region days with finer targeting.',
     'Functional Training Split':
         'Compound, movement-pattern full-body sessions.',
     'Strength + Conditioning Split':
         'Heavy strength days paired with conditioning/cardio.',
-    'Circuit Training Split':
-        'Full-body circuits, minimal rest, time-efficient.',
   };
 
   final List<int> _sessionOptions = [30, 45, 60, 90];
@@ -131,7 +127,11 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
       _activityLevel = p.activityLevel;
       _workoutDays = p.workoutDaysPerWeek;
       _sessionMinutes = p.sessionMinutes;
-      _workoutSplit = p.workoutSplit;
+      // Profiles saved before the split list was reduced may hold a removed
+      // split — fall back so a selected card actually exists on screen.
+      _workoutSplit = _splitOptions.containsKey(p.workoutSplit)
+          ? p.workoutSplit
+          : 'Full Body Training';
       _dietaryRestrictions = List<String>.from(p.dietaryRestrictions);
       // Weight/height are stored in metric; show in the user's unit system.
       final imperial = p.unitSystem == 'imperial';
@@ -190,24 +190,15 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   /// Returns null if the combo is valid.
   String? _splitDaysError() {
     const minDays = {
-      'Bro Split': 5,
-      'Body Part Split': 5,
       'Push / Pull / Legs (PPL)': 3,
       'Upper / Lower Split': 2,
-      'HIIT + Strength Split': 2,
       'Strength + Conditioning Split': 2,
     };
     const splitDescriptions = {
-      'Bro Split':
-          'Bro Split dedicates each day to one muscle group (Chest, Back, Legs, Shoulders, Arms) — it needs at least 5 training days to complete one full cycle.',
-      'Body Part Split':
-          'Body Part Split focuses one body region per day and requires at least 5 distinct training days for a complete cycle.',
       'Push / Pull / Legs (PPL)':
           'PPL cycles through 3 session types (Push, Pull, Legs). With fewer than 3 days you can\'t complete even one full rotation.',
       'Upper / Lower Split':
           'Upper/Lower alternates upper-body and lower-body days — it needs at least 2 training days.',
-      'HIIT + Strength Split':
-          'HIIT + Strength alternates between a strength session and a HIIT session — at least 2 days are required.',
       'Strength + Conditioning Split':
           'Strength + Conditioning alternates heavy strength days with conditioning work — at least 2 days are needed.',
     };
@@ -295,7 +286,12 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     final profileProvider = context.read<ProfileProvider>();
     final existing = widget.existing;
     try {
-      final equipment = _workoutLocation == 'Home' ? _equipment : <String>[];
+      // Home with nothing picked = an explicit bodyweight-only plan (stored as
+      // ['Bodyweight'] so it's intentional and visible on the Profile screen,
+      // not a silent empty list). Gym assumes all equipment, so it stores [].
+      final equipment = _workoutLocation == 'Home'
+          ? (_equipment.isEmpty ? <String>['Bodyweight'] : _equipment)
+          : <String>[];
       // Edit mode copies onto the existing profile so uid and the accumulated
       // calorieAdjustment survive; onboarding builds a fresh profile.
       final profile = existing != null
@@ -719,6 +715,17 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                   _equipment.add(v);
               });
             }),
+            if (_equipment.isEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                "No equipment selected — we'll build bodyweight-only workouts.",
+                style: GoogleFonts.inter(
+                  color: const Color(0xFF888888),
+                  fontSize: 13,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
           ],
           const SizedBox(height: 24),
           _buildLabelWithHelp('Activity Level', _activityLevels),

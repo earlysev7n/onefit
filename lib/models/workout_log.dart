@@ -6,6 +6,11 @@ class WorkoutLogExercise {
   final String reps;
   final int restSeconds;
   final List<String> primaryMuscles;
+  // Actual top-set performance the user entered during the session (null when
+  // not logged). `sets`/`reps` above are what was *prescribed*; these are what
+  // was *performed* — the data progressive overload is tracked against.
+  final double? weightKg;
+  final int? repsDone;
 
   const WorkoutLogExercise({
     required this.name,
@@ -13,6 +18,8 @@ class WorkoutLogExercise {
     required this.reps,
     required this.restSeconds,
     required this.primaryMuscles,
+    this.weightKg,
+    this.repsDone,
   });
 
   Map<String, dynamic> toMap() => {
@@ -21,6 +28,8 @@ class WorkoutLogExercise {
     'reps': reps,
     'restSeconds': restSeconds,
     'primaryMuscles': primaryMuscles,
+    if (weightKg != null) 'weightKg': weightKg,
+    if (repsDone != null) 'repsDone': repsDone,
   };
 
   factory WorkoutLogExercise.fromMap(Map<String, dynamic> m) =>
@@ -30,6 +39,8 @@ class WorkoutLogExercise {
         reps: m['reps'] ?? '',
         restSeconds: (m['restSeconds'] as num?)?.toInt() ?? 60,
         primaryMuscles: List<String>.from(m['primaryMuscles'] ?? []),
+        weightKg: (m['weightKg'] as num?)?.toDouble(),
+        repsDone: (m['repsDone'] as num?)?.toInt(),
       );
 }
 
@@ -43,6 +54,9 @@ class WorkoutLog {
   final int durationMinutes;
   final DateTime completedAt;
   final List<WorkoutLogExercise> exercises;
+  // Post-workout perceived difficulty (1 = too easy … 5 = too hard). Null when
+  // the user skipped rating. Feeds AdaptationEngine autoregulation.
+  final int? rating;
 
   const WorkoutLog({
     required this.id,
@@ -54,6 +68,7 @@ class WorkoutLog {
     required this.durationMinutes,
     required this.completedAt,
     required this.exercises,
+    this.rating,
   });
 
   Map<String, dynamic> toMap() => {
@@ -65,6 +80,7 @@ class WorkoutLog {
     'durationMinutes': durationMinutes,
     'completedAt': Timestamp.fromDate(completedAt),
     'exercises': exercises.map((e) => e.toMap()).toList(),
+    if (rating != null) 'rating': rating,
   };
 
   factory WorkoutLog.fromMap(Map<String, dynamic> m, String id) {
@@ -82,6 +98,7 @@ class WorkoutLog {
           .cast<Map<String, dynamic>>()
           .map(WorkoutLogExercise.fromMap)
           .toList(),
+      rating: (m['rating'] as num?)?.toInt(),
     );
   }
 }

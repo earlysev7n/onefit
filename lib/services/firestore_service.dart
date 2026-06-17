@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_profile.dart';
 import '../models/food_item.dart';
 import '../models/workout_log.dart';
+import '../models/exercise_stat.dart';
 import '../models/meal_ingredient.dart';
 import '../algorithms/greedy_algorithm.dart' show WorkoutDay;
 import '../app_clock.dart';
@@ -517,6 +518,75 @@ class FirestoreService {
         .limit(limit)
         .get();
     return snap.docs.map((d) => d.data()).toList();
+  }
+
+  // ========================================
+  // EXERCISE PERFORMANCE STATS (per-exercise last/PR for progressive overload)
+  // ========================================
+
+  static String _statDocId(String exerciseId) =>
+      exerciseId.replaceAll(RegExp(r'[/\\.#\[\]*?]'), '_');
+
+  /// Upserts the per-exercise stat: `last*` always updates; `best*` only when
+  /// the new top-set weight is heavier. Mirrors the doc-id-by-key pattern of
+  /// [saveWeightLog].
+  Future<void> saveExerciseStat({
+    required String userId,
+    required String exerciseId,
+    required String name,
+    required double weightKg,
+    int? reps,
+  }) async {
+    final now = appNow();
+    final date = DateTime(now.year, now.month, now.day);
+    final ref = _db
+        .collection('users')
+        .doc(userId)
+        .collection('exercise_stats')
+        .doc(_statDocId(exerciseId));
+    final snap = await ref.get();
+    double bestWeight = weightKg;
+    DateTime bestDate = date;
+    if (snap.exists) {
+      final prevBest = (snap.data()?['bestWeightKg'] as num?)?.toDouble() ?? 0;
+      if (prevBest >= weightKg) {
+        bestWeight = prevBest;
+        final bd = snap.data()?['bestDate'];
+        bestDate = bd is Timestamp ? bd.toDate() : date;
+      }
+    }
+    await ref.set({
+      'exerciseId': exerciseId,
+      'name': name,
+      'lastWeightKg': weightKg,
+      'lastReps': reps,
+      'lastDate': Timestamp.fromDate(date),
+      'bestWeightKg': bestWeight,
+      'bestDate': Timestamp.fromDate(bestDate),
+    }, SetOptions(merge: true));
+  }
+
+  /// Batch-reads per-exercise stats for [exerciseIds] → keyed by exerciseId.
+  /// Uses `whereIn` on the document id, chunked to Firestore's 10-id limit.
+  Future<Map<String, ExerciseStat>> getExerciseStats(
+    String userId,
+    List<String> exerciseIds,
+  ) async {
+    final result = <String, ExerciseStat>{};
+    final docIds = exerciseIds.map(_statDocId).toSet().toList();
+    final col =
+        _db.collection('users').doc(userId).collection('exercise_stats');
+    for (int i = 0; i < docIds.length; i += 10) {
+      final chunk = docIds.sublist(i, (i + 10).clamp(0, docIds.length));
+      if (chunk.isEmpty) continue;
+      final snap =
+          await col.where(FieldPath.documentId, whereIn: chunk).get();
+      for (final d in snap.docs) {
+        final stat = ExerciseStat.fromMap(d.data());
+        result[stat.exerciseId] = stat;
+      }
+    }
+    return result;
   }
 
   // ========================================
