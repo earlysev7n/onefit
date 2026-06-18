@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -158,6 +157,15 @@ class _WorkoutTabState extends State<_WorkoutTab>
   VoidCallback? _pendingRestCallback;
   bool _waitingForReady = false;
 
+  // ── Per-set work timer ───────────────────────────────────────────────────────
+  // After logging kg/reps the user taps "Start Set" → a work timer counts down
+  // (duration = WorkoutExercise.timePerSetSeconds, session-budget fit). Pressing
+  // "Done" ends the set early; reaching 0 auto-advances to the rest phase.
+  bool _setRunning = false;
+  int _setRemaining = 0;
+  int _setTotal = 0;
+  Timer? _setTimer;
+
   // ── Warm-up phase ──────────────────────────────────────────────────────────
   // The session enters a gated warm-up phase before the exercise flow: exercises
   // stay locked/greyed until the warm-up finishes or is skipped.
@@ -190,10 +198,6 @@ class _WorkoutTabState extends State<_WorkoutTab>
   final Map<int, int> _topSetReps = {};
   // Per-exercise last/PR summary (keyed by exercise id) for the inline target.
   Map<String, ExerciseStat> _exerciseStats = {};
-  // Working weight (kg) the user entered for a compound at the start-of-session
-  // prompt (keyed by exercise id). Feeds the specific warm-up ramp when there's
-  // no prior history. Session-scoped; cleared on reset.
-  final Map<String, double> _sessionWorkingKg = {};
   // Persistent controllers for the active-card inputs (survive the 1 Hz rebuild).
   final TextEditingController _weightController = TextEditingController();
   final TextEditingController _repsController = TextEditingController();
@@ -236,6 +240,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
   @override
   void dispose() {
     _restTimer?.cancel();
+    _setTimer?.cancel();
     _workoutTimer?.cancel();
     _warmupTimer?.cancel();
     _weightController.dispose();
@@ -342,7 +347,17 @@ class _WorkoutTabState extends State<_WorkoutTab>
             }).toList(),
           );
         }).toList();
-        planProvider.setWorkoutPlan(rehydrated);
+
+        // Re-filter the saved plan against the CURRENT profile. A plan saved
+        // under Gym (or different equipment/level) would otherwise keep its
+        // gym/barbell/machine moves after the user switched to Home. Drop the
+        // now-ineligible exercises and refill each day with eligible ones
+        // (bodyweight is always eligible, so days never end up empty).
+        final sanitized = _sanitizePlanForProfile(rehydrated, profile);
+        planProvider.setWorkoutPlan(sanitized.plan);
+        if (sanitized.changed) {
+          await planProvider.persistWorkoutPlan(uid, weekId);
+        }
 
         final thisWeekStart = today.subtract(Duration(days: today.weekday - 1));
         final thisWeekEnd = thisWeekStart.add(const Duration(days: 7));
@@ -746,113 +761,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
     );
   }
 
-  /// The weight a warm-up ramp / progression should be based on: the
-  /// progression target if available, then the last logged top set, then the
-  /// weight entered at this session's start-of-workout prompt.
-  double? _workingWeightKg(WorkoutExercise we) {
-    final t = _targetFor(we);
-    if (t != null) return t.weightKg;
-    final stat = _exerciseStats[we.exercise.id];
-    if (stat != null && stat.lastWeightKg > 0) return stat.lastWeightKg;
-    return _sessionWorkingKg[we.exercise.id];
-  }
-
-  /// Equipment that adds external load — only these can have a percentage ramp.
-  static const _loadableEquipment = {
-    'barbell',
-    'ez barbell',
-    'dumbbells',
-    'kettlebells',
-    'machine',
-    'cable machine',
-  };
-
-  /// True for a heavy primary lift (NSCA: warm-up sets before EACH multi-joint
-  /// lift) — a staple compound that takes external load. Pure-bodyweight
-  /// compounds (push-ups, pull-ups) and accessories/isolation get no ramp.
-  bool _needsLoadRamp(WorkoutExercise we) {
-    // A strength load ramp never applies to cardio — guards against cardio
-    // machines that read as compound ("Rowing Machine" matches the "row"
-    // keyword; treadmill/bike trip the secondary-muscle proxy).
-    if (we.exercise.category.toLowerCase() == 'cardio') return false;
-    if (!GreedyAlgorithm.isStapleCompound(we.exercise)) return false;
-    return we.exercise.equipment
-        .any((e) => _loadableEquipment.contains(e.toLowerCase()));
-  }
-
-  /// Display-only warm-up ramp shown above the working-set input on the active
-  /// first-compound card. Warm-ups are not logged as performance.
-  Widget _buildWarmupRamp(WorkoutExercise we) {
-    final workingKg = _workingWeightKg(we);
-    if (workingKg == null) return const SizedBox.shrink();
-    final ramp = warmupRamp(workingKg);
-    if (ramp.isEmpty) return const SizedBox.shrink();
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF222222),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.local_fire_department_rounded,
-                color: Color(0xFFFFA726),
-                size: 14,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Warm-up',
-                style: GoogleFonts.spaceGrotesk(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          for (final s in ramp)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Text(
-                '${s.percent}%   ·   ${_fmtWeight(s.weightKg)} × ${s.reps}',
-                style: GoogleFonts.inter(
-                  color: const Color(0xFF888888),
-                  fontSize: 12,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// Resolves the session's warm-up moves from the cache (NSCA general warm-up).
-  /// Home → up to 3 bodyweight cardio moves (~1 min each); Gym → one treadmill
-  /// walk/run (~4 min). Falls back to ProfileProvider, then to 'Home'.
+  /// Resolves the session's warm-up moves from the cache (NSCA general warm-up):
+  /// up to 3 bodyweight cardio moves (~1 min each), the same for Gym and Home.
   List<({Exercise? exercise, String label, int seconds})> _resolveWarmupMoves() {
-    final location = _profile?.workoutLocation ??
-        context.read<ProfileProvider>().profile?.workoutLocation ??
-        'Home';
     final cardio = _allExercises
         .where((e) => e.category.toLowerCase() == 'cardio')
         .toList();
-    if (location == 'Gym') {
-      Exercise? tread;
-      for (final e in cardio) {
-        final n = e.name.toLowerCase();
-        if (n.contains('treadmill') || n.contains('run') || n.contains('walk')) {
-          tread = e;
-          break;
-        }
-      }
-      return [(exercise: tread, label: 'Treadmill walk/run', seconds: 240)];
-    }
+    // Both Gym and Home get the same bodyweight dynamic warm-up.
     final bodyweight = cardio
         .where(
           (e) =>
@@ -1290,6 +1205,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
   // ── Workout flow methods ───────────────────────────────────────────────────
   void _resetWorkoutState() {
     _restTimer?.cancel();
+    _setTimer?.cancel();
     _workoutTimer?.cancel();
     _warmupTimer?.cancel();
     _pendingRestCallback = null;
@@ -1298,13 +1214,15 @@ class _WorkoutTabState extends State<_WorkoutTab>
     _inRest = false;
     _restRemaining = 0;
     _restTotal = 0;
+    _setRunning = false;
+    _setRemaining = 0;
+    _setTotal = 0;
     _waitingForReady = false;
     _workoutStartedAt = null;
     _elapsedSeconds = 0;
     _completedExercises.clear();
     _topSetKg.clear();
     _topSetReps.clear();
-    _sessionWorkingKg.clear();
     _sessionStarted = false;
     _warmupComplete = false;
     _warmupRunning = false;
@@ -1317,125 +1235,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
     _repsController.clear();
   }
 
-  /// Start-of-session prompt collecting working weights for the day's loadable
-  /// compounds so the specific warm-up can ramp from real numbers (NSCA). One
-  /// dialog, one field per lift; skippable — skipping just means no ramps.
-  Future<void> _promptWorkingWeights(List<WorkoutExercise> lifts) async {
-    final controllers = {
-      for (final we in lifts)
-        we.exercise.id: TextEditingController(
-          text: () {
-            final known = _workingWeightKg(we);
-            if (known == null) return '';
-            final v = _fromKg(known);
-            return v % 1 == 0 ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
-          }(),
-        ),
-    };
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          'Set your working weights',
-          style: GoogleFonts.spaceGrotesk(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'For your warm-up ramp on each main lift. Leave blank to skip.',
-                style: GoogleFonts.inter(
-                  color: const Color(0xFF888888),
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(height: 12),
-              for (final we in lifts) ...[
-                Text(
-                  we.exercise.name,
-                  style: GoogleFonts.inter(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w500,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                TextField(
-                  controller: controllers[we.exercise.id],
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  style: GoogleFonts.spaceGrotesk(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Weight ($_weightUnit)',
-                    hintStyle: GoogleFonts.inter(
-                      color: const Color(0xFF666666),
-                      fontSize: 13,
-                    ),
-                    filled: true,
-                    fillColor: const Color(0xFF222222),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              'Skip',
-              style: GoogleFonts.inter(color: const Color(0xFF888888)),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              for (final we in lifts) {
-                final v = double.tryParse(
-                  controllers[we.exercise.id]!.text.trim(),
-                );
-                if (v != null && v > 0) {
-                  _sessionWorkingKg[we.exercise.id] = _toKg(v);
-                }
-              }
-              Navigator.pop(ctx);
-            },
-            child: Text(
-              'Save',
-              style: GoogleFonts.inter(
-                color: const Color(0xFF00C97B),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-    for (final c in controllers.values) {
-      c.dispose();
-    }
-  }
-
   Future<void> _startWorkout() async {
+    // Exit edit mode first so the ReorderableListView is fully unmounted before
+    // the session UI replaces it.
+    if (_editMode) setState(() => _editMode = false);
     // Safety guard: never start if the selected day has no exercises
     if (_selectedDay >= _plan.length || _plan[_selectedDay].exercises.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1453,15 +1256,6 @@ class _WorkoutTabState extends State<_WorkoutTab>
       );
       return;
     }
-    // NSCA specific warm-up: gather working weights for every loadable compound
-    // that has no known weight yet, so each can show a ramp. Skippable.
-    final needWeight = _plan[_selectedDay].exercises
-        .where((we) => _needsLoadRamp(we) && _workingWeightKg(we) == null)
-        .toList();
-    if (needWeight.isNotEmpty) {
-      await _promptWorkingWeights(needWeight);
-      if (!mounted) return;
-    }
     // Resolve the warm-up so the gated warm-up phase can run before the lifts.
     final warmups = _resolveWarmupMoves();
     setState(() {
@@ -1475,6 +1269,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
       _warmupMoves = warmups;
       _warmupRunning = false;
       _activeWarmupIndex = -1;
+      _setRunning = false;
       if (warmups.isEmpty) {
         // No warm-up available — go straight into the exercise flow.
         _warmupComplete = true;
@@ -1493,6 +1288,35 @@ class _WorkoutTabState extends State<_WorkoutTab>
     _scrollToActive();
   }
 
+  // The "I'm ready" gate: starts the per-set work timer after kg/reps are logged.
+  void _startSet(WorkoutExercise we) {
+    _setTimer?.cancel();
+    final secs = we.timePerSetSeconds;
+    setState(() {
+      _setRunning = true;
+      _setRemaining = secs;
+      _setTotal = secs;
+    });
+    _setTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() => _setRemaining--);
+      if (_setRemaining <= 0) {
+        t.cancel();
+        _finishSet(we); // reaching 0 auto-advances to rest
+      }
+    });
+  }
+
+  // Ends the current set (early "Done" tap or timer reaching 0) → rest phase.
+  void _finishSet(WorkoutExercise we) {
+    _setTimer?.cancel();
+    if (mounted) setState(() => _setRunning = false);
+    _doneSet(we);
+  }
+
   void _doneSet(WorkoutExercise we) {
     // Capture the typed working weight/reps as this exercise's top set.
     _captureActiveInput();
@@ -1504,6 +1328,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             setState(() {
               _activeSetNumber++;
               _inRest = false;
+              _setRunning = false;
             });
         },
       );
@@ -1542,6 +1367,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
       _waitingForReady = false;
       _activeExerciseIndex++;
       _activeSetNumber = 1;
+      _setRunning = false;
     });
     // Pre-fill the next exercise with its own progression target (clears when
     // there is none).
@@ -1620,6 +1446,17 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final m = s ~/ 60;
     final sec = s % 60;
     return m > 0 ? '$m:${sec.toString().padLeft(2, '0')}' : '${s}s';
+  }
+
+  // Read-only "<weight> <unit> · <reps> reps" shown above the work timer, built
+  // from whatever the user typed in the logging sub-phase (each part optional).
+  String _loggedSetSummary() {
+    final w = _weightController.text.trim();
+    final r = _repsController.text.trim();
+    final parts = <String>[];
+    if (w.isNotEmpty) parts.add('$w $_weightUnit');
+    if (r.isNotEmpty) parts.add('$r reps');
+    return parts.join(' · ');
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -1956,6 +1793,70 @@ class _WorkoutTabState extends State<_WorkoutTab>
     );
   }
 
+  /// Re-filters a (rehydrated) plan against [profile]'s hard constraints +
+  /// experience gate, dropping exercises the user can no longer perform and
+  /// refilling each day back to its original size from the eligible pool
+  /// (`_allExercises`). Bodyweight is always eligible at Home, so a day never
+  /// ends up empty. Pure/in-memory — returns the new plan and whether anything
+  /// changed (so the caller can re-persist only when needed).
+  ({List<WorkoutDay> plan, bool changed}) _sanitizePlanForProfile(
+    List<WorkoutDay> plan,
+    UserProfile profile,
+  ) {
+    bool eligible(Exercise e) =>
+        GreedyAlgorithm.isEligibleForUser(e, profile) &&
+        GreedyAlgorithm.difficultyAllowed(e.difficulty, profile.experienceLevel);
+
+    bool changed = false;
+    final newPlan = <WorkoutDay>[];
+
+    for (final day in plan) {
+      if (day.isRest) {
+        newPlan.add(day);
+        continue;
+      }
+      final originalCount = day.exercises.length;
+      final kept = day.exercises.where((we) => eligible(we.exercise)).toList();
+      if (kept.length != originalCount) changed = true;
+
+      // Refill back to the original count with eligible, on-focus, non-duplicate
+      // exercises so the day keeps its planned volume.
+      if (kept.length < originalCount) {
+        final targets = _focusToMuscles(day.focus);
+        final existingIds = kept.map((e) => e.exercise.id).toSet();
+        final candidates = _allExercises.where((e) {
+          if (existingIds.contains(e.id)) return false;
+          if (!eligible(e)) return false;
+          return targets.isEmpty || e.primaryMuscles.any(targets.contains);
+        }).toList()..shuffle();
+
+        for (final ex in candidates) {
+          if (kept.length >= originalCount) break;
+          kept.add(
+            WorkoutExercise(
+              exercise: ex,
+              sets: 3,
+              reps: '10-12',
+              restSeconds: 60,
+            ),
+          );
+          existingIds.add(ex.id);
+        }
+      }
+
+      newPlan.add(
+        WorkoutDay(
+          dayName: day.dayName,
+          focus: day.focus,
+          isRest: day.isRest,
+          exercises: kept,
+        ),
+      );
+    }
+
+    return (plan: newPlan, changed: changed);
+  }
+
   /// Fills the gap left by removed exercises by pulling exercises from
   /// [_allExercises] that target the day's muscle groups.
   void _fillExerciseGap(WorkoutDay day, int count) {
@@ -2107,6 +2008,54 @@ class _WorkoutTabState extends State<_WorkoutTab>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildReorderableExerciseList(WorkoutDay day) {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    return ReorderableListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      buildDefaultDragHandles: false,
+      itemCount: day.exercises.length,
+      itemBuilder: (context, idx) {
+        final we = day.exercises[idx];
+        final card = _buildExerciseCard(
+          we,
+          idx + 1,
+          isToday: false,
+          isActive: false,
+          isDone: false,
+          workoutStarted: false,
+        );
+        final wrapped = _wrapWithEditControls(card, day, idx, we);
+        return KeyedSubtree(
+          key: ValueKey('reorder_${we.exercise.id}'),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: wrapped),
+              ReorderableDragStartListener(
+                index: idx,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 20),
+                  child: Icon(Icons.drag_handle, color: Color(0xFF888888)),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      onReorder: (oldIdx, newIdx) {
+        context.read<PlanProvider>().reorderExercises(
+          uid,
+          _currentWeekId,
+          _selectedDay,
+          oldIdx,
+          newIdx,
+        );
+        setState(() => _plan = context.read<PlanProvider>().workoutPlan);
+      },
     );
   }
 
@@ -2557,40 +2506,33 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final workoutStarted = _sessionStarted;
     final exercisesLocked = _sessionStarted && !_warmupComplete;
 
-    // Build per-exercise cards
+    // Build per-exercise cards (not used in edit mode — handled by
+    // _buildReorderableExerciseList for drag-to-reorder support).
     final exerciseCards = <Widget>[];
-    for (int i = 0; i < day.exercises.length; i++) {
-      final we = day.exercises[i];
-      final bool isActive = (i == _activeExerciseIndex) && !_waitingForReady;
-      final bool isDone = _completedExercises.contains(i);
-      final bool isReadySlot =
-          _waitingForReady && (i == _activeExerciseIndex + 1);
-      final bool needsKey = isActive || isReadySlot;
+    if (!_editMode || workoutStarted) {
+      for (int i = 0; i < day.exercises.length; i++) {
+        final we = day.exercises[i];
+        final bool isActive = (i == _activeExerciseIndex) && !_waitingForReady;
+        final bool isDone = _completedExercises.contains(i);
+        final bool isReadySlot =
+            _waitingForReady && (i == _activeExerciseIndex + 1);
+        final bool needsKey = isActive || isReadySlot;
 
-      Widget card = isReadySlot
-          ? _buildReadyCard(we)
-          : _buildExerciseCard(
-              we,
-              i + 1,
-              isToday: isToday && !isCompleted,
-              isActive: isActive,
-              isDone: isDone,
-              workoutStarted: workoutStarted,
-            );
+        final Widget card = isReadySlot
+            ? _buildReadyCard(we)
+            : _buildExerciseCard(
+                we,
+                i + 1,
+                isToday: isToday && !isCompleted,
+                isActive: isActive,
+                isDone: isDone,
+                workoutStarted: workoutStarted,
+              );
 
-      // Wrap with edit controls when in edit mode
-      if (_editMode && !workoutStarted) {
-        card = _wrapWithEditControls(card, day, i, we);
+        exerciseCards.add(
+          Container(key: needsKey ? _activeKey : ValueKey('ex_$i'), child: card),
+        );
       }
-
-      exerciseCards.add(
-        Container(key: needsKey ? _activeKey : ValueKey('ex_$i'), child: card),
-      );
-    }
-
-    // "Add exercise" button at the bottom when editing
-    if (_editMode && !workoutStarted) {
-      exerciseCards.add(_buildAddExerciseButton(day));
     }
 
     return SingleChildScrollView(
@@ -2796,8 +2738,12 @@ class _WorkoutTabState extends State<_WorkoutTab>
           // General (cardio) warm-up — top of the active day, skippable.
           if (workoutStarted && !isCompleted) _buildGeneralWarmup(),
 
-          // Exercise cards — locked/greyed and non-interactive during warm-up.
-          if (exercisesLocked)
+          // Exercise cards
+          if (_editMode && !workoutStarted) ...[
+            // Drag-to-reorder list with edit controls + drag handles
+            _buildReorderableExerciseList(day),
+            _buildAddExerciseButton(day),
+          ] else if (exercisesLocked)
             IgnorePointer(
               child: Opacity(
                 opacity: 0.4,
@@ -2846,7 +2792,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             ),
           ),
           Text(
-            '${ex.primaryMuscles.join(', ')} · ${we.sets} sets · ${we.reps} reps · ${we.restSeconds}s rest',
+            '${ex.primaryMuscles.join(', ')} · ${we.sets} sets · ${we.reps} reps · ${we.restSeconds}s rest · ${we.timePerSetSeconds}s/set',
             style: GoogleFonts.inter(
               color: const Color(0xFF888888),
               fontSize: 13,
@@ -3234,32 +3180,94 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   ],
                 ),
                 const SizedBox(height: 16),
-                if (_activeSetNumber == 1 && _needsLoadRamp(we))
-                  _buildWarmupRamp(we),
-                _buildWeightInput(we),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _doneSet(we),
-                    icon: const Icon(Icons.check_rounded, size: 18),
-                    label: Text(
-                      'Done Set',
-                      style: GoogleFonts.spaceGrotesk(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
+                if (!_setRunning) ...[
+                  // Logging sub-phase: enter kg/reps, then "Start Set" (ready gate).
+                  _buildWeightInput(we),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _startSet(we),
+                      icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                      label: Text(
+                        'Start Set',
+                        style: GoogleFonts.spaceGrotesk(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
                       ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00C97B),
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00C97B),
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ] else ...[
+                  // Working sub-phase: per-set work timer counting down.
+                  if (_loggedSetSummary().isNotEmpty)
+                    Text(
+                      _loggedSetSummary(),
+                      style: GoogleFonts.inter(
+                        color: const Color(0xFF888888),
+                        fontSize: 13,
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Work',
+                    style: GoogleFonts.spaceGrotesk(
+                      color: Colors.white54,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _formatCountdown(_setRemaining),
+                    style: GoogleFonts.spaceGrotesk(
+                      color: Colors.white,
+                      fontSize: 44,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: _setTotal > 0 ? _setRemaining / _setTotal : 0,
+                      backgroundColor: const Color(0xFF2E2E2E),
+                      valueColor:
+                          const AlwaysStoppedAnimation(Color(0xFF00C97B)),
+                      minHeight: 6,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _finishSet(we),
+                      icon: const Icon(Icons.check_rounded, size: 18),
+                      label: Text(
+                        'Done',
+                        style: GoogleFonts.spaceGrotesk(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00C97B),
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ] else ...[
               // ── Normal / done card ───────────────────────────────────────
@@ -3274,6 +3282,12 @@ class _WorkoutTabState extends State<_WorkoutTab>
                     'Rest',
                     '${we.restSeconds}s',
                     const Color(0xFFFF6B35),
+                  ),
+                  const SizedBox(width: 8),
+                  _statBox(
+                    'Time/set',
+                    '${we.timePerSetSeconds}s',
+                    const Color(0xFF00B8D4),
                   ),
                 ],
               ),
@@ -3460,9 +3474,14 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
   UserProfile? _profile;
   bool _isInitializing = true;
   String _cuisine = 'any';
-  int _selectedDay = 0;
 
-  final List<String> _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  // Cache of the last optimized 7-day GA plan. "Generate All" runs the GA once
+  // (forceRegen); single-meal regen pulls the next day's slot from this cache
+  // for variety without re-evolving the whole population each tap. Invalidated
+  // when the cuisine changes.
+  List<DayMealPlan> _cachedPlan = [];
+  String? _cachedCuisine;
+  int _dayCursor = 0;
 
   Map<String, List<FoodItem>> _loggedFoods = {
     'breakfast': [],
@@ -3484,7 +3503,6 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
   @override
   void initState() {
     super.initState();
-    _selectedDay = appNow().weekday - 1;
     _loadProfile();
     _loadTodayLogs().then((_) {
       if (widget.focusMealType != null) {
@@ -3581,30 +3599,38 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     });
   }
 
-  // ── Edamam helpers ────────────────────────────────────────────────────────
-
-  int _mealTargetCals(String mealType) {
-    final goal = _profile?.calorieGoal ?? 2000;
-    return switch (mealType) {
-      'breakfast' => (goal * 0.25).round(),
-      'lunch' => (goal * 0.35).round(),
-      'dinner' => (goal * 0.30).round(),
-      _ => (goal * 0.10).round(),
-    };
-  }
-
   // ── Generation (Genetic Algorithm over USDA ingredients) ───────────────────
 
-  /// Runs the Genetic Algorithm against the loaded ingredient pool, filtered by
-  /// the selected cuisine and the user's dietary restrictions. Returns one
-  /// optimized day; a random day is chosen so regenerating yields variety.
-  DayMealPlan _runGeneticPlan() {
-    final plan = GeneticAlgorithm().generatePlan(
-      allIngredients: _allIngredients,
-      profile: _profile!,
-      cuisine: _cuisine, // 'any' | 'filipino' | 'western' | 'asian'
+  /// Returns the next optimized day from the cached GA plan, running the
+  /// Genetic Algorithm only when the cache is empty/stale or [forceRegen] is
+  /// set. Returns `null` when no ingredient satisfies the user's restrictions
+  /// (GA returns an empty plan) — callers must surface a "no match" message
+  /// rather than fabricate meals.
+  DayMealPlan? _nextPlanDay({bool forceRegen = false}) {
+    if (forceRegen || _cachedPlan.isEmpty || _cachedCuisine != _cuisine) {
+      _cachedPlan = GeneticAlgorithm().generatePlan(
+        allIngredients: _allIngredients,
+        profile: _profile!,
+        cuisine: _cuisine, // 'any' | 'filipino' | 'western' | 'asian'
+      );
+      _cachedCuisine = _cuisine;
+      _dayCursor = 0;
+    }
+    if (_cachedPlan.isEmpty) return null;
+    final day = _cachedPlan[_dayCursor % _cachedPlan.length];
+    _dayCursor++;
+    return day;
+  }
+
+  void _showNoMatchMessage() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No ingredients match your dietary restrictions.'),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+      ),
     );
-    return plan[Random().nextInt(plan.length)];
   }
 
   Meal _slotOf(DayMealPlan day, String mealType) => switch (mealType) {
@@ -3634,10 +3660,14 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     if (_profile == null || !_guardIngredients()) return;
     setState(() => _loadingMeals.add(mealType));
     try {
-      final meal = _slotOf(
-        _runGeneticPlan(),
-        mealType,
-      ).scaleToCalories(_mealTargetCals(mealType).toDouble());
+      final day = _nextPlanDay();
+      if (day == null) {
+        _showNoMatchMessage();
+        return;
+      }
+      // The GA already normalized each slot to its calorie-ratio share, so no
+      // second scaling is needed here.
+      final meal = _slotOf(day, mealType);
       _setPending(mealType, meal);
       context.read<PlanProvider>().setMeal(
         mealType,
@@ -3671,13 +3701,15 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
 
     setState(() => _loadingMeals.addAll(toGenerate));
     try {
-      // One GA run optimizes the whole day's macros jointly; pull each slot.
-      final day = _runGeneticPlan();
+      // One fresh GA run optimizes the whole day's macros jointly; pull each
+      // slot. Slots are already normalized to their calorie-ratio share.
+      final day = _nextPlanDay(forceRegen: true);
+      if (day == null) {
+        _showNoMatchMessage();
+        return;
+      }
       for (final mealType in toGenerate) {
-        final meal = _slotOf(
-          day,
-          mealType,
-        ).scaleToCalories(_mealTargetCals(mealType).toDouble());
+        final meal = _slotOf(day, mealType);
         _setPending(mealType, meal);
         context.read<PlanProvider>().setMeal(
           mealType,
@@ -3815,44 +3847,6 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                 ),
               ),
             ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 50,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: _days.length,
-            itemBuilder: (context, i) {
-              final isSelected = i == _selectedDay;
-              return GestureDetector(
-                onTap: () => setState(() => _selectedDay = i),
-                child: Container(
-                  width: 52,
-                  margin: const EdgeInsets.only(right: 8),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? const Color(0xFF00C97B)
-                        : const Color(0xFF1A1A1A),
-                    borderRadius: BorderRadius.circular(12),
-                    border: isSelected
-                        ? null
-                        : Border.all(color: const Color(0xFF2E2E2E)),
-                  ),
-                  child: Center(
-                    child: Text(
-                      _days[i],
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: isSelected ? Colors.black : Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
           ),
         ),
         const SizedBox(height: 8),

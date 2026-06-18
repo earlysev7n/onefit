@@ -137,11 +137,15 @@ class SeedData {
       print('Fetching: ${stub['name']}...');
       final nutrition = await _fetchNutrition(stub['name'] as String);
 
+      final derived = _deriveAllergensAndCategory(stub['name'] as String);
+
       final doc = {
         'id': stub['id'],
         'name': stub['name'],
         'dietaryTags': stub['dietaryTags'],
         'cuisine': stub['cuisine'],
+        'allergens': derived['allergens'],
+        'category': derived['category'],
         ...nutrition, // calories, protein, carbs, fat + all micros
       };
 
@@ -154,6 +158,183 @@ class SeedData {
 
     await batch.commit();
     print('$count ingredients seeded with live USDA nutrition!');
+  }
+
+  /// Derives `allergens` (for exclusion restrictions like Lactose-intolerant /
+  /// Nut-free) and a coarse `category` (for robust meal-pool classification)
+  /// from an ingredient name. Authoring-time only — the result is written to
+  /// Firestore so the runtime Genetic Algorithm reads concrete fields, never
+  /// ingredient names. `category` ∈ {protein, dairy, grain, legume, vegetable,
+  /// fruit, fat, condiment, other}.
+  static Map<String, dynamic> _deriveAllergensAndCategory(String rawName) {
+    final n = rawName.toLowerCase();
+    bool has(String s) => n.contains(s);
+    bool hasAny(List<String> xs) => xs.any(n.contains);
+
+    // ── Allergens ──
+    final allergens = <String>[];
+    // Plant "milks" are NOT dairy; "milkfish" is a fish, not milk.
+    final isPlantMilk = hasAny([
+      'almond milk',
+      'soy milk',
+      'coconut milk',
+      'oat milk',
+      'rice milk',
+    ]);
+    final dairy =
+        hasAny(['cheese', 'yogurt', 'whey', 'cream']) ||
+        (has('milk') && !has('milkfish') && !isPlantMilk);
+    if (dairy) allergens.add('dairy');
+    // Tree nuts + peanut (treated together for Nut-free intent). Almond milk is
+    // nut-derived; coconut is not treated as a nut here (common allergy practice).
+    if (hasAny([
+      'almond',
+      'walnut',
+      'cashew',
+      'pecan',
+      'pistachio',
+      'macadamia',
+      'peanut',
+    ])) {
+      allergens.add('nuts');
+    }
+
+    // ── Category (first match wins) ──
+    String category;
+    if (hasAny(['soy sauce', 'fish sauce', 'vinegar', 'honey', 'ginger'])) {
+      category = 'condiment';
+    } else if (has('milk') && !has('milkfish') ||
+        hasAny(['cheese', 'yogurt', 'whey', 'cream'])) {
+      category = 'dairy';
+    } else if (hasAny([
+      'oil',
+      'avocado',
+      'almond',
+      'walnut',
+      'cashew',
+      'pecan',
+      'pistachio',
+      'macadamia',
+      'peanut',
+      'seed',
+      'chia',
+      'flax',
+      'coconut',
+    ])) {
+      category = 'fat';
+    } else if (hasAny([
+          'chicken',
+          'beef',
+          'pork',
+          'turkey',
+          'salmon',
+          'tuna',
+          'shrimp',
+          'tilapia',
+          'bangus',
+          'milkfish',
+          'scad',
+          'sardine',
+          'mackerel',
+          'cod',
+          'squid',
+          'liver',
+          'fish',
+        ]) ||
+        (has('egg') && !has('eggplant'))) {
+      category = 'protein';
+    } else if (hasAny([
+      'bean',
+      'lentil',
+      'chickpea',
+      'hummus',
+      'pea',
+      'mung',
+      'edamame',
+      'tofu',
+      'tempeh',
+    ])) {
+      category = 'legume';
+    } else if (hasAny([
+      'rice',
+      'bread',
+      'oat',
+      'pasta',
+      'noodle',
+      'quinoa',
+      'couscous',
+      'bagel',
+      'granola',
+      'cornflake',
+      'roll',
+      'potato',
+      'cassava',
+      'taro',
+      'yam',
+      'corn',
+      'plantain',
+      'wheat',
+    ])) {
+      category = 'grain';
+    } else if (hasAny([
+      'apple',
+      'banana',
+      'mango',
+      'papaya',
+      'berr',
+      'orange',
+      'pineapple',
+      'watermelon',
+      'pear',
+      'kiwi',
+      'grape',
+      'cantaloupe',
+      'raisin',
+      'date',
+    ])) {
+      category = 'fruit';
+    } else if (hasAny([
+      'broccoli',
+      'spinach',
+      'pepper',
+      'carrot',
+      'tomato',
+      'cucumber',
+      'mushroom',
+      'onion',
+      'garlic',
+      'kale',
+      'zucchini',
+      'cauliflower',
+      'kangkong',
+      'gourd',
+      'moringa',
+      'chayote',
+      'eggplant',
+      'bok choy',
+      'radish',
+      'okra',
+      'squash',
+      'jute',
+      'lettuce',
+      'cabbage',
+      'celery',
+      'asparagus',
+      'brussels',
+      'beet',
+      'pumpkin',
+      'seaweed',
+      'nori',
+      'sprout',
+      'napa',
+      'shiitake',
+    ])) {
+      category = 'vegetable';
+    } else {
+      category = 'other';
+    }
+
+    return {'allergens': allergens, 'category': category};
   }
 
   // ── Ingredient stubs ───────────────────────────────────────────────────────
@@ -654,79 +835,429 @@ class SeedData {
     },
     // ── Expansion (ing081+) — fuller per-cuisine / per-role coverage ──────────
     // Asian
-    {'id': 'ing081', 'name': 'Jasmine rice cooked', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'asian'},
-    {'id': 'ing082', 'name': 'Soba noodles cooked', 'dietaryTags': ['vegan', 'vegetarian', 'halal'], 'cuisine': 'asian'},
-    {'id': 'ing083', 'name': 'Rice noodles cooked', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'asian'},
-    {'id': 'ing084', 'name': 'Tempeh', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free'], 'cuisine': 'asian'},
-    {'id': 'ing085', 'name': 'Silken tofu', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free'], 'cuisine': 'asian'},
-    {'id': 'ing086', 'name': 'Seaweed nori', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'asian'},
-    {'id': 'ing087', 'name': 'Shiitake mushroom raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'asian'},
-    {'id': 'ing088', 'name': 'Napa cabbage raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'asian'},
-    {'id': 'ing089', 'name': 'Bean sprouts raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'asian'},
-    {'id': 'ing090', 'name': 'Mackerel raw', 'dietaryTags': ['halal', 'gluten-free'], 'cuisine': 'asian'},
-    {'id': 'ing091', 'name': 'Squid raw', 'dietaryTags': ['halal', 'gluten-free'], 'cuisine': 'asian'},
-    {'id': 'ing092', 'name': 'Sesame oil', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'asian'},
-    {'id': 'ing093', 'name': 'Soy milk', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'asian'},
+    {
+      'id': 'ing081',
+      'name': 'Jasmine rice cooked',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'asian',
+    },
+    {
+      'id': 'ing082',
+      'name': 'Soba noodles cooked',
+      'dietaryTags': ['vegan', 'vegetarian', 'halal'],
+      'cuisine': 'asian',
+    },
+    {
+      'id': 'ing083',
+      'name': 'Rice noodles cooked',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'asian',
+    },
+    {
+      'id': 'ing084',
+      'name': 'Tempeh',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free'],
+      'cuisine': 'asian',
+    },
+    {
+      'id': 'ing085',
+      'name': 'Silken tofu',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free'],
+      'cuisine': 'asian',
+    },
+    {
+      'id': 'ing086',
+      'name': 'Seaweed nori',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'asian',
+    },
+    {
+      'id': 'ing087',
+      'name': 'Shiitake mushroom raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'asian',
+    },
+    {
+      'id': 'ing088',
+      'name': 'Napa cabbage raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'asian',
+    },
+    {
+      'id': 'ing089',
+      'name': 'Bean sprouts raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'asian',
+    },
+    {
+      'id': 'ing090',
+      'name': 'Mackerel raw',
+      'dietaryTags': ['halal', 'gluten-free'],
+      'cuisine': 'asian',
+    },
+    {
+      'id': 'ing091',
+      'name': 'Squid raw',
+      'dietaryTags': ['halal', 'gluten-free'],
+      'cuisine': 'asian',
+    },
+    {
+      'id': 'ing092',
+      'name': 'Sesame oil',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'asian',
+    },
+    {
+      'id': 'ing093',
+      'name': 'Soy milk',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'asian',
+    },
     // Filipino
-    {'id': 'ing094', 'name': 'Okra raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'filipino'},
-    {'id': 'ing095', 'name': 'Squash raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'filipino'},
-    {'id': 'ing096', 'name': 'Taro root raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'filipino'},
-    {'id': 'ing097', 'name': 'Purple yam raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'filipino'},
-    {'id': 'ing098', 'name': 'Jute leaves raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'filipino'},
-    {'id': 'ing099', 'name': 'Coconut meat raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'filipino'},
-    {'id': 'ing100', 'name': 'Smoked fish', 'dietaryTags': ['halal', 'gluten-free'], 'cuisine': 'filipino'},
-    {'id': 'ing101', 'name': 'Pork shoulder raw', 'dietaryTags': ['gluten-free'], 'cuisine': 'filipino'},
-    {'id': 'ing102', 'name': 'Chicken wings raw', 'dietaryTags': ['halal'], 'cuisine': 'filipino'},
-    {'id': 'ing103', 'name': 'Pineapple raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'filipino'},
+    {
+      'id': 'ing094',
+      'name': 'Okra raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'filipino',
+    },
+    {
+      'id': 'ing095',
+      'name': 'Squash raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'filipino',
+    },
+    {
+      'id': 'ing096',
+      'name': 'Taro root raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'filipino',
+    },
+    {
+      'id': 'ing097',
+      'name': 'Purple yam raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'filipino',
+    },
+    {
+      'id': 'ing098',
+      'name': 'Jute leaves raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'filipino',
+    },
+    {
+      'id': 'ing099',
+      'name': 'Coconut meat raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'filipino',
+    },
+    {
+      'id': 'ing100',
+      'name': 'Smoked fish',
+      'dietaryTags': ['halal', 'gluten-free'],
+      'cuisine': 'filipino',
+    },
+    {
+      'id': 'ing101',
+      'name': 'Pork shoulder raw',
+      'dietaryTags': ['gluten-free'],
+      'cuisine': 'filipino',
+    },
+    {
+      'id': 'ing102',
+      'name': 'Chicken wings raw',
+      'dietaryTags': ['halal'],
+      'cuisine': 'filipino',
+    },
+    {
+      'id': 'ing103',
+      'name': 'Pineapple raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'filipino',
+    },
     // Western
-    {'id': 'ing104', 'name': 'Cod raw', 'dietaryTags': ['halal', 'gluten-free'], 'cuisine': 'western'},
-    {'id': 'ing105', 'name': 'Ground turkey raw', 'dietaryTags': ['halal', 'gluten-free'], 'cuisine': 'western'},
-    {'id': 'ing106', 'name': 'Pork tenderloin raw', 'dietaryTags': ['gluten-free'], 'cuisine': 'western'},
-    {'id': 'ing107', 'name': 'Mozzarella cheese', 'dietaryTags': ['vegetarian', 'gluten-free'], 'cuisine': 'western'},
-    {'id': 'ing108', 'name': 'Feta cheese', 'dietaryTags': ['vegetarian', 'gluten-free'], 'cuisine': 'western'},
-    {'id': 'ing109', 'name': 'Couscous cooked', 'dietaryTags': ['vegetarian', 'halal'], 'cuisine': 'western'},
-    {'id': 'ing110', 'name': 'Bagel plain', 'dietaryTags': ['vegetarian', 'halal'], 'cuisine': 'western'},
-    {'id': 'ing111', 'name': 'Green peas', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'western'},
-    {'id': 'ing112', 'name': 'Asparagus raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'western'},
-    {'id': 'ing113', 'name': 'Brussels sprouts raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'western'},
-    {'id': 'ing114', 'name': 'Green beans raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'western'},
-    {'id': 'ing115', 'name': 'Cashews raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'western'},
-    {'id': 'ing116', 'name': 'Pecans raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'western'},
-    {'id': 'ing117', 'name': 'Pistachios raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'western'},
-    {'id': 'ing118', 'name': 'Hummus', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'western'},
-    {'id': 'ing119', 'name': 'Granola', 'dietaryTags': ['vegetarian', 'halal'], 'cuisine': 'western'},
-    {'id': 'ing120', 'name': 'Cornflakes', 'dietaryTags': ['vegetarian', 'halal'], 'cuisine': 'western'},
-    {'id': 'ing121', 'name': 'Whole wheat pasta cooked', 'dietaryTags': ['vegetarian', 'halal'], 'cuisine': 'western'},
-    {'id': 'ing122', 'name': 'Macadamia nuts raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'western'},
+    {
+      'id': 'ing104',
+      'name': 'Cod raw',
+      'dietaryTags': ['halal', 'gluten-free'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing105',
+      'name': 'Ground turkey raw',
+      'dietaryTags': ['halal', 'gluten-free'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing106',
+      'name': 'Pork tenderloin raw',
+      'dietaryTags': ['gluten-free'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing107',
+      'name': 'Mozzarella cheese',
+      'dietaryTags': ['vegetarian', 'gluten-free'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing108',
+      'name': 'Feta cheese',
+      'dietaryTags': ['vegetarian', 'gluten-free'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing109',
+      'name': 'Couscous cooked',
+      'dietaryTags': ['vegetarian', 'halal'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing110',
+      'name': 'Bagel plain',
+      'dietaryTags': ['vegetarian', 'halal'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing111',
+      'name': 'Green peas',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing112',
+      'name': 'Asparagus raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing113',
+      'name': 'Brussels sprouts raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing114',
+      'name': 'Green beans raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing115',
+      'name': 'Cashews raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing116',
+      'name': 'Pecans raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing117',
+      'name': 'Pistachios raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing118',
+      'name': 'Hummus',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing119',
+      'name': 'Granola',
+      'dietaryTags': ['vegetarian', 'halal'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing120',
+      'name': 'Cornflakes',
+      'dietaryTags': ['vegetarian', 'halal'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing121',
+      'name': 'Whole wheat pasta cooked',
+      'dietaryTags': ['vegetarian', 'halal'],
+      'cuisine': 'western',
+    },
+    {
+      'id': 'ing122',
+      'name': 'Macadamia nuts raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'western',
+    },
     // Universal — proteins / carbs / veg / fruit / snack
-    {'id': 'ing123', 'name': 'White potato raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing124', 'name': 'Corn raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing125', 'name': 'Lettuce raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing126', 'name': 'Cabbage raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing127', 'name': 'Celery raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing128', 'name': 'Sardines canned', 'dietaryTags': ['halal', 'gluten-free'], 'cuisine': 'universal'},
-    {'id': 'ing129', 'name': 'Mackerel canned', 'dietaryTags': ['halal', 'gluten-free'], 'cuisine': 'universal'},
-    {'id': 'ing130', 'name': 'Pinto beans cooked', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing131', 'name': 'Kidney beans cooked', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing132', 'name': 'Orange raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing133', 'name': 'Watermelon raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing134', 'name': 'Pear raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing135', 'name': 'Kiwi raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing136', 'name': 'Grapes raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing137', 'name': 'Cantaloupe raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing138', 'name': 'Raisins', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing139', 'name': 'Dates', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing140', 'name': 'Sunflower seeds', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing141', 'name': 'Pumpkin seeds', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing142', 'name': 'Flaxseed', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing143', 'name': 'Rice cake', 'dietaryTags': ['vegan', 'vegetarian', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing144', 'name': 'Skim milk', 'dietaryTags': ['vegetarian', 'gluten-free'], 'cuisine': 'universal'},
-    {'id': 'ing145', 'name': 'Pork chop raw', 'dietaryTags': ['gluten-free'], 'cuisine': 'universal'},
-    {'id': 'ing146', 'name': 'Beef liver raw', 'dietaryTags': ['halal', 'gluten-free'], 'cuisine': 'universal'},
-    {'id': 'ing147', 'name': 'Cherry tomatoes raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing148', 'name': 'Beetroot raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing149', 'name': 'Pumpkin raw', 'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'], 'cuisine': 'universal'},
-    {'id': 'ing150', 'name': 'Cottage cheese', 'dietaryTags': ['vegetarian', 'gluten-free'], 'cuisine': 'universal'},
+    {
+      'id': 'ing123',
+      'name': 'White potato raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing124',
+      'name': 'Corn raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing125',
+      'name': 'Lettuce raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing126',
+      'name': 'Cabbage raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing127',
+      'name': 'Celery raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing128',
+      'name': 'Sardines canned',
+      'dietaryTags': ['halal', 'gluten-free'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing129',
+      'name': 'Mackerel canned',
+      'dietaryTags': ['halal', 'gluten-free'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing130',
+      'name': 'Pinto beans cooked',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing131',
+      'name': 'Kidney beans cooked',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing132',
+      'name': 'Orange raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing133',
+      'name': 'Watermelon raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing134',
+      'name': 'Pear raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing135',
+      'name': 'Kiwi raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing136',
+      'name': 'Grapes raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing137',
+      'name': 'Cantaloupe raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing138',
+      'name': 'Raisins',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing139',
+      'name': 'Dates',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing140',
+      'name': 'Sunflower seeds',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing141',
+      'name': 'Pumpkin seeds',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing142',
+      'name': 'Flaxseed',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing143',
+      'name': 'Rice cake',
+      'dietaryTags': ['vegan', 'vegetarian', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing144',
+      'name': 'Skim milk',
+      'dietaryTags': ['vegetarian', 'gluten-free'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing145',
+      'name': 'Pork chop raw',
+      'dietaryTags': ['gluten-free'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing146',
+      'name': 'Beef liver raw',
+      'dietaryTags': ['halal', 'gluten-free'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing147',
+      'name': 'Cherry tomatoes raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing148',
+      'name': 'Beetroot raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing149',
+      'name': 'Pumpkin raw',
+      'dietaryTags': ['vegan', 'vegetarian', 'gluten-free', 'halal'],
+      'cuisine': 'universal',
+    },
+    {
+      'id': 'ing150',
+      'name': 'Cottage cheese',
+      'dietaryTags': ['vegetarian', 'gluten-free'],
+      'cuisine': 'universal',
+    },
   ];
 
   // ── Exercises (unchanged) ─────────────────────────────────────────────────

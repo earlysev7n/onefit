@@ -33,18 +33,24 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   String _unitSystem = 'metric';
   double _avgSleep = 7.0;
 
+  // Step 1 validation — inline per-field error messages (null = no error)
+  String? _nameError;
+  String? _dobError;
+  String? _weightError;
+  String? _heightError;
+
   // Step 2 — Fitness
   String _fitnessGoal = 'Weight Loss';
   String _experienceLevel = 'Beginner';
   String _workoutLocation = 'Home';
-  List<String> _equipment = [];
+  List<String> _equipment = ['Bodyweight']; // always-on baseline
   String _activityLevel = 'Moderately Active';
   int _workoutDays = 3;
   int _sessionMinutes = 45;
   String _workoutSplit = 'Full Body Training';
 
-  // Step 3 — Diet
-  List<String> _dietaryRestrictions = [];
+  // Step 3 — Diet. Defaults to the Balanced style (no macro override).
+  List<String> _dietaryRestrictions = ['Balanced'];
 
   // Activity levels + descriptions (shown in the "?" help sheet)
   final Map<String, String> _activityLevels = {
@@ -82,33 +88,30 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     'General Fitness',
   ];
   final List<String> _levels = ['Beginner', 'Intermediate', 'Advanced'];
+  // Bodyweight is always first and always on (locked) — every home user can do
+  // bodyweight work, so it is the guaranteed baseline. 'Home Gym' means a
+  // power/squat rack and implies a Barbell + Bench (auto-selected on toggle).
   final List<String> _equipmentOptions = [
+    'Bodyweight',
     'Dumbbells',
     'Kettlebells',
     'Resistance Bands',
     'Pull-up Bar',
-    'Bodyweight',
+    'Barbell',
+    'Bench',
+    'Home Gym',
   ];
-  final List<String> _dietOptions = [
-    // Common restrictions
-    'Halal',
-    'Gluten-free',
-    'Vegan',
+  // Only options the meal generator actually honours are offered. Restrictions
+  // are multi-select; diet styles are single-select (they reshape macro
+  // targets, so they cannot be combined).
+  final List<String> _restrictionOptions = [
     'Vegetarian',
-    'Dairy-free',
-    'Nut-free',
-    'Egg-free',
-    'Soy-free',
+    'Vegan',
+    'Halal',
     'Lactose-intolerant',
-    // Diet styles
-    'Keto',
-    'Paleo',
-    'Low-carb',
-    'High-protein',
-    'Mediterranean',
-    'Diabetic-friendly',
-    'Pescatarian',
+    'Nut-free',
   ];
+  final List<String> _dietStyleOptions = ['High-protein', 'Low-carb', 'Balanced'];
 
   @override
   void initState() {
@@ -123,7 +126,9 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
       _fitnessGoal = p.fitnessGoal;
       _experienceLevel = p.experienceLevel;
       _workoutLocation = p.workoutLocation;
-      _equipment = List<String>.from(p.equipment);
+      // Old Gym profiles store []; ensure Bodyweight is present so the locked
+      // baseline chip shows selected when editing.
+      _equipment = {'Bodyweight', ...p.equipment}.toList();
       _activityLevel = p.activityLevel;
       _workoutDays = p.workoutDaysPerWeek;
       _sessionMinutes = p.sessionMinutes;
@@ -132,13 +137,25 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
       _workoutSplit = _splitOptions.containsKey(p.workoutSplit)
           ? p.workoutSplit
           : 'Full Body Training';
-      _dietaryRestrictions = List<String>.from(p.dietaryRestrictions);
+      // Drop options no longer offered (e.g. Keto/Gluten-free from older
+      // profiles); they would otherwise show no selected chip and confuse edits.
+      _dietaryRestrictions = p.dietaryRestrictions
+          .where(
+            (r) =>
+                _restrictionOptions.contains(r) ||
+                _dietStyleOptions.contains(r),
+          )
+          .toList();
+      // Guarantee exactly one diet style is selected (default Balanced).
+      if (!_dietaryRestrictions.any(_dietStyleOptions.contains)) {
+        _dietaryRestrictions.add('Balanced');
+      }
       // Weight/height are stored in metric; show in the user's unit system.
       final imperial = p.unitSystem == 'imperial';
-      _weightController.text =
-          (imperial ? p.weight / 0.453592 : p.weight).toStringAsFixed(1);
-      _heightController.text =
-          (imperial ? p.height / 2.54 : p.height).toStringAsFixed(1);
+      _weightController.text = (imperial ? p.weight / 0.453592 : p.weight)
+          .toStringAsFixed(1);
+      _heightController.text = (imperial ? p.height / 2.54 : p.height)
+          .toStringAsFixed(1);
       // DOB isn't stored — reconstruct a date that yields the same age so the
       // picker shows a sensible value; the user can re-pick if needed.
       _dob = DateTime(DateTime.now().year - p.age, 1, 1);
@@ -183,7 +200,12 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
         child: child!,
       ),
     );
-    if (picked != null) setState(() => _dob = picked);
+    if (picked != null) {
+      setState(() {
+        _dob = picked;
+        _dobError = null;
+      });
+    }
   }
 
   /// Min days required for the selected split.
@@ -209,7 +231,40 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     return null;
   }
 
+  /// Validates Step 1 (biometrics). Sets inline per-field error messages and
+  /// returns true only when name/DOB/weight/height are all present and sane.
+  /// Must be called inside setState so the error text renders.
+  bool _validateStep1() {
+    _nameError = _nameController.text.trim().isEmpty
+        ? 'Please enter your name'
+        : null;
+    _dobError = _dob == null ? 'Please select your date of birth' : null;
+
+    final w = double.tryParse(_weightController.text.trim());
+    final weightKg = _getWeightKg();
+    _weightError = (w == null || w <= 0 || weightKg < 30 || weightKg > 300)
+        ? 'Enter a valid weight'
+        : null;
+
+    final h = double.tryParse(_heightController.text.trim());
+    final heightCm = _getHeightCm();
+    _heightError = (h == null || h <= 0 || heightCm < 100 || heightCm > 250)
+        ? 'Enter a valid height'
+        : null;
+
+    return _nameError == null &&
+        _dobError == null &&
+        _weightError == null &&
+        _heightError == null;
+  }
+
   void _nextPage() {
+    // Validate Step 1 (biometrics) before advancing
+    if (_currentPage == 0) {
+      bool ok = false;
+      setState(() => ok = _validateStep1());
+      if (!ok) return; // block progression; inline errors now visible
+    }
     // Validate Step 2 before advancing
     if (_currentPage == 1) {
       final err = _splitDaysError();
@@ -286,11 +341,11 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     final profileProvider = context.read<ProfileProvider>();
     final existing = widget.existing;
     try {
-      // Home with nothing picked = an explicit bodyweight-only plan (stored as
-      // ['Bodyweight'] so it's intentional and visible on the Profile screen,
-      // not a silent empty list). Gym assumes all equipment, so it stores [].
+      // Home always carries 'Bodyweight' (the guaranteed baseline) on top of
+      // whatever else was picked, so a home user can never end up without a
+      // usable pool. Gym assumes all equipment, so it stores [].
       final equipment = _workoutLocation == 'Home'
-          ? (_equipment.isEmpty ? <String>['Bodyweight'] : _equipment)
+          ? <String>{'Bodyweight', ..._equipment}.toList()
           : <String>[];
       // Edit mode copies onto the existing profile so uid and the accumulated
       // calorieAdjustment survive; onboarding builds a fresh profile.
@@ -512,7 +567,14 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                 .toList(),
           ),
           const SizedBox(height: 20),
-          _buildTextField(_nameController, 'Full Name'),
+          _buildTextField(
+            _nameController,
+            'Full Name',
+            errorText: _nameError,
+            onChanged: (_) {
+              if (_nameError != null) setState(() => _nameError = null);
+            },
+          ),
           const SizedBox(height: 16),
           // DOB picker — age is auto-calculated
           GestureDetector(
@@ -522,6 +584,9 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFF222222),
                 borderRadius: BorderRadius.circular(14),
+                border: _dobError != null
+                    ? Border.all(color: const Color(0xFFFF6B6B))
+                    : null,
               ),
               child: Row(
                 children: [
@@ -544,17 +609,38 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               ),
             ),
           ),
+          if (_dobError != null) ...[
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Text(
+                _dobError!,
+                style: GoogleFonts.inter(
+                  color: const Color(0xFFFF6B6B),
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           _buildTextField(
             _weightController,
             _unitSystem == 'metric' ? 'Weight (kg)' : 'Weight (lbs)',
             isNumber: true,
+            errorText: _weightError,
+            onChanged: (_) {
+              if (_weightError != null) setState(() => _weightError = null);
+            },
           ),
           const SizedBox(height: 16),
           _buildTextField(
             _heightController,
             _unitSystem == 'metric' ? 'Height (cm)' : 'Height (inches)',
             isNumber: true,
+            errorText: _heightError,
+            onChanged: (_) {
+              if (_heightError != null) setState(() => _heightError = null);
+            },
           ),
           const SizedBox(height: 20),
           _buildLabel('Gender'),
@@ -709,23 +795,35 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
             const SizedBox(height: 8),
             _buildMultiChipGroup(_equipmentOptions, _equipment, (v) {
               setState(() {
-                if (_equipment.contains(v))
+                // Bodyweight is the guaranteed baseline — it can't be removed.
+                if (v == 'Bodyweight') return;
+                if (_equipment.contains(v)) {
                   _equipment.remove(v);
-                else
+                  // Dropping the rack also drops the lifts it unlocked is too
+                  // aggressive; leave Barbell/Bench so the user keeps them.
+                } else {
                   _equipment.add(v);
+                  // A home gym (rack) comes with a barbell + bench — add both so
+                  // one tap unlocks the full free-weight setup.
+                  if (v == 'Home Gym') {
+                    if (!_equipment.contains('Barbell'))
+                      _equipment.add('Barbell');
+                    if (!_equipment.contains('Bench')) _equipment.add('Bench');
+                  }
+                }
               });
             }),
-            if (_equipment.isEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                "No equipment selected — we'll build bodyweight-only workouts.",
-                style: GoogleFonts.inter(
-                  color: const Color(0xFF888888),
-                  fontSize: 13,
-                  fontStyle: FontStyle.italic,
-                ),
+            const SizedBox(height: 8),
+            Text(
+              _equipment.contains('Home Gym')
+                  ? 'Home gym (rack) selected — barbell, bench and racked lifts unlocked.'
+                  : "Bodyweight is always included. Add 'Home Gym' if you have a squat rack.",
+              style: GoogleFonts.inter(
+                color: const Color(0xFF888888),
+                fontSize: 13,
+                fontStyle: FontStyle.italic,
               ),
-            ],
+            ),
           ],
           const SizedBox(height: 24),
           _buildLabelWithHelp('Activity Level', _activityLevels),
@@ -805,9 +903,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           _buildChipGroup(
             _sessionOptions.map((m) => '$m min').toList(),
             '$_sessionMinutes min',
-            (v) => setState(
-              () => _sessionMinutes = int.parse(v.split(' ').first),
-            ),
+            (v) =>
+                setState(() => _sessionMinutes = int.parse(v.split(' ').first)),
           ),
           const SizedBox(height: 24),
           _buildLabel('Workout Split'),
@@ -928,10 +1025,10 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
             style: GoogleFonts.inter(color: const Color(0xFF888888)),
           ),
           const SizedBox(height: 24),
-          _buildLabel('Common Restrictions'),
+          _buildLabel('Dietary Restrictions'),
           const SizedBox(height: 8),
           _buildMultiChipGroup(
-            _dietOptions.take(9).toList(),
+            _restrictionOptions,
             _dietaryRestrictions,
             (v) => setState(() {
               _dietaryRestrictions.contains(v)
@@ -940,15 +1037,16 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
             }),
           ),
           const SizedBox(height: 16),
-          _buildLabel('Diet Styles'),
+          _buildLabel('Diet Style'),
           const SizedBox(height: 8),
+          // Single-select: picking one style clears the others (styles reshape
+          // macro targets and cannot be combined). Always one stays selected.
           _buildMultiChipGroup(
-            _dietOptions.skip(9).toList(),
+            _dietStyleOptions,
             _dietaryRestrictions,
             (v) => setState(() {
-              _dietaryRestrictions.contains(v)
-                  ? _dietaryRestrictions.remove(v)
-                  : _dietaryRestrictions.add(v);
+              _dietaryRestrictions.removeWhere(_dietStyleOptions.contains);
+              _dietaryRestrictions.add(v);
             }),
           ),
           const SizedBox(height: 24),
@@ -987,16 +1085,24 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     TextEditingController controller,
     String label, {
     bool isNumber = false,
+    String? errorText,
+    ValueChanged<String>? onChanged,
   }) {
     return TextField(
       controller: controller,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
       style: const TextStyle(color: Colors.white),
+      onChanged: onChanged,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: GoogleFonts.inter(color: const Color(0xFF888888)),
         filled: true,
         fillColor: const Color(0xFF222222),
+        errorText: errorText,
+        errorStyle: GoogleFonts.inter(
+          color: const Color(0xFFFF6B6B),
+          fontSize: 12,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,

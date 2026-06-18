@@ -25,10 +25,9 @@ class WorkoutDay {
     dayName: m['dayName'] as String? ?? '',
     focus: m['focus'] as String? ?? '',
     isRest: m['isRest'] as bool? ?? false,
-    exercises:
-        (m['exercises'] as List? ?? [])
-            .map((e) => WorkoutExercise.fromMap(e as Map<String, dynamic>))
-            .toList(),
+    exercises: (m['exercises'] as List? ?? [])
+        .map((e) => WorkoutExercise.fromMap(e as Map<String, dynamic>))
+        .toList(),
   );
 }
 
@@ -37,12 +36,14 @@ class WorkoutExercise {
   final int sets;
   final String reps; // e.g. "10-12" or "30 sec"
   final int restSeconds;
+  final int timePerSetSeconds; // work-timer duration per set (session-budget fit)
 
   WorkoutExercise({
     required this.exercise,
     required this.sets,
     required this.reps,
     required this.restSeconds,
+    this.timePerSetSeconds = 45,
   });
 
   Map<String, dynamic> toMap() => {
@@ -50,6 +51,7 @@ class WorkoutExercise {
     'sets': sets,
     'reps': reps,
     'restSeconds': restSeconds,
+    'timePerSetSeconds': timePerSetSeconds,
   };
 
   factory WorkoutExercise.fromMap(Map<String, dynamic> m) => WorkoutExercise(
@@ -57,6 +59,7 @@ class WorkoutExercise {
     sets: m['sets'] as int? ?? 3,
     reps: m['reps'] as String? ?? '10-12',
     restSeconds: m['restSeconds'] as int? ?? 60,
+    timePerSetSeconds: m['timePerSetSeconds'] as int? ?? 45,
   );
 }
 
@@ -65,9 +68,24 @@ class GreedyAlgorithm {
   static final _maleTag = RegExp(r'\bmale\b'); // does NOT match "female"
   static final _femaleTag = RegExp(r'\bfemale\b');
   static final _benchTag = RegExp(r'\b(incline|decline|bench)\b');
+  // Some API exercises are mis-tagged with home equipment (e.g. 'pull-up bar')
+  // but are actually cable/machine moves — catch them by name so they can never
+  // appear in a home plan regardless of what the cached equipment list says.
+  static final _gymOnlyName = RegExp(
+    r'\b(cable|smith machine|leverage machine)\b',
+  );
+  // Barbell lifts that need a power/squat rack to start (bar racked at
+  // shoulder/upper-chest height). Floor-start barbell work — deadlift, row,
+  // overhead press (cleaned), hip thrust, RDL — is NOT here, so it stays
+  // eligible on a bare 'Barbell' chip without a rack.
+  static final _rackTag = RegExp(r'\b(squat|bench press)\b');
   static const _freeWeights = {
-    'dumbbells', 'barbell', 'ez barbell', 'kettlebells',
+    'dumbbells',
+    'barbell',
+    'ez barbell',
+    'kettlebells',
   };
+  static const _barbellEquip = {'barbell', 'ez barbell'};
 
   /// What the user can physically do: gender-tagged demo variants, location,
   /// equipment, and bench availability. Goal and difficulty are NOT gated
@@ -89,20 +107,39 @@ class GreedyAlgorithm {
 
     // Home: exercise must be doable at home...
     if (!e.locations.contains('home')) return false;
+    // Name-based gym-only guard: some exercises are mis-tagged with home
+    // equipment (e.g. 'pull-up bar') by the API but are actually cable/machine
+    // moves — "Inverse Leg Curl (on Pull-up Cable Machine)" being the example.
+    if (_gymOnlyName.hasMatch(name)) return false;
 
-    // ...with equipment the user owns (bodyweight always available).
+    // ...with equipment the user owns. Bodyweight is always available — the
+    // profile guarantees a 'Bodyweight' chip (see ProfileInputScreen), so a
+    // bodyweight-only home user always has a usable pool.
     final exEquip = e.equipment.map((x) => x.toLowerCase()).toList();
     final isBodyweight = exEquip.contains('bodyweight');
-    if (!isBodyweight) {
-      final userEquip = p.equipment.map((x) => x.toLowerCase()).toSet();
-      if (!exEquip.any(userEquip.contains)) return false;
+    if (isBodyweight) return true;
 
-      // Free-weight incline/decline/bench moves need a bench, which is not a
-      // home equipment option. Bodyweight variants (decline push-up etc.)
-      // stay eligible — a couch or stairs will do.
-      if (_benchTag.hasMatch(name) && exEquip.any(_freeWeights.contains)) {
-        return false;
-      }
+    final userEquip = p.equipment.map((x) => x.toLowerCase()).toSet();
+    final hasBarbell = userEquip.contains('barbell'); // chip covers ez barbell
+    final hasBench = userEquip.contains('bench');
+    final hasRack = userEquip.contains('home gym'); // power/squat rack
+    final usesBarbell = exEquip.any(_barbellEquip.contains);
+
+    // Equipment intersection. The 'Barbell' chip stands in for both 'barbell'
+    // and 'ez barbell', so an ez-bar move is owned if the user has Barbell.
+    final owns = exEquip.any(userEquip.contains) || (usesBarbell && hasBarbell);
+    if (!owns) return false;
+
+    // Rack-dependent barbell lifts (back/front squat, bench press) need a rack;
+    // declared via the 'Home Gym' chip. Floor-start barbell work is unaffected.
+    if (usesBarbell && _rackTag.hasMatch(name) && !hasRack) return false;
+
+    // Free-weight incline/decline/bench moves need a bench. Bodyweight variants
+    // (decline push-up etc.) already returned above — a couch or stairs will do.
+    if (_benchTag.hasMatch(name) &&
+        exEquip.any(_freeWeights.contains) &&
+        !hasBench) {
+      return false;
     }
     return true;
   }
@@ -182,8 +219,9 @@ class GreedyAlgorithm {
     // the user can physically do). Goal is a scoring signal, not a gate —
     // gating on it collapses the candidate pool (e.g. a Weight-Loss user
     // would be excluded from all chest/back/arm work).
-    final filtered =
-        allExercises.where((e) => isEligibleForUser(e, profile)).toList();
+    final filtered = allExercises
+        .where((e) => isEligibleForUser(e, profile))
+        .toList();
 
     // Build 7-day schedule from user's chosen split + available days.
     // workoutDaysPerWeek is a hard constraint: adaptation never adds or
@@ -211,12 +249,23 @@ class GreedyAlgorithm {
       }
 
       final targetMuscles = musclesForFocus(focus);
+      // Session duration drives the exercise COUNT; NSCA goal loading drives the
+      // per-set sets/reps/rest (computed inside _selectExercisesForDay).
+      final daySets = _getSets(profile, difficultyBias);
+      final dayRest = _getRestSeconds(profile);
+      final dayWork = _estimateWorkSeconds(_getReps(profile, 'strength'));
       final dayExercises = _selectExercisesForDay(
         exercises: filtered,
         targetMuscles: targetMuscles,
         profile: profile,
         muscleHitCount: muscleHitCount,
-        count: _exercisesPerDay(profile, difficultyBias),
+        count: _fitExerciseCount(
+          profile: profile,
+          sets: daySets,
+          restSeconds: dayRest,
+          work: dayWork,
+          poolSize: filtered.length,
+        ),
         difficultyBias: difficultyBias,
         dayFocus: focus,
       );
@@ -235,6 +284,26 @@ class GreedyAlgorithm {
     return plan;
   }
 
+  // Explicit big-lift movement patterns — true multi-joint barbell/dumbbell
+  // movements that should always open a strength day. Deliberately excludes
+  // isolation patterns: "french press" (tricep), "front raise" (delt), and
+  // "pullover" (single-joint) do not match any term here.
+  static final _bigLiftKeywords = RegExp(
+    r'\b(squat|deadlift|hip thrust|lunge|row|'
+    r'bench press|incline press|decline press|'
+    r'overhead press|military press|shoulder press)\b',
+  );
+
+  /// True multi-joint barbell/dumbbell lift — squat, deadlift, bench press,
+  /// row, OHP etc. Isolation exercises with barbell (french press, front raise,
+  /// pullover) do not match [_bigLiftKeywords] and are correctly excluded.
+  bool _isHeavyCompound(Exercise e) =>
+      _bigLiftKeywords.hasMatch(e.name.toLowerCase()) &&
+      e.equipment.any((q) {
+        final q2 = q.toLowerCase();
+        return q2 == 'barbell' || q2 == 'ez barbell' || q2 == 'dumbbell';
+      });
+
   List<WorkoutExercise> _selectExercisesForDay({
     required List<Exercise> exercises,
     required List<String> targetMuscles,
@@ -249,6 +318,28 @@ class GreedyAlgorithm {
     final eligible = exercises
         .where((e) => difficultyAllowed(e.difficulty, profile.experienceLevel))
         .toList();
+
+    // Day focus is a HARD pool constraint, not just a score: only exercises that
+    // train the focus may be selected, falling back to secondary-mover matches,
+    // and the day stays shorter rather than ever pulling in an unrelated muscle.
+    // (Relying on the +50 focus score alone let a fresh off-focus muscle — e.g.
+    // forearms, which no focus targets and so carries 0 weekly-balance penalty —
+    // outscore a heavily-used focus muscle on late-week days: a wrist curl landed
+    // on Leg day.) musclesForFocus always returns a non-empty set, so this is safe.
+    final primaryPool = targetMuscles.isEmpty
+        ? eligible
+        : eligible
+              .where((e) => e.primaryMuscles.any(targetMuscles.contains))
+              .toList();
+    final assistPool = targetMuscles.isEmpty
+        ? const <Exercise>[]
+        : eligible
+              .where(
+                (e) =>
+                    !e.primaryMuscles.any(targetMuscles.contains) &&
+                    e.secondaryMuscles.any(targetMuscles.contains),
+              )
+              .toList();
 
     // Cap how often one primary muscle can headline a single session: a
     // Full Body day (6 targets, 5 slots) caps at 2 per muscle, a Chest &
@@ -280,7 +371,10 @@ class GreedyAlgorithm {
         if (seenIds.contains(id)) continue;
         Exercise? pin;
         for (final e in eligible) {
-          if (e.id == id) { pin = e; break; }
+          if (e.id == id) {
+            pin = e;
+            break;
+          }
         }
         if (pin == null) continue;
         selected.add(pin);
@@ -291,15 +385,16 @@ class GreedyAlgorithm {
       }
     }
 
-    for (final enforceCap in [true, false]) {
+    // Incremental greedy over a given pool: pick best, update day-local muscle
+    // hits, re-score, repeat. `enforceCap` applies the per-muscle-per-day cap.
+    void fill(List<Exercise> pool, bool enforceCap) {
       while (selected.length < count) {
         Exercise? best;
         double bestScore = double.negativeInfinity;
-        for (final e in eligible) {
+        for (final e in pool) {
           if (seenIds.contains(e.id)) continue;
           if (enforceCap &&
-              e.primaryMuscles
-                  .any((m) => (dayHits[m] ?? 0) >= perMuscleCap)) {
+              e.primaryMuscles.any((m) => (dayHits[m] ?? 0) >= perMuscleCap)) {
             continue;
           }
           final s = _scoreExercise(
@@ -321,28 +416,91 @@ class GreedyAlgorithm {
           dayHits[m] = (dayHits[m] ?? 0) + 1;
         }
       }
-      if (selected.length >= count) break;
     }
 
-    // Compound-first: stable-sort so multi-joint staple lifts lead the day
-    // (they are what the specific warm-up ramps), keeping each group's existing
-    // order. Pins were added first and are typically compounds, so they stay up
-    // top. Pure reorder — selection/counts/balance are unchanged.
+    // Focus-relevant pools only, in priority order: primary-mover matches first
+    // (cap on → off for small pools), then secondary-mover assists as a last
+    // resort. If these can't reach `count` the day is simply shorter — never
+    // padded with an off-focus exercise.
+    fill(primaryPool, true);
+    if (selected.length < count) fill(primaryPool, false);
+    if (selected.length < count) fill(assistPool, false);
+
+    // 3-tier compound-first sort: barbell/dumbbell compounds (squat, deadlift,
+    // bench, row) → bodyweight compounds (push-up, pull-up, dip) → isolations.
+    // Pure reorder — selection, counts, and muscle balance are unchanged.
     final ordered = <Exercise>[
-      ...selected.where(isStapleCompound),
+      ...selected.where(_isHeavyCompound),
+      ...selected.where((e) => isStapleCompound(e) && !_isHeavyCompound(e)),
       ...selected.where((e) => !isStapleCompound(e)),
     ];
 
-    return ordered
-        .map(
-          (e) => WorkoutExercise(
-            exercise: e,
-            sets: _getSets(profile, difficultyBias),
-            reps: _getReps(profile, e.category),
-            restSeconds: _getRestSeconds(profile),
-          ),
-        )
-        .toList();
+    // Sets and rest are profile-derived (NSCA goal loading) and constant for the
+    // whole day; per-set reps/work-timer length vary per exercise (cardio vs lift).
+    final daySets = _getSets(profile, difficultyBias);
+    final dayRest = _getRestSeconds(profile);
+    return ordered.map((e) {
+      final reps = _getReps(profile, e.category);
+      return WorkoutExercise(
+        exercise: e,
+        sets: daySets,
+        reps: reps,
+        restSeconds: dayRest,
+        timePerSetSeconds: _estimateWorkSeconds(reps),
+      );
+    }).toList();
+  }
+
+  /// Per-set work-timer length (seconds), estimated from the prescription so the
+  /// session-duration fit (see [_fitExerciseCount]) is realistic. NOT an NSCA
+  /// loading parameter — it only sizes the live countdown the user can cut short.
+  /// Timed move ("45 sec") → that value; rep range "A-B"/"A" → ~3s/rep + setup.
+  int _estimateWorkSeconds(String reps) {
+    final lower = reps.toLowerCase();
+    final nums = RegExp(
+      r'\d+',
+    ).allMatches(lower).map((m) => int.parse(m.group(0)!)).toList();
+    if (lower.contains('sec') && nums.isNotEmpty) {
+      return nums.first.clamp(30, 75);
+    }
+    final maxRep = nums.isEmpty ? 12 : nums.reduce((a, b) => a > b ? a : b);
+    return (maxRep * 3 + 15).clamp(30, 75);
+  }
+
+  /// Duration-driven Greedy selection lever (Objective 4): the user's chosen
+  /// [UserProfile.sessionMinutes] decides HOW MANY exercises to select, while the
+  /// per-set loading (sets/reps/rest) stays pinned to the NSCA goal ranges. Picks
+  /// the largest exercise count that still fits the time budget (never over);
+  /// when NSCA-bounded volume can't fill a long session we accept the undershoot.
+  int _fitExerciseCount({
+    required UserProfile profile,
+    required int sets,
+    required int restSeconds,
+    required int work,
+    required int poolSize,
+  }) {
+    const warmupReserveSec = 180; // gated warm-up phase before the lifts
+    final budget = profile.sessionMinutes * 60 - warmupReserveSec;
+    // Split breadth cap: a Full Body day covers ~6 muscle groups → at most one
+    // exercise each, so it never balloons (never 7). Frequency temper: a muscle
+    // trained more often (≥5 days/wk) needs less per-session breadth — NSCA
+    // weekly-volume distribution.
+    int maxE = profile.workoutDaysPerWeek >= 5 ? 5 : 6;
+    if (poolSize < maxE) maxE = poolSize;
+    if (maxE < 1) maxE = 1;
+    // Largest count that still fits the time budget (never over). Starting at 1
+    // guarantees a non-empty day even when only one exercise fits; for any
+    // realistic session the fit grows toward maxE.
+    int planned(int e) => e * sets * work + (e * sets - 1) * restSeconds;
+    int best = 1;
+    for (int e = 1; e <= maxE; e++) {
+      if (planned(e) <= budget) {
+        best = e;
+      } else {
+        break;
+      }
+    }
+    return best;
   }
 
   // ── SCHEDULE — driven by workoutSplit + workoutDaysPerWeek ──────────────────
@@ -454,40 +612,18 @@ class GreedyAlgorithm {
     }
   }
 
-  /// Exercise count per day — driven by sessionMinutes, nudged by experience,
-  /// scaled down by recoveryScore (poor sleep → fewer exercises), and reduced
-  /// by one when the weekly adaptation says 'down' (volume, not frequency).
-  int _exercisesPerDay(UserProfile profile, String difficultyBias) {
-    // Base count from session length
-    int base;
-    if (profile.sessionMinutes <= 30) {
-      base = 3;
-    } else if (profile.sessionMinutes <= 45) {
-      base = 5;
-    } else if (profile.sessionMinutes <= 60) {
-      base = 6;
-    } else {
-      base = 8; // 90 min
-    }
-
-    // ±1 experience nudge
-    if (profile.experienceLevel == 'Beginner') base--;
-    if (profile.experienceLevel == 'Advanced') base++;
-
-    // Recovery reduction: under-slept → drop one exercise
-    if (profile.recoveryScore < 0.8) base--;
-
-    // Adaptation: struggled last week → one fewer exercise per day
-    if (difficultyBias == 'down') base--;
-
-    return base.clamp(2, 10);
-  }
-
-  /// Sets per exercise — from goal/experience, reduced when recovery is low,
-  /// nudged ±1 by the weekly adaptation bias.
+  /// Sets per exercise — pinned to the NSCA goal-loading ranges and never
+  /// stretched to fill session time (NSCA — Sheppard & Triplett, "Program Design
+  /// for Resistance Training," in Essentials of Strength Training and
+  /// Conditioning, 4th ed.): hypertrophy 3–6 (capped 5 here), muscular endurance
+  /// 2–3, general 2–4. Experience picks within the range; recovery/adaptation
+  /// nudge ±1 but the final clamp keeps it inside the goal's NSCA range.
   int _getSets(UserProfile profile, String difficultyBias) {
     int sets;
+    int lo, hi; // NSCA set range for the goal
     if (profile.fitnessGoal == 'Muscle Gain') {
+      lo = 3;
+      hi = 5; // NSCA hypertrophy 3–6, capped at 5
       switch (profile.experienceLevel) {
         case 'Beginner':
           sets = 3;
@@ -498,7 +634,14 @@ class GreedyAlgorithm {
         default:
           sets = 5;
       }
+    } else if (profile.fitnessGoal == 'Weight Loss' ||
+        profile.fitnessGoal == 'Endurance') {
+      lo = 2;
+      hi = 3; // NSCA muscular endurance 2–3
+      sets = profile.experienceLevel == 'Beginner' ? 2 : 3;
     } else {
+      lo = 2;
+      hi = 4; // general / maintenance
       sets = profile.experienceLevel == 'Advanced' ? 4 : 3;
     }
     // Recovery shave
@@ -506,10 +649,12 @@ class GreedyAlgorithm {
     // Adaptation: great week → +1 set, rough week → −1 set
     if (difficultyBias == 'up') sets++;
     if (difficultyBias == 'down') sets--;
-    return sets.clamp(2, 6);
+    return sets.clamp(lo, hi);
   }
 
-  /// Reps — from goal and split style (conditioning splits get higher reps/timed).
+  /// Reps — from goal and split style, within the NSCA goal-loading ranges
+  /// (Essentials of S&C, 4th ed.): hypertrophy 6–12, muscular endurance ≥12,
+  /// general 8–15; conditioning splits use timed/higher-rep work.
   String _getReps(UserProfile profile, String category) {
     final split = profile.workoutSplit;
     if (split == 'HIIT + Strength Split' || split == 'Circuit Training Split') {
@@ -519,25 +664,30 @@ class GreedyAlgorithm {
       return category == 'cardio' ? '45 sec' : '8-12';
     }
     if (category == 'cardio') return '45 sec';
-    if (profile.fitnessGoal == 'Weight Loss' || profile.fitnessGoal == 'Endurance') {
+    if (profile.fitnessGoal == 'Weight Loss' ||
+        profile.fitnessGoal == 'Endurance') {
       return '15-20';
     }
     if (profile.fitnessGoal == 'Muscle Gain') return '8-12';
     return '12-15';
   }
 
-  /// Rest seconds — conditioning-style splits get shorter rests.
+  /// Rest seconds — within the NSCA goal-loading rest ranges (Essentials of S&C,
+  /// 4th ed.): hypertrophy 30 s–1.5 min, muscular endurance ≤30 s (circuit
+  /// tolerance up to ~45 s for weight loss), strength 2–5 min; conditioning-style
+  /// splits get the shortest rests.
   int _getRestSeconds(UserProfile profile) {
     final split = profile.workoutSplit;
     if (split == 'HIIT + Strength Split' || split == 'Circuit Training Split') {
-      return 30;
+      return 30; // NSCA endurance / circuit
     }
     if (split == 'Strength + Conditioning Split') return 60;
-    if (profile.fitnessGoal == 'Muscle Gain') return 90;
-    if (profile.fitnessGoal == 'Weight Loss' || profile.fitnessGoal == 'Endurance') {
-      return 45;
+    if (profile.fitnessGoal == 'Muscle Gain') return 90; // NSCA hypertrophy max
+    if (profile.fitnessGoal == 'Weight Loss' ||
+        profile.fitnessGoal == 'Endurance') {
+      return 45; // NSCA endurance baseline (≤30 s) + circuit tolerance
     }
-    return 60;
+    return 60; // general
   }
 
   String _dayName(int index) {

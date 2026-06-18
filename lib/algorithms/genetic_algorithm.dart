@@ -38,7 +38,102 @@ class GeneticAlgorithm {
   bool _isCondiment(MealIngredient i) =>
       _condiments.any((c) => i.name.toLowerCase().contains(c));
 
+  // ── Dietary restriction model ──────────────────────────────────────────────
+  // Restrictions fall into three kinds; only the first two filter the pool.
+  //
+  //  1. Inclusion tags  — the ingredient MUST carry the matching dietaryTag.
+  //  2. Exclusion allergens — the ingredient MUST NOT carry the mapped allergen.
+  //  3. Macro styles  — do not filter the pool; they reshape macro targets
+  //     (see [_macroTargetsFor]).
+
+  /// Restrictions satisfied by a positive `dietaryTags` entry. `gluten-free` is
+  /// kept for backward-compatibility with profiles saved before the trim.
+  static const Set<String> _inclusionTags = {
+    'vegetarian',
+    'vegan',
+    'halal',
+    'gluten-free',
+  };
+
+  /// Restriction → allergen that must be absent from `ingredient.allergens`.
+  static const Map<String, String> _exclusionAllergens = {
+    'lactose-intolerant': 'dairy',
+    'dairy-free': 'dairy',
+    'nut-free': 'nuts',
+  };
+
+  /// Diet-style restrictions that reshape macro targets instead of filtering.
+  static const Set<String> _macroStyles = {
+    'high-protein',
+    'low-carb',
+    'balanced',
+  };
+
+  /// True when [ing] satisfies every dietary restriction on [profile]. Inclusion
+  /// tags require the tag; exclusion allergens reject the allergen; macro styles
+  /// and unrecognised values have no pool effect.
+  bool _passesRestrictions(MealIngredient ing, UserProfile profile) {
+    final tags = ing.dietaryTags.map((t) => t.toLowerCase()).toSet();
+    final allergens = ing.allergens.map((a) => a.toLowerCase()).toSet();
+    for (final raw in profile.dietaryRestrictions) {
+      final r = raw.toLowerCase();
+      if (_inclusionTags.contains(r)) {
+        if (!tags.contains(r)) return false;
+      } else if (_exclusionAllergens.containsKey(r)) {
+        if (allergens.contains(_exclusionAllergens[r])) return false;
+      }
+      // macro styles / unknown → no filtering
+    }
+    return true;
+  }
+
+  /// Macro gram targets for the fitness function. A selected diet style overrides
+  /// the `fitnessGoal`-derived split; otherwise (Balanced / none) the profile's
+  /// own `macroGoals` are used unchanged.
+  Map<String, double> _macroTargetsFor(UserProfile profile) {
+    final styles = profile.dietaryRestrictions
+        .map((e) => e.toLowerCase())
+        .where(_macroStyles.contains)
+        .toSet();
+    final kcal = profile.calorieGoal.toDouble();
+    double? p, c, f; // ratios of total calories
+    if (styles.contains('high-protein')) {
+      p = 0.40;
+      c = 0.35;
+      f = 0.25;
+    } else if (styles.contains('low-carb')) {
+      p = 0.35;
+      c = 0.20;
+      f = 0.45;
+    }
+    if (p == null) {
+      // Balanced or no style → keep the fitnessGoal-derived targets.
+      return {
+        'protein': profile.macroGoals['protein']!.toDouble(),
+        'carbs': profile.macroGoals['carbs']!.toDouble(),
+        'fat': profile.macroGoals['fat']!.toDouble(),
+      };
+    }
+    return {
+      'protein': kcal * p / 4,
+      'carbs': kcal * c! / 4,
+      'fat': kcal * f! / 9,
+    };
+  }
+
+  /// Macro targets for the current [generatePlan] run; set at the top of it.
+  Map<String, double> _macroTargets = const {
+    'protein': 0,
+    'carbs': 0,
+    'fat': 0,
+  };
+
   bool _isSnackAppropriate(MealIngredient ing) {
+    // Category is the robust primary signal; fruit and dairy are always
+    // snack-appropriate. The name checks below cover nuts/seeds, grains and
+    // protein supplements that share other categories.
+    if (ing.category == 'fruit' || ing.category == 'dairy') return true;
+
     final name = ing.name.toLowerCase();
 
     // Strict match
@@ -92,8 +187,21 @@ class GeneticAlgorithm {
     required UserProfile profile,
     String cuisine = 'any',
   }) {
+    _macroTargets = _macroTargetsFor(profile);
+
+    // Pool selection is fail-SAFE: dietary restrictions are never dropped. If
+    // the cuisine narrows the pool to empty we relax the cuisine only; if even
+    // that is empty, nothing satisfies the restrictions, so we return an empty
+    // plan (sentinel) and let the UI warn — we never serve violating food.
     final filtered = _filterIngredients(allIngredients, profile, cuisine);
-    final pool = filtered.isEmpty ? allIngredients : filtered;
+    final List<MealIngredient> pool;
+    if (filtered.isNotEmpty) {
+      pool = filtered;
+    } else {
+      final relaxed = _filterIngredients(allIngredients, profile, 'any');
+      if (relaxed.isEmpty) return const [];
+      pool = relaxed;
+    }
 
     // Breakfast-specific pools
     final breakfastProteins = pool.where((i) {
@@ -137,18 +245,9 @@ class GeneticAlgorithm {
         .where((i) => i.fat >= 8 && i.carbs < 10 && !_isCondiment(i))
         .toList();
 
-    // Snack pool
-    final snackPool = allIngredients.where((i) => _isSnackAppropriate(i)).where(
-      (i) {
-        for (final r in profile.dietaryRestrictions) {
-          if (!i.dietaryTags
-              .map((t) => t.toLowerCase())
-              .contains(r.toLowerCase()))
-            return false;
-        }
-        return true;
-      },
-    ).toList();
+    // Snack pool — drawn from the same filtered `pool`, so it honours cuisine,
+    // dietary restrictions and the condiment blacklist exactly like main meals.
+    final snackPool = pool.where(_isSnackAppropriate).toList();
 
     // Fallbacks
     if (breakfastProteins.isEmpty)
@@ -253,9 +352,11 @@ class GeneticAlgorithm {
   // FITNESS
   double _fitness(List<DayMealPlan> plan, UserProfile profile) {
     final calorieTarget = profile.calorieGoal.toDouble();
-    final proteinTarget = profile.macroGoals['protein']!.toDouble();
-    final carbsTarget = profile.macroGoals['carbs']!.toDouble();
-    final fatTarget = profile.macroGoals['fat']!.toDouble();
+    // Macro targets honour the selected diet style (High-protein / Low-carb);
+    // Balanced or none falls back to the fitnessGoal-derived split.
+    final proteinTarget = _macroTargets['protein']!;
+    final carbsTarget = _macroTargets['carbs']!;
+    final fatTarget = _macroTargets['fat']!;
 
     double totalScore = 0;
     for (final day in plan) {
@@ -476,14 +577,12 @@ class GeneticAlgorithm {
   ) {
     return all.where((ing) {
       if (_isCondiment(ing)) return false;
-      for (final r in profile.dietaryRestrictions) {
-        if (!ing.dietaryTags
-            .map((t) => t.toLowerCase())
-            .contains(r.toLowerCase()))
-          return false;
+      if (!_passesRestrictions(ing, profile)) return false;
+      if (cuisine != 'any' &&
+          ing.cuisine != cuisine &&
+          ing.cuisine != 'universal') {
+        return false;
       }
-      if (cuisine != 'any')
-        return ing.cuisine == cuisine || ing.cuisine == 'universal';
       return true;
     }).toList();
   }

@@ -54,6 +54,11 @@ class FirestoreService {
     return list;
   }
 
+  /// Clears the in-memory ingredient cache so the next [getIngredients] call
+  /// re-reads from Firestore. Call after re-seeding so newly added fields
+  /// (allergens / category) are picked up without an app restart.
+  static void clearIngredientCache() => _ingredientCache = null;
+
   // ========================================
   // NUTRITION LOGGING METHODS
   // ========================================

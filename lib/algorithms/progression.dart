@@ -13,8 +13,6 @@
 ///    the top of the range is reached at the current load, add weight and reset
 ///    to the bottom of the range (ACSM Progression Models position stand,
 ///    Ratamess et al. 2009; RIR/RPE autoregulation, Helms et al. 2016).
-///  * `warmupRamp` builds a percentage-based warm-up ramp before a heavy
-///    compound (Fradkin, Zazryn & Smoliga 2010; ACSM warm-up guidance).
 ///
 /// Weight is always in kg internally (same convention as UserProfile /
 /// ExerciseStat); the UI converts for display.
@@ -23,18 +21,6 @@ library;
 /// Load increments (kg) when stepping weight up in double progression.
 const double kProgressionIncrementCompound = 5.0; // lower-body / big compounds
 const double kProgressionIncrementIsolation = 2.5; // upper-body / isolation
-
-/// Warm-up ramp: percentage of the working weight × reps for each ramp set.
-const List<int> kWarmupPercents = [40, 60, 80];
-const List<int> kWarmupReps = [8, 5, 3];
-
-/// Below this working weight a warm-up ramp adds nothing useful (empty-bar /
-/// bodyweight-ish loads).
-const double kWarmupMinWorkingKg = 20.0;
-
-/// Rounds [kg] to the nearest 2.5 kg (the smallest commonly available plate
-/// jump on a per-side basis / fixed dumbbell increment).
-double roundToPlate(double kg) => (kg / 2.5).round() * 2.5;
 
 /// Parses a prescribed rep string like `"10-12"` or `"8"` into `(min, max)`.
 /// Returns `null` for non-numeric prescriptions (`"30 sec"`, `"AMRAP"`, …),
@@ -106,34 +92,4 @@ ProgressionTarget? nextTarget({
     isIncrease: false,
     note: 'Add a rep at the same weight.',
   );
-}
-
-/// A single warm-up ramp set.
-class WarmupSet {
-  final double weightKg;
-  final int reps;
-  final int percent;
-
-  const WarmupSet({
-    required this.weightKg,
-    required this.reps,
-    required this.percent,
-  });
-
-  @override
-  String toString() => 'WarmupSet($percent% → $weightKg kg × $reps)';
-}
-
-/// Builds a percentage-based warm-up ramp off [workingWeightKg]. Returns an
-/// empty list for light/bodyweight loads where a ramp adds nothing.
-List<WarmupSet> warmupRamp(double workingWeightKg) {
-  if (workingWeightKg <= kWarmupMinWorkingKg) return const [];
-  return [
-    for (int i = 0; i < kWarmupPercents.length; i++)
-      WarmupSet(
-        percent: kWarmupPercents[i],
-        weightKg: roundToPlate(workingWeightKg * kWarmupPercents[i] / 100),
-        reps: kWarmupReps[i],
-      ),
-  ];
 }

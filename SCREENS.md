@@ -118,6 +118,8 @@ Navigation uses `navigatorKey` (a global `GlobalKey<NavigatorState>`) with `push
 | Gender | Toggle chips (Male / Female) | Only Male/Female — used for Mifflin-St Jeor BMR formula |
 | Average hours slept | `Slider` 3–12 h | Drives `recoveryScore`; label shows live value |
 
+**Step 1 required-field validation:** `_validateStep1()` blocks **Next** until name (non-empty), DOB (selected), weight (valid, ~30–300 kg) and height (valid, ~100–250 cm) are all provided. Errors render inline (red `errorText` under each field / red border + helper text under the DOB tile) and clear live on edit. This guards the nutrition engine — without it `_dob == null` yields `age == 0`, corrupting BMR/TDEE/`calorieGoal`.
+
 ---
 
 #### Step 2 — Your Fitness
@@ -126,7 +128,7 @@ Navigation uses `navigatorKey` (a global `GlobalKey<NavigatorState>`) with `push
 | Fitness goal | Chip group | Weight Loss / Muscle Gain / Endurance / General Fitness |
 | Experience level | Chip group | Beginner / Intermediate / Advanced |
 | Workout location | Toggle chip | Home / Gym — drives equipment filter |
-| Equipment available | Multi-chip (Home only) | Dumbbells, Kettlebells, Resistance Bands, Pull-up Bar, Bodyweight. Leaving it empty shows an italic hint ("No equipment selected — we'll build bodyweight-only workouts.") and saves as `['Bodyweight']` so the bodyweight-only fallback is explicit. Gym saves `[]` (all equipment assumed). |
+| Equipment available | Multi-chip (Home only) | Bodyweight (locked/always-on), Dumbbells, Kettlebells, Resistance Bands, Pull-up Bar, Barbell, Bench, Home Gym. Bodyweight can't be deselected — it's the guaranteed baseline and is always saved (`{'Bodyweight', ...selected}`). Selecting **Home Gym** (= squat/power rack) auto-adds Barbell + Bench. Gym saves `[]` (all equipment assumed). The rack flag (`Home Gym`) is what unlocks barbell squat/bench-press; a bare Barbell chip only unlocks floor-start barbell lifts (deadlift/row/OHP). |
 | Activity level | **Dropdown + "?" info** | Sedentary → Extra Active; drives `activityMultiplier` → TDEE → calorie goal |
 | Workout days/week | 1–7 number chips | Exact number of training days placed in the 7-day schedule |
 | Time per session | Chip group 30/45/60/90 min | Drives exercises-per-day in the greedy algorithm |
@@ -243,27 +245,29 @@ Switching tabs programmatically:
 | `_activeSetNumber` | Which set the user is on (1-indexed) |
 | `_inRest` | Whether the rest timer is running |
 | `_restRemaining / _restTotal` | Countdown seconds |
+| `_setRunning` | Whether the per-set work timer is counting down (vs. the kg/reps logging sub-phase) |
+| `_setRemaining / _setTotal` | Work-timer countdown seconds (total = `WorkoutExercise.timePerSetSeconds`) |
 | `_waitingForReady` | Showing the "Up Next / I'm Ready!" card between exercises |
 | `_completedExercises` | Set of finished exercise indices |
 | `_elapsedSeconds` | Total workout time (driven by a periodic `Timer`) |
 
 When the user taps **Start Workout**: `_startWorkout()` sets `_activeExerciseIndex = 0`.
 
-Each set completion: `_doneSet(we)` → if more sets remain, starts the rest countdown; when rest ends, moves to the next set. When the last set of the last exercise is done, `_autoComplete()` is called → `_saveWorkoutLog()` → `FirestoreService.saveWorkoutLog()`.
+Each set runs as two sub-phases: **logging** (enter kg/reps, then tap **Start Set** — the "ready" gate) → **working** (`_startSet(we)` runs a per-set work timer of `WorkoutExercise.timePerSetSeconds`, sized to fit `sessionMinutes`; the user taps **Done** to end early, or the timer reaching 0 auto-advances). Either path calls `_finishSet(we)` → `_doneSet(we)`: if more sets remain, starts the rest countdown; when rest ends, moves to the next set (back to the logging sub-phase via `_setRunning=false`). When the last set of the last exercise is done, `_autoComplete()` is called → `_saveWorkoutLog()` → `FirestoreService.saveWorkoutLog()`.
 
 **Edit mode:**
 
 Toggle the "Edit session" button (visible before a workout starts). While editing:
+- The day's exercises render in a `ReorderableListView` (`_buildReorderableExerciseList`) with a **drag handle** (`ReorderableDragStartListener`) beside each card → `PlanProvider.reorderExercises` (persists immediately). Edit mode is force-exited at the top of `_startWorkout` so the list is unmounted before the session UI replaces it.
 - Each exercise card gets a **× delete button** (top-right corner) → `PlanProvider.removeExercise`.
 - An **"Edit params"** button (bottom-right) → opens a bottom sheet with ±steppers for sets and rest seconds, and a text field for reps/duration → `PlanProvider.updateExerciseParams`.
 - An **"Add exercise"** button at the bottom of the day → `_showExercisePicker()` — a `DraggableScrollableSheet` with a live **search bar** (filters by name/muscle) listing exercises for that day's muscle focus. The focus→muscle map is `GreedyAlgorithm.musclesForFocus` (single source of truth shared with the generator, ExerciseDB `targetMuscles` vocabulary — `pectorals`/`lats`/`delts`…). The picker filters by `_pickableByUser` (= `GreedyAlgorithm.isEligibleForUser` only — gender/location/equipment/bench), i.e. **without** the experience gate, so the user may add an above-tier move; each row shows a difficulty badge and an above-tier pick triggers an "Above your level — add anyway?" confirm. The automatic `_fillExerciseGap` / `_applyVolumeDebt` paths still use the strict `_usableByUser` (eligibility **+** `difficultyAllowed`) → `PlanProvider.addExercise`.
 - All edits call `PlanProvider.persistWorkoutPlan` immediately so they're durable.
 - **Live load tracking (progressive overload):** the active exercise card shows a working-weight + reps input (unit-aware via `UserProfile.unitSystem`), pre-hinted with the last logged top set ("Last: 60 kg × 8 · PR 70 kg") from `_exerciseStats`. Captured on each "Done Set"; on completion folded into `WorkoutLogExercise.weightKg/repsDone` and upserted to `exercise_stats` (`saveExerciseStat`), with a PR snackbar when a best is beaten. Non-active cards show a "Last/PR" caption.
 - **Progression prescription (`lib/algorithms/progression.dart`, pure Dart):** `nextTarget()` turns the last top set into a **double-progression** target (add a rep within the prescribed range; once the top of the range is hit, add weight — +5 kg compound/lower, +2.5 kg isolation, decided by `isStapleCompound` or a lower-body primary muscle). The active card shows a green **"Target: X × R"** line (↑ when load steps up) and the weight/reps inputs are **auto-pre-filled** with it (`_prefillTargetFor` on start / "I'm ready"); falls back to the plain prompt when there's no history or a timed rep prescription.
-- **Warm-ups (NSCA two-part, all `plans_screen.dart`; never logged/persisted):**
-  - **Compound-first ordering** — `GreedyAlgorithm._selectExercisesForDay` stable-sorts each day so `isStapleCompound` lifts lead (the lifts the ramp attaches to).
-  - **Specific warm-up (load ramp)** — shown on **every loadable compound** (`_needsLoadRamp`: `isStapleCompound` + equipment ∈ barbell/dumbbells/kettlebells/machine/cable). `progression.warmupRamp()` builds a 40/60/80% × 8/5/3 ramp (rounded to 2.5 kg) above the input on each compound's active card, set 1. Working weight comes from `_workingWeightKg` (progression target → `ExerciseStat` last → session-entered). On **Start**, `_promptWorkingWeights` shows one **skippable** dialog collecting working weights for all loadable compounds lacking history (→ `_sessionWorkingKg`); skipping = no ramps.
-  - **General warm-up phase (gated, `_buildGeneralWarmup`)** — pressing **Start Workout** sets `_sessionStarted` and enters a warm-up phase *before* the lifts; the exercise cards are shown but **locked/greyed** (`IgnorePointer` + 0.4 opacity) until the warm-up finishes/skips (`_warmupComplete`). The warm-up card has two states: an **intro** (`_buildWarmupIntro`) listing the moves with a **Start warm-up** button, and an **active** full-size card (`_buildActiveWarmupCard`) showing the current move's GIF + an **auto-advancing countdown** (`_warmupTimer`), with **Next move** / **Skip warm-up**. Moves are resolved by `_resolveWarmupMoves` from `UserProfile.workoutLocation`: **Home** = up to 3 bodyweight `category=='cardio'` moves (60 s each) with GIFs; **Gym** = one treadmill walk/run (240 s). `_finishWarmup` unlocks the lifts and starts the exercise flow (`_activeExerciseIndex=0`, `_prefillTargetFor(0)`). All warm-up state resets in `_resetWorkoutState`; never logged.
+- **Warm-up (general phase only, all `plans_screen.dart`; never logged/persisted):**
+  - **Compound-first ordering** — `GreedyAlgorithm._selectExercisesForDay` 3-tier stable-sorts each day: barbell/dumbbell big lifts (`_isHeavyCompound`, by `_bigLiftKeywords`) → bodyweight compounds (`isStapleCompound`) → isolations, so the big lifts always lead.
+  - **General warm-up phase (gated, `_buildGeneralWarmup`)** — pressing **Start Workout** sets `_sessionStarted` and enters a warm-up phase *before* the lifts; the exercise cards are shown but **locked/greyed** (`IgnorePointer` + 0.4 opacity) until the warm-up finishes/skips (`_warmupComplete`). The warm-up card has two states: an **intro** (`_buildWarmupIntro`) listing the moves with a **Start warm-up** button, and an **active** full-size card (`_buildActiveWarmupCard`) showing the current move's GIF + an **auto-advancing countdown** (`_warmupTimer`), with **Next move** / **Skip warm-up**. Moves are resolved by `_resolveWarmupMoves` — up to 3 bodyweight `category=='cardio'` moves (60 s each) with GIFs, the **same for Gym and Home**. `_finishWarmup` unlocks the lifts and starts the exercise flow (`_activeExerciseIndex=0`, `_prefillTargetFor(0)`). All warm-up state resets in `_resetWorkoutState`; never logged. (There is **no** per-compound load ramp / working-weight prompt — removed; the active card goes straight to the weight/reps input.)
   - **Expandable steps (`_buildStepsExpander`)** — each exercise card (active and non-active) shows a collapsed **"Steps"** toggle that expands the move's `instructions`; expansion state in `_expandedSteps` (keyed by exercise index), cleared on reset. Keeps cards compact.
 - **Pin anchor lifts:** a pin icon on each (non-active) exercise card toggles `UserProfile.pinnedExercises[focus]` via `ProfileProvider.save`; the generator force-includes pinned lifts first on that focus's days (survives regeneration).
 - **Post-workout rating:** finishing a workout opens a 1–5 perceived-difficulty sheet (`_askWorkoutRating`); stored on `WorkoutLog.rating` and averaged into next week's `AdaptationEngine` autoregulation.
@@ -290,10 +294,11 @@ Shows generated meal cards for Breakfast, Lunch, Dinner, Snack. Each card can be
 - **Viewed** in `RecipeScreen`.
 
 Meal generation flow (Genetic Algorithm — `_generateMeal` / `_generateAll`):
-1. `_allIngredients` is loaded once via `FirestoreService.getIngredients()` (reads the `ingredients` collection; seed it with the Profile → "Seed Ingredients" button, gated by `kShowSeedTools`). An empty pool surfaces a "not seeded" SnackBar.
-2. `_runGeneticPlan()` calls `GeneticAlgorithm().generatePlan(allIngredients, profile, cuisine: _cuisine)` and takes one optimized `DayMealPlan` (random day → variety on regenerate). The GA filters the pool by the selected cuisine (`any`/`filipino`/`western`/`asian`) + dietary restrictions and evolves ingredient combinations against a calorie/macro fitness function.
-3. The chosen slot's `Meal` is `scaleToCalories(_mealTargetCals(...))` and set as the pending meal; the card renders the ingredient list (name + grams + per-item kcal) and a macro summary row.
+1. `_allIngredients` is loaded once via `FirestoreService.getIngredients()` (reads the `ingredients` collection; seed it with the Profile → "Seed Ingredients" button, gated by `kShowSeedTools`, which also calls `clearIngredientCache()`). An empty pool surfaces a "not seeded" SnackBar.
+2. `_nextPlanDay({forceRegen})` calls `GeneticAlgorithm().generatePlan(allIngredients, profile, cuisine: _cuisine)` and **caches** the resulting 7-day plan (`_cachedPlan`, keyed on cuisine). `_generateAll()` forces a fresh GA run (`forceRegen: true`); a single-meal regen pulls the **next** day's slot from the cache (`_dayCursor`) for variety without re-evolving the population each tap. The GA filters the pool by cuisine + dietary restrictions (three kinds — see `GeneticAlgorithm` in CLAUDE.md) and evolves ingredient combos against a calorie/macro fitness function whose macro targets honour the selected diet style.
+3. The GA already normalizes each slot to its calorie-ratio share, so the slot's `Meal` is set as the pending meal directly (no second `scaleToCalories`); the card renders the ingredient list (name + grams + per-item kcal) and a macro summary row.
 4. `_generateAll()` runs the GA **once** and fills every not-already-logged slot from that single day so the day's macros are jointly optimized.
+5. **Fail-safe:** when the GA returns an empty plan (no ingredient satisfies the user's restrictions), `_nextPlanDay` returns `null` and `_showNoMatchMessage()` warns instead of fabricating meals. There is **no day selector** in the Meal tab — meals are always generated and logged for *today*.
 
 Calorie split: Breakfast 25%, Lunch 35%, Dinner 30%, Snack 10% of `profile.calorieGoal`.
 
@@ -543,7 +548,8 @@ allExercises
   │    gender-tagged variants (no "(male)" moves for Female users & vice versa)
   │    Gym → all equipment available (gym profiles store equipment: [])
   │    Home → must list 'home' + intersect user's equipment (bodyweight always OK)
-  │    Home bench rule → free-weight incline/decline/bench moves excluded
+  │    Home rack rule → barbell squat/bench-press need the 'Home Gym' (rack) chip
+  │    Home bench rule → free-weight incline/decline/bench moves need the 'Bench' chip
   ↓
 filtered exercises
   │
@@ -556,12 +562,15 @@ filtered exercises
        _selectExercisesForDay(filtered, targetMuscles, profile, muscleHitCount, count, difficultyBias)
          │  STRICT difficulty gate (static difficultyAllowed): Beginner → beginner
          │    only; Intermediate → beginner+intermediate; Advanced → all
+         │  HARD FOCUS POOL: primaryPool (primary muscle in targetMuscles) →
+         │    assistPool (focus as secondary mover) only to reach count; never
+         │    off-focus (shorter day instead) — fixes "wrist curl on Leg day"
          │  INCREMENTAL GREEDY: pick best → update day-local muscle hits →
          │    re-score → repeat (prevents one muscle sweeping a whole day)
          │  Per-muscle/day cap: ceil(count / targetMuscles.length), min 2
-         │  Score: focus +50, goal +15, exact-tier difficulty +10,
-         │         day-local muscle penalty −25/hit, weekly penalty −15/hit
-         └─ Wrap each in WorkoutExercise(sets, reps, restSeconds)
+         │  Score (orders WITHIN the focus pool): goal +15, staple-compound +12,
+         │         exact-tier +10, day-local penalty −25/hit, weekly −15/hit
+         └─ Wrap each in WorkoutExercise(sets, reps, restSeconds, timePerSetSeconds)
 ```
 
 **Volume decisions — all profile-driven:**
@@ -570,14 +579,26 @@ filtered exercises
 |---|---|
 | Training day positions (which of Mon–Sun) | `workoutDaysPerWeek` (evenly spaced) — **hard constraint, never reduced by adaptation** |
 | Focus per day | `workoutSplit` → cycles through split's sequence |
-| Exercises per day | `sessionMinutes` (30→3, 45→5, 60→6, 90→8) ± experience ± `recoveryScore`; −1 if `difficultyBias='down'` |
-| Sets | Goal + experience; −1 if `recoveryScore < 0.8`; ±1 for `difficultyBias` 'up'/'down' (clamped 2–6) |
-| Reps / duration | Goal + split style (HIIT/Circuit → timed; Muscle Gain → 8–12 heavy) |
-| Rest seconds | Goal + split style (HIIT → 30 s; Muscle Gain → 90 s) |
+| **Exercises per day** | **`sessionMinutes` (session-duration fit — Objective 4).** `_fitExerciseCount` picks the largest count whose `count*sets*work + (count*sets−1)*rest` fits `sessionMinutes*60 − 180 s` warm-up; capped at 6 (≤5 at ≥5 days/wk). Never schedules **over** target; NSCA-bounded volume that can't fill a long session undershoots (accepted). |
+| Sets | Goal + experience, **clamped to the goal's NSCA set range** (hypertrophy 3–5, endurance 2–3, general 2–4); −1 if `recoveryScore < 0.8`; ±1 for `difficultyBias` 'up'/'down' (re-clamped to range) |
+| Reps / duration | Goal + split style within NSCA rep ranges (hypertrophy 6–12, endurance ≥12; HIIT/Circuit → timed) |
+| Rest seconds | Goal + split style within NSCA rest ranges (HIIT → 30 s; endurance → 45 s; Muscle Gain → 90 s) |
+| Time per set (work timer) | `_estimateWorkSeconds(reps)` — ~3 s/rep + setup (timed moves use their value), clamped 30–75 s. The live per-set countdown only; **not** an NSCA loading parameter. |
 
-**`difficultyBias`** (from `AdaptationEngine`) — modulates per-day volume only; the user's selected training days are never added or removed:
-- `'up'` — +1 set per exercise (clamped ≤ 6).
-- `'down'` — −1 exercise per day and −1 set per exercise (clamped ≥ 2).
+**NSCA grounding** — every reps/sets/rest number follows the NSCA goal-loading table (Sheppard & Triplett, *Program Design for Resistance Training*, in **Essentials of Strength Training and Conditioning, 4th ed.**, Baechle & Earle):
+
+| App goal | NSCA category | Reps | Sets | Rest |
+|---|---|---|---|---|
+| Muscle Gain | Hypertrophy | 6–12 | 3–6 (capped 5) | 30 s–1.5 min |
+| Weight Loss / Endurance | Muscular endurance | ≥12 | 2–3 | ≤30 s (circuit, ~45 s) |
+| Strength + Conditioning | Strength/conditioning hybrid | ≤8 | 2–5 | up to ~2 min |
+| General / Maintenance | Hypertrophy–endurance blend | 8–15 | 2–4 | 30–90 s |
+
+Session duration is honored by **exercise count** (the Greedy selection lever); per-set loading stays inside these ranges and is never inflated to pad time.
+
+**`difficultyBias`** (from `AdaptationEngine`) — modulates **sets per exercise only** (re-clamped to the goal's NSCA set range); the exercise count is duration-driven, and the user's selected training days are never added or removed:
+- `'up'` — +1 set per exercise (within the NSCA range).
+- `'down'` — −1 set per exercise (within the NSCA range).
 - `'same'` — no change.
 
 **Serialisation:** `WorkoutDay.toMap()`/`fromMap()` and `WorkoutExercise.toMap()`/`fromMap()` — used for Firestore persistence.
@@ -653,10 +674,10 @@ Reads the pre-seeded `ingredients` Firestore collection and maps each doc to `Me
 |---|---|---|
 | `activityLevel` | String | `activityMultiplier` → `tdee` → `calorieGoal` → `macroGoals` |
 | `workoutDaysPerWeek` | int | `GreedyAlgorithm` schedule + `ProgressProvider` completion denominator |
-| `sessionMinutes` | int | `_exercisesPerDay` in `GreedyAlgorithm` |
+| `sessionMinutes` | int | `_fitExerciseCount` (exercise-count session-duration fit) in `GreedyAlgorithm` |
 | `workoutSplit` | String | `_getSchedule` focus cycle + reps/rest style |
-| `avgHoursSlept` | double | `recoveryScore` → volume/sets reduction; `AdaptationEngine` difficulty gate |
-| `recoveryScore` | double (getter) | `< 0.8` → −1 exercise/day, −1 set |
+| `avgHoursSlept` | double | `recoveryScore` → sets reduction; `AdaptationEngine` difficulty gate |
+| `recoveryScore` | double (getter) | `< 0.8` → −1 set (within NSCA range) |
 | `activityMultiplier` | double (getter) | Maps `activityLevel` to Harris-Benedict multiplier |
 | `weight` | double (kg) | BMR → TDEE → `calorieGoal` → `macroGoals`, and BMI; synced by `ProfileProvider.updateWeight` when a weight is logged |
 | `calorieAdjustment` | int | Added to the goal-derived base in `calorieGoal` (then clamped to 1200 floor); fed by `AdaptationEngine.calorieBiasKcal`, clamped to ±500 |

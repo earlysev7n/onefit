@@ -21,7 +21,10 @@ class ExerciseDBService {
   ///      so every cached exercise has a working demo animation.
   /// v6 = drop auto-generated junk exercise names (style-prefix / 'gentle' /
   ///      dangling "with ADJECTIVE") so the catalog reads professionally.
-  static const _cacheVersion = 6;
+  /// v7 = re-infer locations: barbell is no longer gym-only (home users can own
+  ///      a barbell), so barbell/ez-barbell moves become ['home','gym'] and are
+  ///      gated by the user's equipment instead. Cached docs must be re-labeled.
+  static const _cacheVersion = 7;
 
   final _db = FirebaseFirestore.instance;
 
@@ -282,6 +285,7 @@ class ExerciseDBService {
       'body weight': 'Bodyweight',
       'dumbbell': 'Dumbbells',
       'barbell': 'Barbell',
+      'ez barbell': 'Barbell',
       'kettlebell': 'Kettlebells',
       'resistance band': 'Resistance Bands',
       'pull-up bar': 'Pull-up Bar',
@@ -315,9 +319,12 @@ class ExerciseDBService {
     return goals.toSet().toList();
   }
 
-  // Infers home/gym from equipment
+  // Infers home/gym from equipment. Barbell is intentionally NOT gym-only:
+  // home users can own a barbell, so barbell/ez-barbell moves stay home-eligible
+  // and are gated by the user's equipment chips (and rack) in
+  // GreedyAlgorithm.isEligibleForUser. Only fixed-station gym kit is gym-only.
   List<String> _inferLocations(List<String> raw) {
-    final gymOnly = {'barbell', 'cable', 'machine', 'assisted', 'smith machine', 'leverage machine'};
+    final gymOnly = {'cable', 'machine', 'assisted', 'smith machine', 'leverage machine'};
     final hasGymEquip = raw.any((e) => gymOnly.contains(e.toLowerCase()));
     return hasGymEquip ? ['gym'] : ['home', 'gym'];
   }

@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/profile_provider.dart';
 import '../services/auth_service.dart';
+import '../services/firestore_service.dart';
 import '../data/seed_data.dart';
 import 'login_screen.dart';
 import 'profile_input_screen.dart';
@@ -308,6 +309,9 @@ class ProfileScreen extends StatelessWidget {
                     ));
                     try {
                       await SeedData.seedIngredients();
+                      // Drop the in-memory cache so the freshly seeded fields
+                      // (allergens / category) load on the next read.
+                      FirestoreService.clearIngredientCache();
                       messenger.hideCurrentSnackBar();
                       messenger.showSnackBar(const SnackBar(
                         content: Text('Ingredients seeded ✓'),

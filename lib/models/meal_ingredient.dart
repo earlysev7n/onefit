@@ -11,6 +11,16 @@ class MealIngredient {
   final List<String> dietaryTags;
   final String cuisine;
 
+  /// Allergen flags used for exclusion-based restrictions (e.g. `dairy`,
+  /// `nuts`). An ingredient is rejected when the user's restriction maps to an
+  /// allergen present here. Empty by default for backward-compatible reads.
+  final List<String> allergens;
+
+  /// Coarse food group used to classify the meal pools robustly instead of
+  /// matching ingredient names. One of: protein, dairy, grain, legume,
+  /// vegetable, fruit, fat, condiment. Defaults to `other`.
+  final String category;
+
   MealIngredient({
     required this.id,
     required this.name,
@@ -23,6 +33,8 @@ class MealIngredient {
     required this.sodium,
     required this.dietaryTags,
     required this.cuisine,
+    this.allergens = const [],
+    this.category = 'other',
   });
 
   double caloriesFor(double grams) => (calories * grams) / 100;
@@ -44,6 +56,8 @@ class MealIngredient {
       sodium: (map['sodium'] ?? 0).toDouble(),
       dietaryTags: List<String>.from(map['dietaryTags'] ?? []),
       cuisine: map['cuisine'] ?? 'universal',
+      allergens: List<String>.from(map['allergens'] ?? []),
+      category: map['category'] ?? 'other',
     );
   }
 
@@ -59,6 +73,8 @@ class MealIngredient {
     'sodium': sodium,
     'dietaryTags': dietaryTags,
     'cuisine': cuisine,
+    'allergens': allergens,
+    'category': category,
   };
 }
 

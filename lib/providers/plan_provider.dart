@@ -118,6 +118,7 @@ class PlanProvider extends ChangeNotifier {
       sets: sets ?? old.sets,
       reps: reps ?? old.reps,
       restSeconds: restSeconds ?? old.restSeconds,
+      timePerSetSeconds: old.timePerSetSeconds,
     );
     _workoutPlan[dayIdx] = WorkoutDay(
       dayName: day.dayName,
@@ -168,6 +169,31 @@ class PlanProvider extends ChangeNotifier {
     await persistWorkoutPlan(userId, weekId);
   }
 
+  Future<void> reorderExercises(
+    String userId,
+    String weekId,
+    int dayIdx,
+    int oldIndex,
+    int newIndex,
+  ) async {
+    if (dayIdx >= _workoutPlan.length) return;
+    final day = _workoutPlan[dayIdx];
+    if (oldIndex >= day.exercises.length) return;
+    final updated = List<WorkoutExercise>.from(day.exercises);
+    // ReorderableListView passes newIndex before removal; adjust to post-removal.
+    if (newIndex > oldIndex) newIndex--;
+    final item = updated.removeAt(oldIndex);
+    updated.insert(newIndex, item);
+    _workoutPlan[dayIdx] = WorkoutDay(
+      dayName: day.dayName,
+      focus: day.focus,
+      isRest: day.isRest,
+      exercises: updated,
+    );
+    notifyListeners();
+    await persistWorkoutPlan(userId, weekId);
+  }
+
   Future<void> updateExerciseParams(
     String userId,
     String weekId,
@@ -187,6 +213,7 @@ class PlanProvider extends ChangeNotifier {
       sets: sets ?? old.sets,
       reps: reps ?? old.reps,
       restSeconds: restSeconds ?? old.restSeconds,
+      timePerSetSeconds: old.timePerSetSeconds,
     );
     _workoutPlan[dayIdx] = WorkoutDay(
       dayName: day.dayName,
