@@ -20,6 +20,8 @@ class AdaptationEngine {
     required String currentExperienceLevel, // 'Beginner'|'Intermediate'|'Advanced'
     double avgHoursSlept = 7.0, // user's reported average nightly sleep
     double? lastWeekAvgRating, // avg perceived difficulty 1 (too easy) – 5 (too hard)
+    double? weightChangeKg, // last week's net weight change (kg); + gain / − loss; null if <2 weigh-ins
+    String fitnessGoal = 'General Fitness',
   }) {
     int calorieBias = 0;
     String difficultyBias = 'same';
@@ -32,6 +34,37 @@ class AdaptationEngine {
     } else if (lastWeekCalorieAdherence > 110) {
       calorieBias = -100;
       notes.add('Calorie target nudged −100 kcal — you were over target last week.');
+    }
+
+    // ── Weight-trend modifier (outcome signal, non-stacking) ────────────────
+    // Only fires when adherence didn't already move calories, so the two
+    // calorie signals never fight. Needs a real weekly delta (>=2 weigh-ins).
+    if (calorieBias == 0 && weightChangeKg != null) {
+      const flat = 0.1; // within ±0.1 kg ≈ no real change this week
+      const fastLoss = -1.0; // losing faster than this is too aggressive
+      const fastGain = 0.75; // gaining faster than this adds excess fat
+      if (fitnessGoal == 'Weight Loss') {
+        if (weightChangeKg > -flat) {
+          // not losing
+          calorieBias = -100;
+          notes.add('Calorie target nudged −100 kcal — weight held steady last week despite a fat-loss goal.');
+        } else if (weightChangeKg < fastLoss) {
+          // losing too fast
+          calorieBias = 100;
+          notes.add('Calorie target nudged +100 kcal — you lost weight quickly last week; easing the deficit protects muscle.');
+        }
+      } else if (fitnessGoal == 'Muscle Gain') {
+        if (weightChangeKg < flat) {
+          // not gaining
+          calorieBias = 100;
+          notes.add('Calorie target nudged +100 kcal — weight stalled last week despite a muscle-gain goal.');
+        } else if (weightChangeKg > fastGain) {
+          // gaining too fast
+          calorieBias = -100;
+          notes.add('Calorie target nudged −100 kcal — you gained quickly last week; trimming keeps the gain lean.');
+        }
+      }
+      // 'Endurance' / 'General Fitness' are maintenance — no weight action.
     }
 
     // ── Difficulty step — struggling wins, sleep only blocks the step-up ────

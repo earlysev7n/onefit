@@ -79,6 +79,8 @@ class GreedyAlgorithm {
   // overhead press (cleaned), hip thrust, RDL — is NOT here, so it stays
   // eligible on a bare 'Barbell' chip without a rack.
   static final _rackTag = RegExp(r'\b(squat|bench press)\b');
+  // Pull-up/chin-up moves are bodyweight-powered but still need a bar.
+  static final _pullupTag = RegExp(r'\b(pull.?up|chin.?up)\b', caseSensitive: false);
   static const _freeWeights = {
     'dumbbells',
     'barbell',
@@ -117,7 +119,15 @@ class GreedyAlgorithm {
     // bodyweight-only home user always has a usable pool.
     final exEquip = e.equipment.map((x) => x.toLowerCase()).toList();
     final isBodyweight = exEquip.contains('bodyweight');
-    if (isBodyweight) return true;
+    if (isBodyweight) {
+      // Pull-up/chin-up moves are bodyweight-powered but still need a bar;
+      // gate them on the 'Pull-up Bar' chip exactly like _rackTag / _benchTag.
+      if (_pullupTag.hasMatch(name)) {
+        final hasBar = p.equipment.any((x) => x.toLowerCase() == 'pull-up bar');
+        if (!hasBar) return false;
+      }
+      return true;
+    }
 
     final userEquip = p.equipment.map((x) => x.toLowerCase()).toSet();
     final hasBarbell = userEquip.contains('barbell'); // chip covers ez barbell

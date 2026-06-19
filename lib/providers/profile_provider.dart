@@ -52,9 +52,15 @@ class ProfileProvider extends ChangeNotifier {
 
   /// Applies the weekly [AdaptationEngine] calorie bias on top of the existing
   /// accumulated adjustment, clamped to ±500 kcal to prevent week-over-week drift.
-  Future<void> applyCalorieAdjustment(int weeklyBiasKcal) async {
+  Future<void> applyCalorieAdjustment(
+    int weeklyBiasKcal, {
+    String? markWeekId,
+  }) async {
     if (_profile == null) return;
     final next = (_profile!.calorieAdjustment + weeklyBiasKcal).clamp(-500, 500);
-    await save(_profile!.copyWith(calorieAdjustment: next));
+    await save(_profile!.copyWith(
+      calorieAdjustment: next,
+      lastAdaptationWeekId: markWeekId ?? _profile!.lastAdaptationWeekId,
+    ));
   }
 }

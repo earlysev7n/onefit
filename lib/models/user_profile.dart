@@ -26,6 +26,12 @@ class UserProfile {
   /// week and by manual edits. Clamped to ±500 by the provider to prevent drift.
   final int calorieAdjustment;
 
+  /// The `weekId` (e.g. `week_2026_25`) of the last week the [AdaptationEngine]
+  /// adapted this profile. Guards the weekly calorie nudge so it applies once
+  /// per week even when the plan is force-regenerated (which deletes the plan
+  /// doc and re-enters the fresh-generation branch). Empty until first adapted.
+  final String lastAdaptationWeekId;
+
   /// Anchor lifts the user wants guaranteed in a given day focus, keyed by the
   /// split focus name (e.g. "Upper Body" → ["<exerciseId>"]). The generator
   /// force-includes these first (still gated by eligibility) so a key lift like
@@ -52,6 +58,7 @@ class UserProfile {
     this.workoutSplit = 'Full Body Training',
     this.avgHoursSlept = 7.0,
     this.calorieAdjustment = 0,
+    this.lastAdaptationWeekId = '',
     this.pinnedExercises = const {},
   });
 
@@ -201,6 +208,7 @@ class UserProfile {
       workoutSplit: map['workoutSplit'] ?? 'Full Body Training',
       avgHoursSlept: (map['avgHoursSlept'] ?? 7.0).toDouble(),
       calorieAdjustment: map['calorieAdjustment'] ?? 0,
+      lastAdaptationWeekId: map['lastAdaptationWeekId'] ?? '',
       pinnedExercises: (map['pinnedExercises'] as Map?)?.map(
             (k, v) => MapEntry(k as String, List<String>.from(v ?? const [])),
           ) ??
@@ -228,6 +236,7 @@ class UserProfile {
       'workoutSplit': workoutSplit,
       'avgHoursSlept': avgHoursSlept,
       'calorieAdjustment': calorieAdjustment,
+      'lastAdaptationWeekId': lastAdaptationWeekId,
       'pinnedExercises': pinnedExercises,
     };
   }
@@ -251,6 +260,7 @@ class UserProfile {
     String? workoutSplit,
     double? avgHoursSlept,
     int? calorieAdjustment,
+    String? lastAdaptationWeekId,
     Map<String, List<String>>? pinnedExercises,
   }) {
     return UserProfile(
@@ -272,6 +282,7 @@ class UserProfile {
       workoutSplit: workoutSplit ?? this.workoutSplit,
       avgHoursSlept: avgHoursSlept ?? this.avgHoursSlept,
       calorieAdjustment: calorieAdjustment ?? this.calorieAdjustment,
+      lastAdaptationWeekId: lastAdaptationWeekId ?? this.lastAdaptationWeekId,
       pinnedExercises: pinnedExercises ?? this.pinnedExercises,
     );
   }

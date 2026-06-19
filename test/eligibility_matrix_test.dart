@@ -109,6 +109,15 @@ final cableRow = _ex(
   difficulty: 'intermediate',
   primary: const ['lats'],
 );
+// ExerciseDB tags pull-up moves with 'body weight' (the resistance source),
+// normalized to 'Bodyweight'. The exercise still needs a physical bar.
+final pullupBwTagged = _ex(
+  name: 'Pull Up (neutral Grip)',
+  equipment: const ['Bodyweight'], // ← how ExerciseDB actually tags it
+  locations: const ['home', 'gym'],
+  difficulty: 'intermediate',
+  primary: const ['lats'],
+);
 // API mis-tag: has 'pull-up bar' equipment but is a cable machine exercise.
 final inverseLegCurl = _ex(
   name: 'Inverse Leg Curl (on Pull-up Cable Machine)',
@@ -181,6 +190,17 @@ void main() {
       expectEligible(pullup, withPullupBar, true);
       expectEligible(pullup, withDumbbells, false);
       expectEligible(pullup, homeGymFull, true);
+    });
+
+    test('Pull-up tagged Bodyweight by API still needs Pull-up Bar chip', () {
+      // ExerciseDB returns equipment:"body weight" for pull-ups (the resistance
+      // source). After normalisation that's 'Bodyweight', which previously
+      // short-circuited the equipment gate and let pull-ups slip through for
+      // Bodyweight-only users. _pullupTag closes this gap.
+      expectEligible(pullupBwTagged, bwOnly, false);
+      expectEligible(pullupBwTagged, withPullupBar, true);
+      expectEligible(pullupBwTagged, withDumbbells, false);
+      expectEligible(pullupBwTagged, homeGymFull, true);
     });
 
     test('Barbell deadlift (no rack) needs only Barbell', () {

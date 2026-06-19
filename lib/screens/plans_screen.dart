@@ -11,6 +11,7 @@ import '../services/firestore_service.dart';
 import '../services/exercise_db_service.dart';
 import '../models/workout_log.dart';
 import '../models/exercise_stat.dart';
+import '../models/weight_log.dart';
 import '../algorithms/adaptation_engine.dart';
 import '../algorithms/progression.dart';
 import 'recipe_screen.dart';
@@ -169,7 +170,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
   // ── Warm-up phase ──────────────────────────────────────────────────────────
   // The session enters a gated warm-up phase before the exercise flow: exercises
   // stay locked/greyed until the warm-up finishes or is skipped.
-  bool _sessionStarted = false; // Start Workout pressed (covers warm-up + lifts)
+  bool _sessionStarted =
+      false; // Start Workout pressed (covers warm-up + lifts)
   bool _warmupComplete = false; // warm-up done/skipped → exercises unlocked
   bool _warmupRunning = false; // a warm-up move is actively counting down
   int _activeWarmupIndex = -1;
@@ -408,6 +410,19 @@ class _WorkoutTabState extends State<_WorkoutTab>
           await fs.loadWeeklyWorkoutPlan(uid, lastWeekId) != null;
       final hasHistory = hadLastWeekPlan || lastWeekWorkouts > 0;
 
+      // Weight-trend signal — net change across last week's weigh-ins.
+      final weightLogsRaw = await fs.getWeightLogs(uid);
+      final lastWeekWeights = weightLogsRaw
+          .map((m) => WeightLog.fromMap(m, ''))
+          .where((w) =>
+              !w.date.isBefore(weekStart) &&
+              w.date.isBefore(weekStart.add(const Duration(days: 7))))
+          .toList()
+        ..sort((a, b) => a.date.compareTo(b.date));
+      final weightChangeKg = lastWeekWeights.length >= 2
+          ? lastWeekWeights.last.weight - lastWeekWeights.first.weight
+          : null; // <2 weigh-ins → no weight signal
+
       // Use real planned days from profile for the completion denominator
       final plannedDays = profile.workoutDaysPerWeek;
       final adaptation = hasHistory
@@ -424,6 +439,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
               currentExperienceLevel: profile.experienceLevel,
               avgHoursSlept: profile.avgHoursSlept,
               lastWeekAvgRating: lastWeekAvgRating,
+              weightChangeKg: weightChangeKg,
+              fitnessGoal: profile.fitnessGoal,
             )
           : const AdaptationResult(
               calorieBiasKcal: 0,
@@ -442,12 +459,17 @@ class _WorkoutTabState extends State<_WorkoutTab>
       await planProvider.persistWorkoutPlan(uid, weekId);
 
       // Feed the weekly calorie bias back into the profile so the calorie goal
-      // adapts week-over-week (clamped to ±500 by the provider). Applied only
-      // after the plan is durably persisted — the persisted-plan branch above
-      // returns early on future loads, so this runs at most once per weekId.
-      if (adaptation.calorieBiasKcal != 0 && mounted) {
+      // adapts week-over-week (clamped to ±500 by the provider). Guarded by an
+      // explicit per-week stamp so it adapts ONCE per weekId even across force-
+      // regenerations (force-regenerate deletes the plan doc and re-enters this
+      // branch, which would otherwise re-add the bias and stack the drift).
+      // Difficulty is recomputed every time but is idempotent on identical
+      // last-week data, so a regenerated plan keeps the same difficulty.
+      final alreadyAdaptedThisWeek = profile.lastAdaptationWeekId == weekId;
+      if (hasHistory && !alreadyAdaptedThisWeek && mounted) {
         await context.read<ProfileProvider>().applyCalorieAdjustment(
           adaptation.calorieBiasKcal,
+          markWeekId: weekId,
         );
       }
 
@@ -468,6 +490,24 @@ class _WorkoutTabState extends State<_WorkoutTab>
         _weekDone = {for (final l in weekLogs) l.dayName: true};
       });
       _loadExerciseStats();
+
+      // Surface the weekly adaptation reasoning — once per week, on the first
+      // generation only (silent on subsequent force-regenerations).
+      if (mounted && !alreadyAdaptedThisWeek && adaptation.notes.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              adaptation.notes,
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: const Color(0xFF1A1A1A),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 6),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -547,8 +587,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
       return;
     }
     final w = _fromKg(target.weightKg);
-    _weightController.text =
-        w % 1 == 0 ? w.toStringAsFixed(0) : w.toStringAsFixed(1);
+    _weightController.text = w % 1 == 0
+        ? w.toStringAsFixed(0)
+        : w.toStringAsFixed(1);
     _repsController.text = target.reps.toString();
   }
 
@@ -763,19 +804,21 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
   /// Resolves the session's warm-up moves from the cache (NSCA general warm-up):
   /// up to 3 bodyweight cardio moves (~1 min each), the same for Gym and Home.
-  List<({Exercise? exercise, String label, int seconds})> _resolveWarmupMoves() {
+  List<({Exercise? exercise, String label, int seconds})>
+  _resolveWarmupMoves() {
     final cardio = _allExercises
         .where((e) => e.category.toLowerCase() == 'cardio')
         .toList();
     // Both Gym and Home get the same bodyweight dynamic warm-up.
-    final bodyweight = cardio
-        .where(
-          (e) =>
-              e.equipment.isEmpty ||
-              e.equipment.any((q) => q.toLowerCase() == 'bodyweight'),
-        )
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+    final bodyweight =
+        cardio
+            .where(
+              (e) =>
+                  e.equipment.isEmpty ||
+                  e.equipment.any((q) => q.toLowerCase() == 'bodyweight'),
+            )
+            .toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
     return [
       for (final e in bodyweight.take(3))
         (exercise: e, label: e.name, seconds: 60),
@@ -894,11 +937,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
           ),
           const SizedBox(height: 10),
           for (final m in _warmupMoves)
-            _warmupMoveRow(
-              m.exercise,
-              m.label,
-              _fmtWarmupDuration(m.seconds),
-            ),
+            _warmupMoveRow(m.exercise, m.label, _fmtWarmupDuration(m.seconds)),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -1755,9 +1794,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           'Above your level',
           style: GoogleFonts.spaceGrotesk(
@@ -1768,7 +1805,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
         content: Text(
           '"${e.name}" is rated ${e.difficulty}, above your '
           '$level level. Make sure you can perform it safely — add it anyway?',
-          style: GoogleFonts.inter(color: const Color(0xFFBBBBBB), fontSize: 14),
+          style: GoogleFonts.inter(
+            color: const Color(0xFFBBBBBB),
+            fontSize: 14,
+          ),
         ),
         actions: [
           TextButton(
@@ -1805,7 +1845,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
   ) {
     bool eligible(Exercise e) =>
         GreedyAlgorithm.isEligibleForUser(e, profile) &&
-        GreedyAlgorithm.difficultyAllowed(e.difficulty, profile.experienceLevel);
+        GreedyAlgorithm.difficultyAllowed(
+          e.difficulty,
+          profile.experienceLevel,
+        );
 
     bool changed = false;
     final newPlan = <WorkoutDay>[];
@@ -1997,7 +2040,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 border: Border.all(color: const Color(0xFF333333)),
               ),
               child: Text(
-                'Edit params',
+                'Edit',
                 style: GoogleFonts.inter(
                   fontSize: 11,
                   color: const Color(0xFF00C97B),
@@ -2317,8 +2360,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 ? relevant
                 : relevant.where((e) {
                     if (e.name.toLowerCase().contains(query)) return true;
-                    return e.primaryMuscles
-                        .any((m) => m.toLowerCase().contains(query));
+                    return e.primaryMuscles.any(
+                      (m) => m.toLowerCase().contains(query),
+                    );
                   }).toList();
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2357,9 +2401,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                                 Icons.close,
                                 color: Color(0xFF888888),
                               ),
-                              onPressed: () => setSheetState(
-                                () => searchController.clear(),
-                              ),
+                              onPressed: () =>
+                                  setSheetState(() => searchController.clear()),
                             ),
                       filled: true,
                       fillColor: const Color(0xFF0D0D0D),
@@ -2374,9 +2417,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: Color(0xFF00C97B),
-                        ),
+                        borderSide: const BorderSide(color: Color(0xFF00C97B)),
                       ),
                     ),
                   ),
@@ -2399,66 +2440,66 @@ class _WorkoutTabState extends State<_WorkoutTab>
                             final ex = filtered[i];
                             final aboveTier = _isAboveUserTier(ex);
                             return ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          title: Text(
-                            ex.name,
-                            style: GoogleFonts.inter(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          subtitle: Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  ex.primaryMuscles.join(', '),
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.inter(
-                                    color: const Color(0xFF888888),
-                                    fontSize: 12,
-                                  ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              title: Text(
+                                ex.name,
+                                style: GoogleFonts.inter(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
-                              if (ex.difficulty.isNotEmpty) ...[
-                                const SizedBox(width: 8),
-                                _difficultyBadge(ex.difficulty, aboveTier),
-                              ],
-                            ],
-                          ),
-                          trailing: const Icon(
-                            Icons.add_circle_outline,
-                            color: Color(0xFF00C97B),
-                          ),
-                          onTap: () async {
-                            Navigator.pop(ctx);
-                            if (aboveTier) {
-                              final ok = await _confirmAboveTier(ex);
-                              if (ok != true) return;
-                            }
-                            final we = WorkoutExercise(
-                              exercise: ex,
-                              sets: 3,
-                              reps: '10-12',
-                              restSeconds: 60,
-                            );
-                            await planProvider.addExercise(
-                              uid,
-                              _currentWeekId,
-                              _selectedDay,
-                              we,
-                            );
-                            if (!mounted) return;
-                            setState(
-                              () => _plan = planProvider.workoutPlan,
+                              subtitle: Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      ex.primaryMuscles.join(', '),
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.inter(
+                                        color: const Color(0xFF888888),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  if (ex.difficulty.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    _difficultyBadge(ex.difficulty, aboveTier),
+                                  ],
+                                ],
+                              ),
+                              trailing: const Icon(
+                                Icons.add_circle_outline,
+                                color: Color(0xFF00C97B),
+                              ),
+                              onTap: () async {
+                                Navigator.pop(ctx);
+                                if (aboveTier) {
+                                  final ok = await _confirmAboveTier(ex);
+                                  if (ok != true) return;
+                                }
+                                final we = WorkoutExercise(
+                                  exercise: ex,
+                                  sets: 3,
+                                  reps: '10-12',
+                                  restSeconds: 60,
+                                );
+                                await planProvider.addExercise(
+                                  uid,
+                                  _currentWeekId,
+                                  _selectedDay,
+                                  we,
+                                );
+                                if (!mounted) return;
+                                setState(
+                                  () => _plan = planProvider.workoutPlan,
+                                );
+                              },
                             );
                           },
-                        );
-                      },
-                    ),
-            ),
+                        ),
+                ),
               ],
             );
           },
@@ -2530,7 +2571,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
               );
 
         exerciseCards.add(
-          Container(key: needsKey ? _activeKey : ValueKey('ex_$i'), child: card),
+          Container(
+            key: needsKey ? _activeKey : ValueKey('ex_$i'),
+            child: card,
+          ),
         );
       }
     }
@@ -3239,8 +3283,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
                     child: LinearProgressIndicator(
                       value: _setTotal > 0 ? _setRemaining / _setTotal : 0,
                       backgroundColor: const Color(0xFF2E2E2E),
-                      valueColor:
-                          const AlwaysStoppedAnimation(Color(0xFF00C97B)),
+                      valueColor: const AlwaysStoppedAnimation(
+                        Color(0xFF00C97B),
+                      ),
                       minHeight: 6,
                     ),
                   ),
