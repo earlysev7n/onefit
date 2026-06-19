@@ -81,4 +81,104 @@ void main() {
       expect(r.calorieBiasKcal, 100);
     });
   });
+
+  // ── W4: over-target but successfully losing → don't cut further ────────────
+  group('W4 over-target weight-loss guard', () {
+    test('over target + Weight Loss + real loss → no cut (held)', () {
+      final r = run(
+        adherence: 120, // > 110 → would normally set −100
+        weightChangeKg: -0.5, // actually losing
+        fitnessGoal: 'Weight Loss',
+      );
+      expect(r.calorieBiasKcal, 0);
+    });
+
+    test('over target + Weight Loss + not losing → still cut −100', () {
+      final r = run(
+        adherence: 120,
+        weightChangeKg: 0.0, // not losing
+        fitnessGoal: 'Weight Loss',
+      );
+      expect(r.calorieBiasKcal, -100);
+    });
+
+    test('over target + non-loss goal → still cut −100', () {
+      final r = run(
+        adherence: 120,
+        weightChangeKg: -0.5,
+        fitnessGoal: 'General Fitness',
+      );
+      expect(r.calorieBiasKcal, -100);
+    });
+  });
+
+  // ── Difficulty / RPE branches (W1, W3) ────────────────────────────────────
+  AdaptationResult diff({
+    double completion = 0.7,
+    double avgHoursSlept = 7.0,
+    double? rating,
+    String level = 'Intermediate',
+  }) =>
+      engine.compute(
+        lastWeekCalorieAdherence: 100, // neutral
+        lastWeekWorkoutCompletion: completion,
+        currentExperienceLevel: level,
+        avgHoursSlept: avgHoursSlept,
+        lastWeekAvgRating: rating,
+      );
+
+  group('W1 too-hard feedback eases volume', () {
+    test('completing fine but rated hard → down', () {
+      expect(diff(completion: 0.6, rating: 4.5).difficultyBias, 'down');
+    });
+
+    test('high completion + hard → held same (not down)', () {
+      // 0.9 completion would step up; a hard rating holds it steady.
+      expect(diff(completion: 0.9, rating: 4.0).difficultyBias, 'same');
+    });
+
+    test('sleep-deprived + hard → stays same (sleep hold, not down)', () {
+      expect(
+        diff(completion: 0.6, rating: 4.5, avgHoursSlept: 5.0).difficultyBias,
+        'same',
+      );
+    });
+
+    test('struggling + hard → stays down', () {
+      expect(diff(completion: 0.3, rating: 5.0).difficultyBias, 'down');
+    });
+  });
+
+  group('W3 easy-rating up-gate tightened to 0.7', () {
+    test('partial-skipper (0.6) rated easy → NOT bumped up', () {
+      expect(diff(completion: 0.6, rating: 1.5).difficultyBias, 'same');
+    });
+
+    test('adhered (0.75) rated easy → bumped up', () {
+      expect(diff(completion: 0.75, rating: 1.5).difficultyBias, 'up');
+    });
+  });
+
+  // ── N1: protein shortfall note ────────────────────────────────────────────
+  group('N1 low-protein note', () {
+    test('calories met but protein low → note emitted', () {
+      final r = engine.compute(
+        lastWeekCalorieAdherence: 100,
+        lastWeekWorkoutCompletion: 0.7,
+        currentExperienceLevel: 'Intermediate',
+        lastWeekProteinAdherence: 60,
+      );
+      expect(r.notes.toLowerCase(), contains('protein'));
+    });
+
+    test('protein adherence null → no protein note', () {
+      final r = engine.compute(
+        lastWeekCalorieAdherence: 100,
+        lastWeekWorkoutCompletion: 0.7,
+        currentExperienceLevel: 'Intermediate',
+        lastWeekProteinAdherence: null,
+      );
+      expect(r.notes.toLowerCase(), isNot(contains('protein')));
+    });
+  });
 }

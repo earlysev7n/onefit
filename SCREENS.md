@@ -338,6 +338,7 @@ Calorie split: Breakfast 25%, Lunch 35%, Dinner 30%, Snack 10% of `profile.calor
 | Widget | What it shows |
 |---|---|
 | `_TodaySnapshot` | Calorie ring + protein bar for today |
+| `_WeeklyReportCard` | Entry point (NEW badge) → `WeeklyReviewScreen` (Weekly Adaptive Report). No data of its own |
 | `_WeeklyAchievements` | Workout streak, calorie adherence %, protein consistency %, weekly completion |
 | `_CalorieTrendChart` | `fl_chart` `BarChart` of daily calories Mon–Sun vs goal line |
 | `_MacroTrendChart` | Stacked bar chart of protein/carbs/fat per day |
@@ -390,6 +391,25 @@ Calorie split: Breakfast 25%, Lunch 35%, Dinner 30%, Snack 10% of `profile.calor
 ---
 
 ## 9. Supporting Screens
+
+### WeeklyReviewScreen — Weekly Adaptive Report
+**File:** `lib/screens/weekly_review_screen.dart`
+
+**Purpose:** Surfaces the weekly adaptation the engine already computes — what changed in the plan and why — plus a history of past weeks. Reads `WeeklySummary` snapshots from `users/{uid}/weekly_summaries/{weekId}` (self-contained, like PlansScreen; no provider).
+
+**Reached from:** the Progress-screen `_WeeklyReportCard`, and the post-generation **"Weekly plan updated based on your progress"** snackbar's *View Summary* action (`plans_screen.dart`). The snackbar (once per week, with a ✕ close icon) replaced the old raw adaptation-notes snackbar.
+
+**Load:** `initState` runs `FirestoreService.getWeeklySummary(uid, weekIdFor(appNow()))` (current week) + `getWeeklySummaries(uid)` (history) in parallel.
+
+**Tabs (TabController):**
+- **Current Week** — `_SummaryDetailView` for this week's summary, else an empty state ("No adaptive report yet — adapts at the start of each week once you have history").
+- **History** — `ListView` of past summaries (newest first), each row = date range + `Week N` + colored `adjustmentBadge` chip; tap → `_HistoryDetailScreen` reusing `_SummaryDetailView`. Empty state until weeks accumulate (no backfill).
+
+**`_SummaryDetailView` (shared body):** header "Week of {range}" (+ Current Week chip); **Performance Summary** (Calories %, Protein %, Workouts done/planned, Workout Feedback avg as emoji+Easy/Moderate/Hard — all from the *reviewed* prior week); **AI Adjustments** (Calories ±/new target, then **derived** Protein/Carbs/Fat ±/new targets only when calories moved, Workout Intensity Increased/Reduced/Maintained — intensity only flagged a change when `volumeChanged`); **Why These Changes?** = the summary `notes`.
+
+**Honest-data notes:** macros are derived from the calorie goal (engine tunes calories only), so the "Increased Protein" badge from the mockup is intentionally absent. Framing is "last week reviewed → change active this week," matching when the engine actually runs.
+
+---
 
 ### FoodLogScreen
 **File:** `lib/screens/food_log_screen.dart`

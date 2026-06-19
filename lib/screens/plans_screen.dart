@@ -12,10 +12,12 @@ import '../services/exercise_db_service.dart';
 import '../models/workout_log.dart';
 import '../models/exercise_stat.dart';
 import '../models/weight_log.dart';
+import '../models/weekly_summary.dart';
 import '../algorithms/adaptation_engine.dart';
 import '../algorithms/progression.dart';
 import 'recipe_screen.dart';
 import 'food_log_screen.dart';
+import 'weekly_review_screen.dart';
 import 'package:provider/provider.dart';
 import '../providers/plan_provider.dart';
 import '../providers/profile_provider.dart';
@@ -412,27 +414,42 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
       // Weight-trend signal — net change across last week's weigh-ins.
       final weightLogsRaw = await fs.getWeightLogs(uid);
-      final lastWeekWeights = weightLogsRaw
-          .map((m) => WeightLog.fromMap(m, ''))
-          .where((w) =>
-              !w.date.isBefore(weekStart) &&
-              w.date.isBefore(weekStart.add(const Duration(days: 7))))
-          .toList()
-        ..sort((a, b) => a.date.compareTo(b.date));
+      final lastWeekWeights =
+          weightLogsRaw
+              .map((m) => WeightLog.fromMap(m, ''))
+              .where(
+                (w) =>
+                    !w.date.isBefore(weekStart) &&
+                    w.date.isBefore(weekStart.add(const Duration(days: 7))),
+              )
+              .toList()
+            ..sort((a, b) => a.date.compareTo(b.date));
       final weightChangeKg = lastWeekWeights.length >= 2
           ? lastWeekWeights.last.weight - lastWeekWeights.first.weight
           : null; // <2 weigh-ins → no weight signal
 
       // Use real planned days from profile for the completion denominator
       final plannedDays = profile.workoutDaysPerWeek;
+
+      // A1: only trust calorie/protein adherence with enough logged days —
+      // sparse logging (avg over `daysLogged`, not 7) otherwise reads as
+      // on-target and suppresses real adjustments. <4 days → neutral / no signal.
+      final daysLogged = lastWeekNutrition['daysLogged'] as int;
+      final hasEnoughNutritionDays = daysLogged >= 4;
+      final calorieAdherence = hasEnoughNutritionDays
+          ? (lastWeekNutrition['avgCalories'] as double) /
+                profile.calorieGoal *
+                100
+          : 100.0;
+      // N1: protein adherence drives a low-protein note when calories are met.
+      final proteinGoal = profile.macroGoals['protein'] ?? 0;
+      final proteinAdherence = (hasEnoughNutritionDays && proteinGoal > 0)
+          ? (lastWeekNutrition['avgProtein'] as double) / proteinGoal * 100
+          : null;
+
       final adaptation = hasHistory
           ? AdaptationEngine().compute(
-              lastWeekCalorieAdherence:
-                  (lastWeekNutrition['daysLogged'] as int) > 0
-                  ? ((lastWeekNutrition['avgCalories'] as double) /
-                        profile.calorieGoal *
-                        100)
-                  : 100.0,
+              lastWeekCalorieAdherence: calorieAdherence,
               lastWeekWorkoutCompletion: plannedDays > 0
                   ? lastWeekWorkouts / plannedDays
                   : 1.0,
@@ -441,6 +458,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
               lastWeekAvgRating: lastWeekAvgRating,
               weightChangeKg: weightChangeKg,
               fitnessGoal: profile.fitnessGoal,
+              lastWeekProteinAdherence: proteinAdherence,
             )
           : const AdaptationResult(
               calorieBiasKcal: 0,
@@ -448,11 +466,42 @@ class _WorkoutTabState extends State<_WorkoutTab>
               notes: '',
             );
 
-      final plan = GreedyAlgorithm().generatePlan(
+      final greedy = GreedyAlgorithm();
+      final plan = greedy.generatePlan(
         allExercises: exercises,
         profile: profile,
         difficultyBias: adaptation.difficultyBias,
       );
+
+      // W2: an 'up'/'down' that the NSCA set-range clamp fully absorbs makes no
+      // real volume change — the "stepped" message would mislead. Detect it and
+      // swap that sentence for an accurate ceiling/floor nudge (the clamp itself
+      // is correct NSCA behaviour; only the wording is fixed).
+      final volumeChanged = adaptation.difficultyBias != 'same' &&
+          greedy.setsForDifficulty(profile, adaptation.difficultyBias) !=
+              greedy.setsForDifficulty(profile, 'same');
+      var adaptationNotes = adaptation.notes;
+      if (!volumeChanged && adaptation.difficultyBias == 'up') {
+        adaptationNotes = adaptationNotes
+            .replaceAll(
+              AdaptationEngine.noteStepUp,
+              AdaptationEngine.noteAtSetCeiling,
+            )
+            .replaceAll(
+              AdaptationEngine.noteStepUpEasy,
+              AdaptationEngine.noteAtSetCeiling,
+            );
+      } else if (!volumeChanged && adaptation.difficultyBias == 'down') {
+        adaptationNotes = adaptationNotes
+            .replaceAll(
+              AdaptationEngine.noteVolumeDownSchedule,
+              AdaptationEngine.noteAtSetFloor,
+            )
+            .replaceAll(
+              AdaptationEngine.noteVolumeDownHard,
+              AdaptationEngine.noteAtSetFloor,
+            );
+      }
 
       // Persist and store in provider
       planProvider.setWorkoutPlan(plan);
@@ -467,10 +516,49 @@ class _WorkoutTabState extends State<_WorkoutTab>
       // last-week data, so a regenerated plan keeps the same difficulty.
       final alreadyAdaptedThisWeek = profile.lastAdaptationWeekId == weekId;
       if (hasHistory && !alreadyAdaptedThisWeek && mounted) {
-        await context.read<ProfileProvider>().applyCalorieAdjustment(
+        // Capture the pre-adjustment goal + macro targets, apply the calorie
+        // bias, then read the post-clamp profile back so the summary records the
+        // real new targets (macros follow the calorie goal).
+        final oldGoal = profile.calorieGoal;
+        final oldMacros = profile.macroGoals;
+        // Reuse the provider captured before the await (line ~301) — avoids
+        // touching `context` across the async gap.
+        await profileProvider.applyCalorieAdjustment(
           adaptation.calorieBiasKcal,
           markWeekId: weekId,
         );
+        final newProfile = profileProvider.profile ?? profile;
+        final newMacros = newProfile.macroGoals;
+
+        // Persist a snapshot of this week's adaptation for the Weekly Review
+        // screen (current week + history). Same guard as the calorie bias, so
+        // exactly one snapshot per weekId — no stacking on force-regenerate.
+        final activeWeekStart = today.subtract(Duration(days: today.weekday - 1));
+        final summary = WeeklySummary(
+          weekId: weekId,
+          generatedAt: appNow(),
+          weekStart: activeWeekStart,
+          weekEnd: activeWeekStart.add(const Duration(days: 6)),
+          calorieAdherence: calorieAdherence,
+          proteinAdherence: proteinAdherence,
+          workoutsCompleted: lastWeekWorkouts,
+          workoutsPlanned: plannedDays,
+          avgRating: lastWeekAvgRating,
+          daysLogged: daysLogged,
+          calorieBias: adaptation.calorieBiasKcal,
+          oldCalorieGoal: oldGoal,
+          newCalorieGoal: newProfile.calorieGoal,
+          oldProtein: oldMacros['protein'] ?? 0,
+          newProtein: newMacros['protein'] ?? 0,
+          oldCarbs: oldMacros['carbs'] ?? 0,
+          newCarbs: newMacros['carbs'] ?? 0,
+          oldFat: oldMacros['fat'] ?? 0,
+          newFat: newMacros['fat'] ?? 0,
+          difficultyBias: adaptation.difficultyBias,
+          volumeChanged: volumeChanged,
+          notes: adaptationNotes,
+        );
+        await fs.saveWeeklySummary(uid, summary);
       }
 
       final thisWeekStart = today.subtract(Duration(days: today.weekday - 1));
@@ -491,22 +579,42 @@ class _WorkoutTabState extends State<_WorkoutTab>
       });
       _loadExerciseStats();
 
-      // Surface the weekly adaptation reasoning — once per week, on the first
-      // generation only (silent on subsequent force-regenerations).
-      if (mounted && !alreadyAdaptedThisWeek && adaptation.notes.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              adaptation.notes,
-              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+      // Announce the weekly adaptation — once per week, on the first generation
+      // only (silent on force-regenerations). The full reasoning + history now
+      // lives in the Weekly Review screen; this is just the entry point.
+      if (mounted && !alreadyAdaptedThisWeek && adaptationNotes.isNotEmpty) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(
+                'Weekly plan updated based on your progress',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              backgroundColor: const Color(0xFF1A1A1A),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 8),
+              showCloseIcon: true,
+              closeIconColor: const Color(0xFF888888),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              action: SnackBarAction(
+                label: 'View Summary',
+                textColor: const Color(0xFF00C97B),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const WeeklyReviewScreen(),
+                    ),
+                  );
+                },
+              ),
             ),
-            backgroundColor: const Color(0xFF1A1A1A),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 6),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
+          );
       }
     } catch (e) {
       setState(() {

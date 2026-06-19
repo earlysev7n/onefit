@@ -50,11 +50,13 @@ users/{uid}                         ← UserProfile doc
   weight_logs/{logId}               ← WeightLog (one per day, doc ID = date string)
   exercise_stats/{exerciseId}       ← ExerciseStat (per-exercise last/PR top set; doc ID = exerciseId)
   workout_plans/{weekId}            ← persisted WorkoutDay list for that ISO week
-  weekly_summaries/{weekId}         ← WeeklySummary (planned, not yet wired fully)
+  weekly_summaries/{weekId}         ← WeeklySummary (weekly adaptive report snapshot; doc ID = weekId)
 exercises/{exerciseId}              ← ExerciseDB API cache (30-day TTL)
 ```
 
 `workout_plans/{weekId}` is written by `FirestoreService.saveWeeklyWorkoutPlan` and read by `loadWeeklyWorkoutPlan`. The weekId is produced by `FirestoreService.weekIdFor(date)` → `week_YYYY_N` (normalised to Monday of that week, stable for the whole Mon–Sun range). `deleteWeeklyWorkoutPlan` removes the doc; used by the force-regenerate flow.
+
+`weekly_summaries/{weekId}` holds the **Weekly Adaptive Report** — a `WeeklySummary` (`lib/models/weekly_summary.dart`) snapshot of one weekly adaptation event, written by `plans_screen._generate()` inside the **same once-per-week guard** as the calorie-bias application (`hasHistory && !alreadyAdaptedThisWeek`), so there's exactly one snapshot per `weekId` and force-regeneration never stacks it. It records the *reviewed* (prior) week's performance (calorie/protein adherence, workouts done/planned, avg `WorkoutLog.rating`, daysLogged) and the adjustments applied to the *active* week (calorie bias + old/new calorie goal, **derived** old/new macro targets, difficultyBias, `volumeChanged`, and the "why" notes). Macros are calorie-derived, not independently tuned — so `adjustmentBadge` has no "Increased Protein" (protein only rises when calories do). Persisted via `FirestoreService.saveWeeklySummary`; read by `getWeeklySummary` (current week) and `getWeeklySummaries` (history, ordered by `generatedAt` desc, no composite index). Surfaced in `WeeklyReviewScreen` (`lib/screens/weekly_review_screen.dart`, Current Week + History tabs), reached from a Progress-screen `_WeeklyReportCard` and from the post-generation "Weekly plan updated" snackbar's **View Summary** action. History starts empty and fills going forward (no backfill — past weeks were never persisted).
 
 `UserProfile` stores all body stats and preferences. It computes `calorieGoal`, `tdee`, and `macroGoals` (macro gram targets) derived from Mifflin-St Jeor BMR + Harris-Benedict activity multiplier.
 

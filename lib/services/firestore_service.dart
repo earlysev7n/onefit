@@ -4,6 +4,7 @@ import '../models/food_item.dart';
 import '../models/workout_log.dart';
 import '../models/exercise_stat.dart';
 import '../models/meal_ingredient.dart';
+import '../models/weekly_summary.dart';
 import '../algorithms/greedy_algorithm.dart' show WorkoutDay;
 import '../app_clock.dart';
 
@@ -429,6 +430,51 @@ class FirestoreService {
         .get();
     if (doc.exists) return doc.data();
     return null;
+  }
+
+  // ========================================
+  // WEEKLY SUMMARY METHODS (adaptive report)
+  // ========================================
+
+  /// Persist one weekly adaptation snapshot at `weekly_summaries/{weekId}`.
+  /// Written once per week by the adaptation flow (idempotent on the weekId).
+  Future<void> saveWeeklySummary(String userId, WeeklySummary summary) async {
+    await _db
+        .collection('users')
+        .doc(userId)
+        .collection('weekly_summaries')
+        .doc(summary.weekId)
+        .set(summary.toMap());
+  }
+
+  /// Read a single week's summary (e.g. the current week). Null if not found.
+  Future<WeeklySummary?> getWeeklySummary(String userId, String weekId) async {
+    final doc = await _db
+        .collection('users')
+        .doc(userId)
+        .collection('weekly_summaries')
+        .doc(weekId)
+        .get();
+    if (!doc.exists || doc.data() == null) return null;
+    return WeeklySummary.fromMap(doc.data()!, doc.id);
+  }
+
+  /// List recent weekly summaries, newest first. Single-field order → no
+  /// composite index needed.
+  Future<List<WeeklySummary>> getWeeklySummaries(
+    String userId, {
+    int limit = 12,
+  }) async {
+    final snap = await _db
+        .collection('users')
+        .doc(userId)
+        .collection('weekly_summaries')
+        .orderBy('generatedAt', descending: true)
+        .limit(limit)
+        .get();
+    return snap.docs
+        .map((d) => WeeklySummary.fromMap(d.data(), d.id))
+        .toList();
   }
 
   // ========================================

@@ -628,6 +628,13 @@ class GreedyAlgorithm {
   /// Conditioning, 4th ed.): hypertrophy 3–6 (capped 5 here), muscular endurance
   /// 2–3, general 2–4. Experience picks within the range; recovery/adaptation
   /// nudge ±1 but the final clamp keeps it inside the goal's NSCA range.
+  /// Public view of the set count this profile would train at for a given
+  /// difficulty bias. Lets callers detect when an 'up'/'down' is fully absorbed
+  /// by the NSCA range clamp (i.e. produces no real volume change) so a
+  /// misleading "stepped up/down" message can be swapped (see plans_screen W2).
+  int setsForDifficulty(UserProfile profile, String difficultyBias) =>
+      _getSets(profile, difficultyBias);
+
   int _getSets(UserProfile profile, String difficultyBias) {
     int sets;
     int lo, hi; // NSCA set range for the goal
