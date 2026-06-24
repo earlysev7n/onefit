@@ -33,7 +33,11 @@ class ProgressProvider extends ChangeNotifier {
 
   double get todayCalories => _todayLogs.fold(0, (s, f) => s + f.totalCalories);
   double get todayProtein => _todayLogs.fold(0, (s, f) => s + f.totalProtein);
-  int get calorieGoal => _profile?.calorieGoal ?? 2000;
+
+  /// Today's display goal (daily-carry-adjusted). Set by [loadAll] from
+  /// [ProfileProvider.dailyEffectiveGoal]. The today-ring and chart use this.
+  int _effectiveGoal = 2000;
+  int get calorieGoal => _effectiveGoal;
   double get proteinGoal => (_profile?.macroGoals['protein'] ?? 150).toDouble();
 
   /// Planned training days per week — driven by the user's real profile input.
@@ -45,11 +49,15 @@ class ProgressProvider extends ChangeNotifier {
     return (_weekWorkoutLogs.length / plannedWorkoutDays).clamp(0.0, 1.0);
   }
 
+  /// Weekly calorie adherence (%). Uses the **profile's base `calorieGoal`**
+  /// (NOT the daily-adjusted one) — the weekly [AdaptationEngine] reads this
+  /// same metric, so it must use the same denominator.
   double get calorieAdherence {
+    final baseGoal = _profile?.calorieGoal ?? 2000;
     final days = _weeklyCalories.values.where((v) => v > 0).toList();
     if (days.isEmpty) return 0;
     final avg = days.reduce((a, b) => a + b) / days.length;
-    return (avg / calorieGoal * 100).clamp(0, 200);
+    return (avg / baseGoal * 100).clamp(0, 200);
   }
 
   int get workoutStreak {
@@ -86,7 +94,7 @@ class ProgressProvider extends ChangeNotifier {
   /// Refreshes all weekly stats. Pass [profile] (from [ProfileProvider]) to use
   /// the shared cached profile and skip a redundant Firestore read; omit it to
   /// fetch (keeps callers like [logWeight] backward-compatible).
-  Future<void> loadAll(String userId, {UserProfile? profile}) async {
+  Future<void> loadAll(String userId, {UserProfile? profile, int? effectiveGoal}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -111,6 +119,7 @@ class ProgressProvider extends ChangeNotifier {
       ]);
 
       _profile = await profileFuture;
+      _effectiveGoal = effectiveGoal ?? _profile?.calorieGoal ?? 2000;
       _todayLogs = results[0] as List<FoodItem>;
       _weeklyCalories = results[1] as Map<String, double>;
       _weekWorkoutLogs = results[2] as List<WorkoutLog>;

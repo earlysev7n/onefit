@@ -12,6 +12,8 @@ import 'providers/plan_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/progress_provider.dart';
 import 'providers/profile_provider.dart';
+import 'theme/app_theme.dart';
+import 'theme/app_colors.dart';
 import 'app_clock.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -31,10 +33,12 @@ void main() async {
     debugPrint('User signed out');
   }
 
+  final themeProvider = await ThemeProvider.create();
+
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider.value(value: themeProvider),
         ChangeNotifierProvider(create: (_) => PlanProvider()),
         ChangeNotifierProvider(create: (_) => ProgressProvider()),
         ChangeNotifierProvider(create: (_) => ProfileProvider()),
@@ -84,10 +88,8 @@ class _OneFitAppState extends State<OneFitApp> {
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
       themeMode: themeProvider.themeMode,
-      theme: ThemeData.light(),
-      darkTheme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF0D0D0D),
-      ),
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
       builder: (context, child) => ValueListenableBuilder<int>(
         valueListenable: debugDayOffset,
         // Rebuilds only the day pill's label; the actual screen refresh on a
@@ -129,6 +131,7 @@ class _DebugDayChanger extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Positioned(
       left: 0,
       right: 0,
@@ -141,11 +144,11 @@ class _DebugDayChanger extends StatelessWidget {
               margin: const EdgeInsets.only(top: 8),
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
+                color: c.surface,
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: const Color(0xFF00C97B)),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black54, blurRadius: 8),
+                border: Border.all(color: AppColors.primary),
+                boxShadow: [
+                  BoxShadow(color: c.shadow, blurRadius: 8),
                 ],
               ),
               child: Row(
@@ -158,8 +161,8 @@ class _DebugDayChanger extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: Text(
                         _label(debugDayOffset.value),
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: c.onBackground,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -184,7 +187,7 @@ class _DebugDayChanger extends StatelessWidget {
     radius: 20,
     child: Padding(
       padding: const EdgeInsets.all(6),
-      child: Icon(icon, color: const Color(0xFF00C97B), size: 22),
+      child: Icon(icon, color: AppColors.primary, size: 22),
     ),
   );
 }

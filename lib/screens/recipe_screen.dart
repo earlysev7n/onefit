@@ -7,6 +7,7 @@ import '../models/food_item.dart';
 import '../services/firestore_service.dart';
 import '../services/openai_service.dart';
 import '../app_clock.dart';
+import '../theme/app_colors.dart';
 
 class RecipeScreen extends StatefulWidget {
   final Meal meal;
@@ -155,7 +156,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
           _isSaved = false;
           _isSaving = false;
         });
-        _showSnack('Recipe removed', const Color(0xFF888888));
+        _showSnack('Recipe removed', context.colors.muted);
       } else {
         await ref.set({
           'title': _recipe!.title,
@@ -176,7 +177,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
           _isSaved = true;
           _isSaving = false;
         });
-        _showSnack('Recipe saved!', const Color(0xFF00C97B));
+        _showSnack('Recipe saved!', AppColors.primary);
       }
     } catch (e) {
       setState(() => _isSaving = false);
@@ -219,7 +220,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
       });
       _showSnack(
         '${extra.name} added to ${widget.mealLabel}',
-        const Color(0xFF00C97B),
+        AppColors.primary,
       );
     } catch (e) {
       setState(() => _addingExtras.remove(index));
@@ -245,11 +246,12 @@ class _RecipeScreenState extends State<RecipeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: c.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
-        foregroundColor: Colors.white,
+        backgroundColor: c.background,
+        foregroundColor: c.onBackground,
         title: Text(
           '${widget.mealLabel} Recipe',
           style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
@@ -263,7 +265,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
-                        color: Color(0xFF00C97B),
+                        color: AppColors.primary,
                         strokeWidth: 2,
                       ),
                     ),
@@ -274,14 +276,14 @@ class _RecipeScreenState extends State<RecipeScreen> {
                           ? Icons.bookmark_rounded
                           : Icons.bookmark_border_rounded,
                       color: _isSaved
-                          ? const Color(0xFF00C97B)
-                          : const Color(0xFF888888),
+                          ? AppColors.primary
+                          : c.muted,
                     ),
                     onPressed: _toggleSave,
                     tooltip: _isSaved ? 'Unsave recipe' : 'Save recipe',
                   ),
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF00C97B)),
+            icon: const Icon(Icons.refresh_rounded, color: AppColors.primary),
             onPressed: () => _fetchRecipe(freshSearch: false),
             tooltip: 'Try another recipe',
           ),
@@ -295,72 +297,79 @@ class _RecipeScreenState extends State<RecipeScreen> {
     );
   }
 
-  Widget _buildLoading() => Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const CircularProgressIndicator(color: Color(0xFF00C97B)),
-        const SizedBox(height: 16),
-        Text(
-          'Writing your recipe...',
-          style: GoogleFonts.inter(color: const Color(0xFF888888)),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Powered by OpenAI',
-          style: GoogleFonts.inter(
-            color: const Color(0xFF444444),
-            fontSize: 12,
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _buildError() => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
+  Widget _buildLoading() {
+    final c = context.colors;
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(
-            Icons.restaurant_menu_rounded,
-            color: Color(0xFF444444),
-            size: 56,
-          ),
+          const CircularProgressIndicator(color: AppColors.primary),
           const SizedBox(height: 16),
           Text(
-            'Could not load recipe',
-            style: GoogleFonts.spaceGrotesk(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-              fontSize: 16,
-            ),
+            'Writing your recipe...',
+            style: GoogleFonts.inter(color: c.muted),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Text(
-            _error!,
-            style: GoogleFonts.inter(color: const Color(0xFF888888)),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: () => _fetchRecipe(freshSearch: true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00C97B),
-              foregroundColor: Colors.black,
-            ),
-            child: Text(
-              'Try Again',
-              style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
+            'Powered by OpenAI',
+            style: GoogleFonts.inter(
+              color: c.subtle,
+              fontSize: 12,
             ),
           ),
         ],
       ),
-    ),
-  );
+    );
+  }
+
+  Widget _buildError() {
+    final c = context.colors;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.restaurant_menu_rounded,
+              color: c.subtle,
+              size: 56,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Could not load recipe',
+              style: GoogleFonts.spaceGrotesk(
+                color: c.onBackground,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              style: GoogleFonts.inter(color: c.muted),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => _fetchRecipe(freshSearch: true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: c.onPrimary,
+              ),
+              child: Text(
+                'Try Again',
+                style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildRecipe() {
+    final c = context.colors;
     final recipe = _recipe!;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -373,24 +382,24 @@ class _RecipeScreenState extends State<RecipeScreen> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: const Color(0xFF00C97B).withOpacity(0.1),
+                color: AppColors.primary.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: const Color(0xFF00C97B).withOpacity(0.3),
+                  color: AppColors.primary.withOpacity(0.3),
                 ),
               ),
               child: Row(
                 children: [
                   const Icon(
                     Icons.bookmark_rounded,
-                    color: Color(0xFF00C97B),
+                    color: AppColors.primary,
                     size: 16,
                   ),
                   const SizedBox(width: 8),
                   Text(
                     'Saved recipe — tap bookmark to remove',
                     style: GoogleFonts.inter(
-                      color: const Color(0xFF00C97B),
+                      color: AppColors.primary,
                       fontSize: 13,
                     ),
                   ),
@@ -421,7 +430,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
             style: GoogleFonts.spaceGrotesk(
               fontSize: 20,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: c.onBackground,
             ),
           ),
           const SizedBox(height: 12),
@@ -432,13 +441,13 @@ class _RecipeScreenState extends State<RecipeScreen> {
               _metaChip(
                 Icons.timer_rounded,
                 '${recipe.readyInMinutes} min',
-                const Color(0xFF00C97B),
+                AppColors.primary,
               ),
               const SizedBox(width: 8),
               _metaChip(
                 Icons.people_rounded,
                 '${recipe.servings} servings',
-                const Color(0xFF6C63FF),
+                AppColors.purple,
               ),
             ],
           ),
@@ -450,7 +459,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
             style: GoogleFonts.spaceGrotesk(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: c.onBackground,
             ),
           ),
           const SizedBox(height: 10),
@@ -458,7 +467,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
+              color: c.surface,
               borderRadius: BorderRadius.circular(14),
             ),
             child: Column(
@@ -472,7 +481,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
                             width: 6,
                             height: 6,
                             decoration: const BoxDecoration(
-                              color: Color(0xFF00C97B),
+                              color: AppColors.primary,
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -481,7 +490,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
                             child: Text(
                               item.ingredient.name,
                               style: GoogleFonts.inter(
-                                color: Colors.white,
+                                color: c.onBackground,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -489,7 +498,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
                           Text(
                             '${item.portionGrams.round()}g',
                             style: GoogleFonts.inter(
-                              color: const Color(0xFF888888),
+                              color: c.muted,
                               fontSize: 13,
                             ),
                           ),
@@ -511,7 +520,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
                   style: GoogleFonts.spaceGrotesk(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    color: c.onBackground,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -521,13 +530,13 @@ class _RecipeScreenState extends State<RecipeScreen> {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFD60A).withOpacity(0.15),
+                    color: AppColors.yellow.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     '${recipe.missingIngredients.length} extra',
                     style: GoogleFonts.inter(
-                      color: const Color(0xFFFFD60A),
+                      color: AppColors.yellow,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
@@ -540,10 +549,10 @@ class _RecipeScreenState extends State<RecipeScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
+                color: c.surface,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: const Color(0xFFFFD60A).withOpacity(0.3),
+                  color: AppColors.yellow.withOpacity(0.3),
                 ),
               ),
               child: Column(
@@ -562,7 +571,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
                           width: 6,
                           height: 6,
                           decoration: const BoxDecoration(
-                            color: Color(0xFFFFD60A),
+                            color: AppColors.yellow,
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -574,14 +583,14 @@ class _RecipeScreenState extends State<RecipeScreen> {
                               Text(
                                 ing.name,
                                 style: GoogleFonts.inter(
-                                  color: Colors.white,
+                                  color: c.onBackground,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
                               Text(
                                 ing.amount,
                                 style: GoogleFonts.inter(
-                                  color: const Color(0xFF888888),
+                                  color: c.muted,
                                   fontSize: 12,
                                 ),
                               ),
@@ -600,13 +609,13 @@ class _RecipeScreenState extends State<RecipeScreen> {
                             ),
                             decoration: BoxDecoration(
                               color: isAdded
-                                  ? const Color(0xFF00C97B).withOpacity(0.15)
-                                  : const Color(0xFFFFD60A).withOpacity(0.15),
+                                  ? AppColors.primary.withOpacity(0.15)
+                                  : AppColors.yellow.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                 color: isAdded
-                                    ? const Color(0xFF00C97B).withOpacity(0.4)
-                                    : const Color(0xFFFFD60A).withOpacity(0.4),
+                                    ? AppColors.primary.withOpacity(0.4)
+                                    : AppColors.yellow.withOpacity(0.4),
                               ),
                             ),
                             child: isAdding
@@ -614,7 +623,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
                                     width: 14,
                                     height: 14,
                                     child: CircularProgressIndicator(
-                                      color: Color(0xFFFFD60A),
+                                      color: AppColors.yellow,
                                       strokeWidth: 2,
                                     ),
                                   )
@@ -626,8 +635,8 @@ class _RecipeScreenState extends State<RecipeScreen> {
                                             ? Icons.check_rounded
                                             : Icons.add_rounded,
                                         color: isAdded
-                                            ? const Color(0xFF00C97B)
-                                            : const Color(0xFFFFD60A),
+                                            ? AppColors.primary
+                                            : AppColors.yellow,
                                         size: 14,
                                       ),
                                       const SizedBox(width: 4),
@@ -635,8 +644,8 @@ class _RecipeScreenState extends State<RecipeScreen> {
                                         isAdded ? 'Added' : 'Add',
                                         style: GoogleFonts.inter(
                                           color: isAdded
-                                              ? const Color(0xFF00C97B)
-                                              : const Color(0xFFFFD60A),
+                                              ? AppColors.primary
+                                              : AppColors.yellow,
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
                                         ),
@@ -661,7 +670,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
             style: GoogleFonts.spaceGrotesk(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: c.onBackground,
             ),
           ),
           const SizedBox(height: 10),
@@ -670,12 +679,12 @@ class _RecipeScreenState extends State<RecipeScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
+                color: c.surface,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Text(
                 'No instructions available for this recipe.',
-                style: GoogleFonts.inter(color: const Color(0xFF888888)),
+                style: GoogleFonts.inter(color: c.muted),
               ),
             )
           else
@@ -684,7 +693,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A1A),
+                  color: c.surface,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Row(
@@ -694,14 +703,14 @@ class _RecipeScreenState extends State<RecipeScreen> {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF00C97B).withOpacity(0.15),
+                        color: AppColors.primary.withOpacity(0.15),
                         shape: BoxShape.circle,
                       ),
                       child: Center(
                         child: Text(
                           '${step.number}',
                           style: GoogleFonts.spaceGrotesk(
-                            color: const Color(0xFF00C97B),
+                            color: AppColors.primary,
                             fontWeight: FontWeight.w700,
                             fontSize: 12,
                           ),
@@ -713,7 +722,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
                       child: Text(
                         step.instruction,
                         style: GoogleFonts.inter(
-                          color: Colors.white,
+                          color: c.onBackground,
                           fontSize: 14,
                           height: 1.5,
                         ),
@@ -732,14 +741,14 @@ class _RecipeScreenState extends State<RecipeScreen> {
             style: GoogleFonts.spaceGrotesk(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: c.onBackground,
             ),
           ),
           const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
+              color: c.surface,
               borderRadius: BorderRadius.circular(14),
             ),
             child: Column(
@@ -747,27 +756,27 @@ class _RecipeScreenState extends State<RecipeScreen> {
                 _nutriRow(
                   'Calories',
                   '${widget.meal.totalCalories.round()} kcal',
-                  const Color(0xFFFF6B35),
+                  AppColors.orange,
                 ),
                 _nutriRow(
                   'Protein',
                   '${widget.meal.totalProtein.round()}g',
-                  const Color(0xFF00C97B),
+                  AppColors.primary,
                 ),
                 _nutriRow(
                   'Carbohydrates',
                   '${widget.meal.totalCarbs.round()}g',
-                  const Color(0xFF6C63FF),
+                  AppColors.purple,
                 ),
                 _nutriRow(
                   'Fat',
                   '${widget.meal.totalFat.round()}g',
-                  const Color(0xFFFFD60A),
+                  AppColors.yellow,
                 ),
                 _nutriRow(
                   'Fiber',
                   '${widget.meal.totalFiber.round()}g',
-                  const Color(0xFF00B4D8),
+                  AppColors.cyan,
                 ),
               ],
             ),
@@ -786,8 +795,8 @@ class _RecipeScreenState extends State<RecipeScreen> {
                 style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w600),
               ),
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF00C97B),
-                side: const BorderSide(color: Color(0xFF00C97B)),
+                foregroundColor: AppColors.primary,
+                side: const BorderSide(color: AppColors.primary),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -824,38 +833,41 @@ class _RecipeScreenState extends State<RecipeScreen> {
     ),
   );
 
-  Widget _nutriRow(String label, String value, Color color) => Padding(
-    padding: const EdgeInsets.only(bottom: 10),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(2),
+  Widget _nutriRow(String label, String value, Color color) {
+    final c = context.colors;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              label,
-              style: GoogleFonts.inter(color: const Color(0xFF888888)),
-            ),
-          ],
-        ),
-        Text(
-          value,
-          style: GoogleFonts.inter(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
+              const SizedBox(width: 10),
+              Text(
+                label,
+                style: GoogleFonts.inter(color: c.muted),
+              ),
+            ],
           ),
-        ),
-      ],
-    ),
-  );
+          Text(
+            value,
+            style: GoogleFonts.inter(
+              color: c.onBackground,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // Models

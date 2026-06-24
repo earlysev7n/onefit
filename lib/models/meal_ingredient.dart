@@ -110,17 +110,63 @@ class Meal {
 
   String get name => items.map((i) => i.ingredient.name).join(' + ');
 
-  // Scale all portions by a factor to hit a calorie target
+  // Scale all portions by a factor to hit a calorie target. The 400g ceiling
+  // matches GeneticAlgorithm._portionFor so scaling never silently truncates a
+  // portion that the initial sizing was allowed to produce.
   Meal scaleToCalories(double targetCalories) {
     if (totalCalories <= 0) return this;
     final scale = targetCalories / totalCalories;
     return Meal(
       mealType: mealType,
       items: items.map((item) {
-        final newGrams = (item.portionGrams * scale).clamp(30.0, 350.0);
+        final newGrams = (item.portionGrams * scale).clamp(30.0, 400.0);
         return item.copyWith(portionGrams: newGrams);
       }).toList(),
     );
+  }
+
+  /// Closes the residual gap left after [scaleToCalories] when the per-item
+  /// portion clamp truncates a scale-up (e.g. a low-density vegetable that would
+  /// need >400g to hit its share). Distributes the gap across items densest-first
+  /// — the densest item needs the fewest extra grams, keeping portions natural —
+  /// re-clamping each to 30–400g and accounting for what the clamp actually
+  /// absorbed, over a few passes. A residual within [tolerance] is left as-is.
+  ///
+  /// Generalises the old `_normalizePlan` dinner-only fine-tune to any meal.
+  Meal closeResidual(
+    double targetCalories, {
+    double tolerance = 30.0,
+    int maxPasses = 3,
+  }) {
+    var current = this;
+    for (int pass = 0; pass < maxPasses; pass++) {
+      var remaining = targetCalories - current.totalCalories;
+      if (remaining.abs() <= tolerance) break;
+
+      // Indices ordered by calorie density (cals per 100g), densest first.
+      final order = List<int>.generate(current.items.length, (i) => i)
+        ..sort((a, b) => current.items[b].ingredient.calories
+            .compareTo(current.items[a].ingredient.calories));
+
+      final adjusted = List<MealItem>.from(current.items);
+      var changed = false;
+      for (final idx in order) {
+        if (remaining.abs() <= tolerance) break;
+        final item = adjusted[idx];
+        if (item.ingredient.calories <= 0) continue;
+        final gramsNeeded = (remaining / item.ingredient.calories) * 100;
+        final newGrams = (item.portionGrams + gramsNeeded).clamp(30.0, 400.0);
+        if (newGrams == item.portionGrams) continue; // already at a clamp edge
+        final before = item.calories;
+        final updated = item.copyWith(portionGrams: newGrams);
+        remaining -= (updated.calories - before);
+        adjusted[idx] = updated;
+        changed = true;
+      }
+      if (!changed) break; // every item pinned at a clamp edge — physical limit
+      current = Meal(mealType: current.mealType, items: adjusted);
+    }
+    return current;
   }
 
   Meal copyWith({List<MealItem>? items}) =>

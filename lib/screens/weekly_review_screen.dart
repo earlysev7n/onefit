@@ -3,19 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/weekly_summary.dart';
 import '../services/firestore_service.dart';
+import '../theme/app_colors.dart';
 import '../app_clock.dart';
 
-// Shared design tokens (kept inline per project convention).
-const _kBg = Color(0xFF0D0D0D);
-const _kSurface = Color(0xFF1A1A1A);
-const _kAccent = Color(0xFF00C97B);
-const _kMuted = Color(0xFF888888);
-const _kBorder = Color(0xFF2E2E2E);
-const _kOrange = Color(0xFFFF6B35);
-const _kPurple = Color(0xFF6C63FF);
-
-/// Weekly Adaptive Report. Surfaces the adaptation snapshots persisted by
-/// `plans_screen._generate()` — the current week's review plus past-week history.
 class WeeklyReviewScreen extends StatefulWidget {
   const WeeklyReviewScreen({super.key});
 
@@ -58,32 +48,35 @@ class _WeeklyReviewScreenState extends State<WeeklyReviewScreen>
     if (!mounted) return;
     setState(() {
       _current = results[0] as WeeklySummary?;
-      _history = results[1] as List<WeeklySummary>;
+      _history = (results[1] as List<WeeklySummary>)
+          .where((s) => s.weekId != weekId)
+          .toList();
       _loading = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
-      backgroundColor: _kBg,
+      backgroundColor: c.background,
       appBar: AppBar(
-        backgroundColor: _kBg,
+        backgroundColor: c.background,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: c.onBackground),
         title: Text(
           'Weekly Review',
           style: GoogleFonts.spaceGrotesk(
-            color: Colors.white,
+            color: c.onBackground,
             fontWeight: FontWeight.w700,
             fontSize: 18,
           ),
         ),
         bottom: TabBar(
           controller: _tabs,
-          indicatorColor: _kAccent,
-          labelColor: _kAccent,
-          unselectedLabelColor: _kMuted,
+          indicatorColor: AppColors.primary,
+          labelColor: AppColors.primary,
+          unselectedLabelColor: c.muted,
           labelStyle: GoogleFonts.inter(fontWeight: FontWeight.w600),
           tabs: const [
             Tab(text: 'Current Week'),
@@ -92,7 +85,7 @@ class _WeeklyReviewScreenState extends State<WeeklyReviewScreen>
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: _kAccent))
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
           : TabBarView(
               controller: _tabs,
               children: [
@@ -135,6 +128,7 @@ class _HistoryTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     if (history.isEmpty) {
       return const _EmptyState(
         icon: Icons.history_rounded,
@@ -154,13 +148,13 @@ class _HistoryTab extends StatelessWidget {
             padding: const EdgeInsets.only(top: 12),
             child: Row(
               children: [
-                const Icon(Icons.info_outline_rounded, color: _kMuted, size: 15),
+                Icon(Icons.info_outline_rounded, color: c.muted, size: 15),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Changes are applied weekly based on your adherence, progress '
                     'and feedback.',
-                    style: GoogleFonts.inter(color: _kMuted, fontSize: 11),
+                    style: GoogleFonts.inter(color: c.muted, fontSize: 11),
                   ),
                 ),
               ],
@@ -179,10 +173,11 @@ class _HistoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final badge = summary.adjustmentBadge;
     final color = _badgeColor(badge);
     return Material(
-      color: _kSurface,
+      color: c.surface,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -196,28 +191,18 @@ class _HistoryRow extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _rangeLabel(summary.weekStart, summary.weekEnd),
-                      style: GoogleFonts.inter(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _weekLabel(summary.weekId),
-                      style: GoogleFonts.inter(color: _kMuted, fontSize: 11),
-                    ),
-                  ],
+                child: Text(
+                  _rangeLabel(summary.weekStart, summary.weekEnd),
+                  style: GoogleFonts.inter(
+                    color: c.onBackground,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
                 ),
               ),
               _BadgeChip(label: badge, color: color),
               const SizedBox(width: 6),
-              const Icon(Icons.chevron_right_rounded, color: _kMuted, size: 20),
+              Icon(Icons.chevron_right_rounded, color: c.muted, size: 20),
             ],
           ),
         ),
@@ -232,16 +217,17 @@ class _HistoryDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
-      backgroundColor: _kBg,
+      backgroundColor: c.background,
       appBar: AppBar(
-        backgroundColor: _kBg,
+        backgroundColor: c.background,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: IconThemeData(color: c.onBackground),
         title: Text(
           'Weekly Review',
           style: GoogleFonts.spaceGrotesk(
-            color: Colors.white,
+            color: c.onBackground,
             fontWeight: FontWeight.w700,
             fontSize: 18,
           ),
@@ -263,18 +249,22 @@ class _SummaryDetailView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final s = summary;
+    final reviewedStart = s.weekStart.subtract(const Duration(days: 7));
+    final reviewedEnd = s.weekStart.subtract(const Duration(days: 1));
+    const minNutritionDays = 4;
+    final enoughNutrition = s.daysLogged >= minNutritionDays;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header
         Row(
           children: [
             Expanded(
               child: Text(
                 'Week of ${_rangeLabel(s.weekStart, s.weekEnd)}',
                 style: GoogleFonts.spaceGrotesk(
-                  color: Colors.white,
+                  color: c.onBackground,
                   fontWeight: FontWeight.w700,
                   fontSize: 17,
                 ),
@@ -284,14 +274,14 @@ class _SummaryDetailView extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _kAccent.withValues(alpha: 0.15),
+                  color: AppColors.primary.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: _kAccent.withValues(alpha: 0.4)),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
                 ),
                 child: Text(
                   'Current Week',
                   style: GoogleFonts.inter(
-                    color: _kAccent,
+                    color: AppColors.primary,
                     fontWeight: FontWeight.w600,
                     fontSize: 11,
                   ),
@@ -301,42 +291,65 @@ class _SummaryDetailView extends StatelessWidget {
         ),
         const SizedBox(height: 18),
 
-        // Performance summary
         _Card(
           title: 'Performance Summary',
+          subtitle: 'Last week · ${_rangeLabel(reviewedStart, reviewedEnd)}',
           child: Column(
             children: [
               _perfRow(
+                context,
                 'Calories',
-                s.daysLogged > 0 ? '${s.calorieAdherence.round()}%' : '—',
-                _adherenceTag(s.daysLogged > 0 ? s.calorieAdherence : null),
+                enoughNutrition ? '${s.calorieAdherence.round()}%' : '—',
+                _adherenceTag(enoughNutrition ? s.calorieAdherence : null),
               ),
-              _divider(),
+              _divider(context),
               _perfRow(
+                context,
                 'Protein',
                 s.proteinAdherence != null
                     ? '${s.proteinAdherence!.round()}%'
                     : '—',
                 _adherenceTag(s.proteinAdherence),
               ),
-              _divider(),
+              _divider(context),
               _perfRow(
+                context,
                 'Workouts',
                 '${s.workoutsCompleted} / ${s.workoutsPlanned}',
                 _workoutTag(s.workoutsCompleted, s.workoutsPlanned),
               ),
-              _divider(),
+              _divider(context),
               _perfRow(
+                context,
                 'Workout Feedback (avg)',
                 _ratingEmoji(s.avgRating),
                 _ratingTag(s.avgRating),
               ),
+              if (!enoughNutrition)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline_rounded,
+                          color: c.muted, size: 14),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Only ${s.daysLogged} day${s.daysLogged == 1 ? '' : 's'} '
+                          'logged last week — adherence needs ≥4 days to count.',
+                          style: GoogleFonts.inter(
+                              color: c.muted, fontSize: 11, height: 1.35),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
         const SizedBox(height: 16),
 
-        // AI adjustments
         _Card(
           title: 'AI Adjustments',
           child: Column(
@@ -348,10 +361,11 @@ class _SummaryDetailView extends StatelessWidget {
                           'week\'s plan.'
                     : "Based on the prior week's performance, your plan was "
                           'updated for this week.',
-                style: GoogleFonts.inter(color: _kMuted, fontSize: 12),
+                style: GoogleFonts.inter(color: c.muted, fontSize: 12),
               ),
               const SizedBox(height: 14),
               _adjustRow(
+                context,
                 'Calories',
                 _delta(s.calorieBias, 'kcal'),
                 'New target: ${s.newCalorieGoal} kcal',
@@ -359,18 +373,21 @@ class _SummaryDetailView extends StatelessWidget {
               ),
               if (s.calorieBias != 0) ...[
                 _adjustRow(
+                  context,
                   'Protein',
                   _delta(s.proteinDelta, 'g'),
                   'New target: ${s.newProtein} g',
                   _arrowFor(s.proteinDelta),
                 ),
                 _adjustRow(
+                  context,
                   'Carbs',
                   _delta(s.carbsDelta, 'g'),
                   'New target: ${s.newCarbs} g',
                   _arrowFor(s.carbsDelta),
                 ),
                 _adjustRow(
+                  context,
                   'Fat',
                   _delta(s.fatDelta, 'g'),
                   'New target: ${s.newFat} g',
@@ -378,6 +395,7 @@ class _SummaryDetailView extends StatelessWidget {
                 ),
               ],
               _adjustRow(
+                context,
                 'Workout Intensity',
                 _intensityLabel(s),
                 _intensitySubtitle(s),
@@ -388,15 +406,14 @@ class _SummaryDetailView extends StatelessWidget {
         ),
         const SizedBox(height: 16),
 
-        // Why these changes
         if (s.notes.trim().isNotEmpty)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: _kSurface,
+              color: c.surface,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _kBorder),
+              border: Border.all(color: c.border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -404,12 +421,12 @@ class _SummaryDetailView extends StatelessWidget {
                 Row(
                   children: [
                     const Icon(Icons.psychology_rounded,
-                        color: _kAccent, size: 18),
+                        color: AppColors.primary, size: 18),
                     const SizedBox(width: 8),
                     Text(
                       'Why These Changes?',
                       style: GoogleFonts.spaceGrotesk(
-                        color: Colors.white,
+                        color: c.onBackground,
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
                       ),
@@ -420,7 +437,7 @@ class _SummaryDetailView extends StatelessWidget {
                 Text(
                   s.notes,
                   style: GoogleFonts.inter(
-                    color: const Color(0xFFBBBBBB),
+                    color: c.muted,
                     fontSize: 13,
                     height: 1.45,
                   ),
@@ -432,92 +449,98 @@ class _SummaryDetailView extends StatelessWidget {
     );
   }
 
-  // ── Row builders ─────────────────────────────────────────────────────────
-  Widget _perfRow(String label, String value, _Tag tag) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 9),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
-          ),
-        ),
-        Text(
-          value,
-          style: GoogleFonts.spaceGrotesk(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-            fontSize: 14,
-          ),
-        ),
-        const SizedBox(width: 12),
-        SizedBox(
-          width: 92,
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: _BadgeChip(label: tag.label, color: tag.color),
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _adjustRow(String label, String value, String subtitle, _Arrow arrow) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: GoogleFonts.inter(color: _kMuted, fontSize: 11),
-                  ),
-                ],
-              ),
+  Widget _perfRow(BuildContext context, String label, String value, _Tag tag) {
+    final c = context.colors;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: GoogleFonts.inter(color: c.onBackground, fontSize: 13),
             ),
-            Text(
-              value,
-              style: GoogleFonts.spaceGrotesk(
-                color: arrow.color,
-                fontWeight: FontWeight.w700,
-                fontSize: 14,
-              ),
+          ),
+          Text(
+            value,
+            style: GoogleFonts.spaceGrotesk(
+              color: c.onBackground,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
             ),
-            const SizedBox(width: 4),
-            Icon(arrow.icon, color: arrow.color, size: 16),
-          ],
-        ),
-      );
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 92,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _BadgeChip(label: tag.label, color: tag.color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-  Widget _divider() =>
-      Container(height: 1, color: _kBorder.withValues(alpha: 0.5));
+  Widget _adjustRow(BuildContext context, String label, String value, String subtitle, _Arrow arrow) {
+    final c = context.colors;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.inter(color: c.onBackground, fontSize: 13),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: GoogleFonts.inter(color: c.muted, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            value,
+            style: GoogleFonts.spaceGrotesk(
+              color: arrow.color,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Icon(arrow.icon, color: arrow.color, size: 16),
+        ],
+      ),
+    );
+  }
+
+  Widget _divider(BuildContext context) =>
+      Container(height: 1, color: context.colors.border.withValues(alpha: 0.5));
 }
 
 // ─── SMALL SHARED WIDGETS ──────────────────────────────────────────────────────
 class _Card extends StatelessWidget {
   final String title;
+  final String? subtitle;
   final Widget child;
-  const _Card({required this.title, required this.child});
+  const _Card({required this.title, this.subtitle, required this.child});
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _kSurface,
+        color: c.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _kBorder),
+        border: Border.all(color: c.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -525,11 +548,18 @@ class _Card extends StatelessWidget {
           Text(
             title,
             style: GoogleFonts.spaceGrotesk(
-              color: Colors.white,
+              color: c.onBackground,
               fontWeight: FontWeight.w700,
               fontSize: 15,
             ),
           ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              subtitle!,
+              style: GoogleFonts.inter(color: c.muted, fontSize: 11),
+            ),
+          ],
           const SizedBox(height: 8),
           child,
         ],
@@ -578,18 +608,19 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 36),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: _kBorder, size: 56),
+            Icon(icon, color: c.border, size: 56),
             const SizedBox(height: 16),
             Text(
               title,
               style: GoogleFonts.spaceGrotesk(
-                color: Colors.white,
+                color: c.onBackground,
                 fontWeight: FontWeight.w700,
                 fontSize: 16,
               ),
@@ -598,7 +629,7 @@ class _EmptyState extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(color: _kMuted, fontSize: 13, height: 1.4),
+              style: GoogleFonts.inter(color: c.muted, fontSize: 13, height: 1.4),
             ),
           ],
         ),
@@ -621,23 +652,23 @@ class _Arrow {
 }
 
 _Tag _adherenceTag(double? pct) {
-  if (pct == null) return const _Tag('No data', _kMuted);
-  if (pct < 90) return const _Tag('Below Goal', _kOrange);
-  if (pct > 110) return const _Tag('Above Goal', _kOrange);
-  return const _Tag('On Goal', _kAccent);
+  if (pct == null) return _Tag('No data', AppColors.dark.muted);
+  if (pct < 90) return const _Tag('Below Goal', AppColors.orange);
+  if (pct > 110) return const _Tag('Above Goal', AppColors.orange);
+  return const _Tag('On Goal', AppColors.primary);
 }
 
 _Tag _workoutTag(int done, int planned) {
-  if (planned > 0 && done >= planned) return const _Tag('Completed', _kAccent);
+  if (planned > 0 && done >= planned) return const _Tag('Completed', AppColors.primary);
   if (done == 0) return const _Tag('Missed', Colors.redAccent);
-  return const _Tag('Partial', _kOrange);
+  return const _Tag('Partial', AppColors.orange);
 }
 
 _Tag _ratingTag(double? r) {
-  if (r == null) return const _Tag('No rating', _kMuted);
-  if (r <= 2.4) return const _Tag('Easy', _kAccent);
-  if (r >= 3.6) return const _Tag('Hard', _kOrange);
-  return const _Tag('Moderate', _kPurple);
+  if (r == null) return _Tag('No rating', AppColors.dark.muted);
+  if (r <= 2.4) return const _Tag('Easy', AppColors.primary);
+  if (r >= 3.6) return const _Tag('Hard', AppColors.orange);
+  return const _Tag('Moderate', AppColors.purple);
 }
 
 String _ratingEmoji(double? r) {
@@ -647,7 +678,6 @@ String _ratingEmoji(double? r) {
   return '😐';
 }
 
-/// Signed delta string, e.g. "+150 kcal", "−10 g", "No change".
 String _delta(int v, String unit) {
   if (v == 0) return 'No change';
   final sign = v > 0 ? '+' : '−';
@@ -655,9 +685,9 @@ String _delta(int v, String unit) {
 }
 
 _Arrow _arrowFor(int v) {
-  if (v > 0) return const _Arrow(Icons.arrow_upward_rounded, _kAccent);
-  if (v < 0) return const _Arrow(Icons.arrow_downward_rounded, _kOrange);
-  return const _Arrow(Icons.remove_rounded, _kMuted);
+  if (v > 0) return const _Arrow(Icons.arrow_upward_rounded, AppColors.primary);
+  if (v < 0) return const _Arrow(Icons.arrow_downward_rounded, AppColors.orange);
+  return _Arrow(Icons.remove_rounded, AppColors.dark.muted);
 }
 
 String _intensityLabel(WeeklySummary s) {
@@ -675,26 +705,26 @@ String _intensitySubtitle(WeeklySummary s) {
 }
 
 _Arrow _intensityArrow(WeeklySummary s) {
-  if (!s.volumeChanged) return const _Arrow(Icons.remove_rounded, _kMuted);
+  if (!s.volumeChanged) return _Arrow(Icons.remove_rounded, AppColors.dark.muted);
   if (s.difficultyBias == 'up') {
-    return const _Arrow(Icons.arrow_upward_rounded, _kAccent);
+    return const _Arrow(Icons.arrow_upward_rounded, AppColors.primary);
   }
   if (s.difficultyBias == 'down') {
-    return const _Arrow(Icons.arrow_downward_rounded, _kOrange);
+    return const _Arrow(Icons.arrow_downward_rounded, AppColors.orange);
   }
-  return const _Arrow(Icons.remove_rounded, _kMuted);
+  return _Arrow(Icons.remove_rounded, AppColors.dark.muted);
 }
 
 Color _badgeColor(String badge) {
   switch (badge) {
     case 'Increased Calories':
     case 'Increased Intensity':
-      return _kAccent;
+      return AppColors.primary;
     case 'Reduced Calories':
     case 'Reduced Intensity':
-      return _kOrange;
+      return AppColors.orange;
     default:
-      return _kPurple;
+      return AppColors.purple;
   }
 }
 
@@ -707,10 +737,3 @@ String _date(DateTime d) => '${_months[d.month - 1]} ${d.day}';
 
 String _rangeLabel(DateTime start, DateTime end) =>
     '${_date(start)} – ${_date(end)}';
-
-/// "week_2026_25" → "Week 25".
-String _weekLabel(String weekId) {
-  final parts = weekId.split('_');
-  if (parts.length >= 3) return 'Week ${parts.last}';
-  return weekId;
-}

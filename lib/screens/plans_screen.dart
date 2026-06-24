@@ -23,6 +23,7 @@ import '../providers/plan_provider.dart';
 import '../providers/profile_provider.dart';
 import '../models/food_item.dart';
 import '../app_clock.dart';
+import '../theme/app_colors.dart';
 
 class PlansScreen extends StatefulWidget {
   const PlansScreen({Key? key}) : super(key: key);
@@ -62,13 +63,14 @@ class PlansScreenState extends State<PlansScreen>
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final args = ModalRoute.of(context)?.settings.arguments;
     final String? focusMealType = (args is Map)
         ? args['mealType'] as String?
         : null;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: c.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -79,7 +81,7 @@ class PlansScreenState extends State<PlansScreen>
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                  color: c.onBackground,
                 ),
               ),
             ),
@@ -87,18 +89,18 @@ class PlansScreenState extends State<PlansScreen>
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 20),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
+                color: c.surface,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: TabBar(
                 controller: _tabController,
                 indicator: BoxDecoration(
-                  color: const Color(0xFF00C97B),
+                  color: AppColors.primary,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 indicatorSize: TabBarIndicatorSize.tab,
-                labelColor: Colors.black,
-                unselectedLabelColor: const Color(0xFF888888),
+                labelColor: c.onPrimary,
+                unselectedLabelColor: c.muted,
                 labelStyle: GoogleFonts.spaceGrotesk(
                   fontWeight: FontWeight.w700,
                 ),
@@ -591,20 +593,20 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 'Weekly plan updated based on your progress',
                 style: GoogleFonts.inter(
                   fontWeight: FontWeight.w600,
-                  color: Colors.white,
+                  color: context.colors.onBackground,
                 ),
               ),
-              backgroundColor: const Color(0xFF1A1A1A),
+              backgroundColor: context.colors.surface,
               behavior: SnackBarBehavior.floating,
               duration: const Duration(seconds: 8),
               showCloseIcon: true,
-              closeIconColor: const Color(0xFF888888),
+              closeIconColor: context.colors.muted,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
               action: SnackBarAction(
                 label: 'View Summary',
-                textColor: const Color(0xFF00C97B),
+                textColor: AppColors.primary,
                 onPressed: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -728,7 +730,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
               : '${ex.name} pinned always included in $focus workouts',
           style: GoogleFonts.inter(fontWeight: FontWeight.w600),
         ),
-        backgroundColor: const Color(0xFF00C97B),
+        backgroundColor: AppColors.primary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
@@ -738,9 +740,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
   /// Post-workout perceived-difficulty rating (1 too easy … 5 too hard).
   Future<int?> _askWorkoutRating() {
     const labels = ['Too easy', 'Easy', 'Just right', 'Hard', 'Too hard'];
+    final c = context.colors;
     return showModalBottomSheet<int>(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: c.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -753,7 +756,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             Text(
               'How did that feel?',
               style: GoogleFonts.spaceGrotesk(
-                color: Colors.white,
+                color: c.onBackground,
                 fontWeight: FontWeight.w700,
                 fontSize: 18,
               ),
@@ -762,7 +765,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             Text(
               "Tunes next week's difficulty.",
               style: GoogleFonts.inter(
-                color: const Color(0xFF888888),
+                color: c.muted,
                 fontSize: 13,
               ),
             ),
@@ -774,14 +777,14 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 leading: Text(
                   '${i + 1}',
                   style: GoogleFonts.spaceGrotesk(
-                    color: const Color(0xFF00C97B),
+                    color: AppColors.primary,
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
                   ),
                 ),
                 title: Text(
                   labels[i],
-                  style: GoogleFonts.inter(color: Colors.white),
+                  style: GoogleFonts.inter(color: c.onBackground),
                 ),
                 onTap: () => Navigator.pop(ctx, i + 1),
               ),
@@ -791,7 +794,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 onPressed: () => Navigator.pop(ctx, null),
                 child: Text(
                   'Skip',
-                  style: GoogleFonts.inter(color: const Color(0xFF888888)),
+                  style: GoogleFonts.inter(color: c.muted),
                 ),
               ),
             ),
@@ -812,7 +815,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
       tooltip: pinned ? 'Unpin from $focus' : 'Always include in $focus',
       icon: Icon(
         pinned ? Icons.star : Icons.star_outline,
-        color: pinned ? const Color(0xFF00C97B) : const Color(0xFF666666),
+        color: pinned ? AppColors.primary : context.colors.disabled,
         size: 20,
       ),
     );
@@ -821,6 +824,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
   /// Inline working-weight + reps input shown on the active exercise card,
   /// pre-hinted with the last logged top set as the progressive-overload target.
   Widget _buildWeightInput(WorkoutExercise we) {
+    final c = context.colors;
     final stat = _exerciseStats[we.exercise.id];
     final hint = (stat != null && stat.lastWeightKg > 0)
         ? 'Last: ${_fmtWeight(stat.lastWeightKg)}'
@@ -830,11 +834,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
     InputDecoration deco(String h) => InputDecoration(
       hintText: h,
       hintStyle: GoogleFonts.inter(
-        color: const Color(0xFF666666),
+        color: c.disabled,
         fontSize: 13,
       ),
       filled: true,
-      fillColor: const Color(0xFF222222),
+      fillColor: c.inputFill,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -848,7 +852,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         Text(
           hint,
           style: GoogleFonts.inter(
-            color: const Color(0xFF888888),
+            color: c.muted,
             fontSize: 12,
           ),
         ),
@@ -860,14 +864,14 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 target.isIncrease
                     ? Icons.trending_up_rounded
                     : Icons.flag_rounded,
-                color: const Color(0xFF00C97B),
+                color: AppColors.primary,
                 size: 14,
               ),
               const SizedBox(width: 6),
               Text(
                 'Target: ${_fmtWeight(target.weightKg)} × ${target.reps}',
                 style: GoogleFonts.inter(
-                  color: const Color(0xFF00C97B),
+                  color: AppColors.primary,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -885,7 +889,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   decimal: true,
                 ),
                 style: GoogleFonts.spaceGrotesk(
-                  color: Colors.white,
+                  color: c.onBackground,
                   fontWeight: FontWeight.w600,
                 ),
                 decoration: deco('Weight ($_weightUnit)'),
@@ -898,7 +902,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 controller: _repsController,
                 keyboardType: TextInputType.number,
                 style: GoogleFonts.spaceGrotesk(
-                  color: Colors.white,
+                  color: c.onBackground,
                   fontWeight: FontWeight.w600,
                 ),
                 decoration: deco('Reps'),
@@ -1002,29 +1006,30 @@ class _WorkoutTabState extends State<_WorkoutTab>
   }
 
   Widget _buildWarmupIntro() {
+    final c = context.colors;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: c.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
+        border: Border.all(color: c.surfaceAlt),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.whatshot_rounded,
-                color: Color(0xFFFFA726),
+                color: AppColors.amber,
                 size: 16,
               ),
               const SizedBox(width: 6),
               Text(
                 'Warm-up first',
                 style: GoogleFonts.spaceGrotesk(
-                  color: Colors.white,
+                  color: c.onBackground,
                   fontWeight: FontWeight.w700,
                   fontSize: 14,
                 ),
@@ -1035,7 +1040,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 child: Text(
                   'Skip',
                   style: GoogleFonts.inter(
-                    color: const Color(0xFF888888),
+                    color: c.muted,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
@@ -1057,8 +1062,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00C97B),
-                foregroundColor: Colors.black,
+                backgroundColor: AppColors.primary,
+                foregroundColor: c.onPrimary,
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1072,6 +1077,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
   }
 
   Widget _buildActiveWarmupCard() {
+    final c = context.colors;
     final m = _warmupMoves[_activeWarmupIndex];
     final ex = m.exercise;
     final gifUrl = (ex?.gifUrl != null && ex!.gifUrl!.isNotEmpty)
@@ -1082,10 +1088,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: c.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFFFFA726).withValues(alpha: 0.6),
+          color: AppColors.amber.withValues(alpha: 0.6),
           width: 1.5,
         ),
       ),
@@ -1094,16 +1100,16 @@ class _WorkoutTabState extends State<_WorkoutTab>
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.whatshot_rounded,
-                color: Color(0xFFFFA726),
+                color: AppColors.amber,
                 size: 16,
               ),
               const SizedBox(width: 6),
               Text(
                 'Warm-up ${_activeWarmupIndex + 1} of ${_warmupMoves.length}',
                 style: GoogleFonts.inter(
-                  color: const Color(0xFFFFA726),
+                  color: AppColors.amber,
                   fontWeight: FontWeight.w600,
                   fontSize: 12,
                 ),
@@ -1114,7 +1120,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 child: Text(
                   'Skip warm-up',
                   style: GoogleFonts.inter(
-                    color: const Color(0xFF888888),
+                    color: c.muted,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
@@ -1126,7 +1132,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
           Text(
             m.label,
             style: GoogleFonts.spaceGrotesk(
-              color: Colors.white,
+              color: c.onBackground,
               fontWeight: FontWeight.w700,
               fontSize: 18,
             ),
@@ -1155,7 +1161,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             child: Text(
               _formatCountdown(_warmupRemaining),
               style: GoogleFonts.spaceGrotesk(
-                color: Colors.white,
+                color: c.onBackground,
                 fontSize: 44,
                 fontWeight: FontWeight.w700,
               ),
@@ -1166,8 +1172,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: _warmupTotal > 0 ? _warmupRemaining / _warmupTotal : 0,
-              backgroundColor: const Color(0xFF2E2E2E),
-              valueColor: const AlwaysStoppedAnimation(Color(0xFFFFA726)),
+              backgroundColor: c.border,
+              valueColor: AlwaysStoppedAnimation(AppColors.amber),
               minHeight: 6,
             ),
           ),
@@ -1177,8 +1183,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
             child: OutlinedButton(
               onPressed: _advanceWarmup,
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF00C97B),
-                side: const BorderSide(color: Color(0xFF00C97B)),
+                foregroundColor: AppColors.primary,
+                side: BorderSide(color: AppColors.primary),
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1198,6 +1204,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
   /// One row in the general warm-up: a small GIF thumbnail (if available) +
   /// move name + suggested duration.
   Widget _warmupMoveRow(Exercise? ex, String label, String duration) {
+    final c = context.colors;
     final hasGif = ex?.gifUrl?.isNotEmpty == true;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1218,10 +1225,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 : Container(
                     width: 44,
                     height: 44,
-                    color: const Color(0xFF222222),
-                    child: const Icon(
+                    color: c.inputFill,
+                    child: Icon(
                       Icons.directions_run_rounded,
-                      color: Color(0xFF888888),
+                      color: c.muted,
                       size: 20,
                     ),
                   ),
@@ -1231,7 +1238,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             child: Text(
               label,
               style: GoogleFonts.inter(
-                color: Colors.white,
+                color: c.onBackground,
                 fontWeight: FontWeight.w500,
                 fontSize: 13,
               ),
@@ -1240,7 +1247,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
           Text(
             duration,
             style: GoogleFonts.inter(
-              color: const Color(0xFF00C97B),
+              color: AppColors.primary,
               fontWeight: FontWeight.w600,
               fontSize: 12,
             ),
@@ -1252,13 +1259,14 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
   /// Small "Last / PR" caption under the stat boxes on the normal card.
   Widget _lastPrLine(Exercise ex) {
+    final c = context.colors;
     final stat = _exerciseStats[ex.id];
     if (stat == null || stat.lastWeightKg <= 0) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Row(
         children: [
-          const Icon(Icons.history_rounded, color: Color(0xFF888888), size: 14),
+          Icon(Icons.history_rounded, color: c.muted, size: 14),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
@@ -1266,7 +1274,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
               '${stat.lastReps != null ? ' × ${stat.lastReps}' : ''}'
               '   ·   PR ${_fmtWeight(stat.bestWeightKg)}',
               style: GoogleFonts.inter(
-                color: const Color(0xFF888888),
+                color: c.muted,
                 fontSize: 12,
               ),
             ),
@@ -1339,7 +1347,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             msg,
             style: GoogleFonts.inter(fontWeight: FontWeight.w600),
           ),
-          backgroundColor: const Color(0xFF00C97B),
+          backgroundColor: AppColors.primary,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -1610,12 +1618,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    if (_isLoading) return _buildLoading('Generating workout plan...');
-    if (_error != null) return _buildError(_error!, _generate);
+    if (_isLoading) return _buildLoading('Generating workout plan...', ctx: context);
+    if (_error != null) return _buildError(_error!, _generate, ctx: context);
     return _buildPlan();
   }
 
   Widget _buildPlan() {
+    final c = context.colors;
     final day = _plan.isNotEmpty ? _plan[_selectedDay] : null;
     return Column(
       children: [
@@ -1624,17 +1633,17 @@ class _WorkoutTabState extends State<_WorkoutTab>
           child: Row(
             children: [
               if (_profile != null) ...[
-                _chip(_profile!.fitnessGoal, const Color(0xFF00C97B)),
+                _chip(_profile!.fitnessGoal, AppColors.primary),
                 const SizedBox(width: 6),
-                _chip(_profile!.experienceLevel, const Color(0xFF6C63FF)),
+                _chip(_profile!.experienceLevel, AppColors.purple),
                 const SizedBox(width: 6),
-                _chip(_profile!.workoutLocation, const Color(0xFFFF6B35)),
+                _chip(_profile!.workoutLocation, AppColors.orange),
               ],
               const Spacer(),
               IconButton(
-                icon: const Icon(
+                icon: Icon(
                   Icons.refresh_rounded,
-                  color: Color(0xFF00C97B),
+                  color: AppColors.primary,
                 ),
                 onPressed: _forceRegenerate,
                 padding: EdgeInsets.zero,
@@ -1673,13 +1682,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       decoration: BoxDecoration(
                         color: isSelected
                             ? (isRest
-                                  ? const Color(0xFF444444)
-                                  : const Color(0xFF00C97B))
-                            : const Color(0xFF1A1A1A),
+                                  ? c.subtle
+                                  : AppColors.primary)
+                            : c.surface,
                         borderRadius: BorderRadius.circular(14),
                         border: isSelected
                             ? null
-                            : Border.all(color: const Color(0xFF2E2E2E)),
+                            : Border.all(color: c.border),
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -1690,8 +1699,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                               color: isSelected
-                                  ? (isRest ? Colors.white : Colors.black)
-                                  : Colors.white,
+                                  ? (isRest ? c.onBackground : c.onPrimary)
+                                  : c.onBackground,
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -1701,8 +1710,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                                 : Icons.fitness_center_rounded,
                             size: 14,
                             color: isSelected
-                                ? (isRest ? Colors.white70 : Colors.black54)
-                                : const Color(0xFF888888),
+                                ? (isRest ? Colors.white70 : c.shadow)
+                                : c.muted,
                           ),
                         ],
                       ),
@@ -1715,9 +1724,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
                           width: 10,
                           height: 10,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF00C97B),
+                            color: AppColors.primary,
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.black, width: 1.5),
+                            border: Border.all(color: c.onPrimary, width: 1.5),
                           ),
                         ),
                       ),
@@ -1782,15 +1791,17 @@ class _WorkoutTabState extends State<_WorkoutTab>
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          backgroundColor: const Color(0xFF1A1A1A),
+        builder: (_) {
+          final c = context.colors;
+          return AlertDialog(
+          backgroundColor: c.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
           title: Text(
             'Session is shorter',
             style: GoogleFonts.spaceGrotesk(
-              color: Colors.white,
+              color: c.onBackground,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1800,7 +1811,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             'leave the session shorter — skipped volume will be added to your '
             'next workout day${removed > 1 ? 's' : ''}.',
             style: GoogleFonts.inter(
-              color: const Color(0xFF888888),
+              color: c.muted,
               fontSize: 14,
               height: 1.5,
             ),
@@ -1815,7 +1826,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
               child: Text(
                 'Fill the gap',
                 style: GoogleFonts.inter(
-                  color: const Color(0xFF00C97B),
+                  color: AppColors.primary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -1829,13 +1840,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
               child: Text(
                 'Leave shorter',
                 style: GoogleFonts.inter(
-                  color: const Color(0xFF888888),
+                  color: c.muted,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ),
           ],
-        ),
+        );},
       );
       return; // wait for dialog result
     }
@@ -1877,7 +1888,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
   /// Small difficulty chip for picker rows. Amber when the move is above the
   /// user's tier, muted green when it's at or below.
   Widget _difficultyBadge(String difficulty, bool aboveTier) {
-    final color = aboveTier ? const Color(0xFFFFA726) : const Color(0xFF00C97B);
+    final color = aboveTier ? AppColors.amber : AppColors.primary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
@@ -1898,15 +1909,16 @@ class _WorkoutTabState extends State<_WorkoutTab>
   /// Informed-consent confirm when the user picks an above-tier exercise.
   Future<bool?> _confirmAboveTier(Exercise e) {
     final level = _profile?.experienceLevel ?? 'your';
+    final c = context.colors;
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: c.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           'Above your level',
           style: GoogleFonts.spaceGrotesk(
-            color: Colors.white,
+            color: c.onBackground,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -1914,7 +1926,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
           '"${e.name}" is rated ${e.difficulty}, above your '
           '$level level. Make sure you can perform it safely — add it anyway?',
           style: GoogleFonts.inter(
-            color: const Color(0xFFBBBBBB),
+            color: c.muted,
             fontSize: 14,
           ),
         ),
@@ -1923,7 +1935,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
               'Cancel',
-              style: GoogleFonts.inter(color: const Color(0xFF888888)),
+              style: GoogleFonts.inter(color: c.muted),
             ),
           ),
           TextButton(
@@ -1931,7 +1943,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             child: Text(
               'Add anyway',
               style: GoogleFonts.inter(
-                color: const Color(0xFF00C97B),
+                color: AppColors.primary,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -2080,6 +2092,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
     int exIdx,
     WorkoutExercise we,
   ) {
+    final c = context.colors;
     final dayIdx = _selectedDay;
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     return Stack(
@@ -2143,15 +2156,15 @@ class _WorkoutTabState extends State<_WorkoutTab>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
+                color: c.surface,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF333333)),
+                border: Border.all(color: c.borderLight),
               ),
               child: Text(
                 'Edit',
                 style: GoogleFonts.inter(
                   fontSize: 11,
-                  color: const Color(0xFF00C97B),
+                  color: AppColors.primary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -2188,9 +2201,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
               Expanded(child: wrapped),
               ReorderableDragStartListener(
                 index: idx,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 20),
-                  child: Icon(Icons.drag_handle, color: Color(0xFF888888)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 20),
+                  child: Icon(Icons.drag_handle, color: context.colors.muted),
                 ),
               ),
             ],
@@ -2219,22 +2232,22 @@ class _WorkoutTabState extends State<_WorkoutTab>
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
+            color: context.colors.surface,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: const Color(0xFF00C97B).withValues(alpha: 0.4),
+              color: AppColors.primary.withValues(alpha: 0.4),
               style: BorderStyle.solid,
             ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.add_rounded, color: Color(0xFF00C97B), size: 18),
+              Icon(Icons.add_rounded, color: AppColors.primary, size: 18),
               const SizedBox(width: 6),
               Text(
                 'Add exercise',
                 style: GoogleFonts.inter(
-                  color: const Color(0xFF00C97B),
+                  color: AppColors.primary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -2252,9 +2265,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final repsCtrl = TextEditingController(text: reps);
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
+    final c = context.colors;
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: c.surface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -2274,7 +2288,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
               Text(
                 we.exercise.name,
                 style: GoogleFonts.spaceGrotesk(
-                  color: Colors.white,
+                  color: c.onBackground,
                   fontWeight: FontWeight.w700,
                   fontSize: 18,
                 ),
@@ -2286,7 +2300,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 children: [
                   Text(
                     'Sets',
-                    style: GoogleFonts.inter(color: const Color(0xFF888888)),
+                    style: GoogleFonts.inter(color: c.muted),
                   ),
                   Row(
                     children: [
@@ -2299,7 +2313,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                         child: Text(
                           '$sets',
                           style: GoogleFonts.spaceGrotesk(
-                            color: Colors.white,
+                            color: c.onBackground,
                             fontWeight: FontWeight.w700,
                             fontSize: 18,
                           ),
@@ -2320,17 +2334,17 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 children: [
                   Text(
                     'Reps / Duration',
-                    style: GoogleFonts.inter(color: const Color(0xFF888888)),
+                    style: GoogleFonts.inter(color: c.muted),
                   ),
                   SizedBox(
                     width: 110,
                     child: TextField(
                       controller: repsCtrl,
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(color: Colors.white),
+                      style: GoogleFonts.inter(color: c.onBackground),
                       decoration: InputDecoration(
                         filled: true,
-                        fillColor: const Color(0xFF222222),
+                        fillColor: c.inputFill,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide: BorderSide.none,
@@ -2349,7 +2363,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 children: [
                   Text(
                     'Rest (sec)',
-                    style: GoogleFonts.inter(color: const Color(0xFF888888)),
+                    style: GoogleFonts.inter(color: c.muted),
                   ),
                   Row(
                     children: [
@@ -2362,7 +2376,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                         child: Text(
                           '${rest}s',
                           style: GoogleFonts.spaceGrotesk(
-                            color: Colors.white,
+                            color: c.onBackground,
                             fontWeight: FontWeight.w700,
                             fontSize: 18,
                           ),
@@ -2397,8 +2411,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                     );
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00C97B),
-                    foregroundColor: Colors.black,
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: c.onPrimary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -2424,10 +2438,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
       width: 34,
       height: 34,
       decoration: BoxDecoration(
-        color: const Color(0xFF222222),
+        color: context.colors.inputFill,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Icon(icon, size: 18, color: Colors.white),
+      child: Icon(icon, size: 18, color: context.colors.onBackground),
     ),
   );
 
@@ -2450,9 +2464,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
     final searchController = TextEditingController();
 
+    final c = context.colors;
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: c.surface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -2480,7 +2495,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   child: Text(
                     'Add exercise — ${day.focus}',
                     style: GoogleFonts.spaceGrotesk(
-                      color: Colors.white,
+                      color: c.onBackground,
                       fontWeight: FontWeight.w700,
                       fontSize: 16,
                     ),
@@ -2491,29 +2506,29 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   child: TextField(
                     controller: searchController,
                     onChanged: (_) => setSheetState(() {}),
-                    style: GoogleFonts.inter(color: Colors.white),
-                    cursorColor: const Color(0xFF00C97B),
+                    style: GoogleFonts.inter(color: c.onBackground),
+                    cursorColor: AppColors.primary,
                     decoration: InputDecoration(
                       hintText: 'Search exercises',
                       hintStyle: GoogleFonts.inter(
-                        color: const Color(0xFF888888),
+                        color: c.muted,
                       ),
-                      prefixIcon: const Icon(
+                      prefixIcon: Icon(
                         Icons.search,
-                        color: Color(0xFF888888),
+                        color: c.muted,
                       ),
                       suffixIcon: searchController.text.isEmpty
                           ? null
                           : IconButton(
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.close,
-                                color: Color(0xFF888888),
+                                color: c.muted,
                               ),
                               onPressed: () =>
                                   setSheetState(() => searchController.clear()),
                             ),
                       filled: true,
-                      fillColor: const Color(0xFF0D0D0D),
+                      fillColor: c.background,
                       contentPadding: const EdgeInsets.symmetric(vertical: 0),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -2525,7 +2540,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF00C97B)),
+                        borderSide: BorderSide(color: AppColors.primary),
                       ),
                     ),
                   ),
@@ -2536,7 +2551,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                           child: Text(
                             'No matching exercises found.',
                             style: GoogleFonts.inter(
-                              color: const Color(0xFF888888),
+                              color: c.muted,
                             ),
                           ),
                         )
@@ -2555,7 +2570,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                               title: Text(
                                 ex.name,
                                 style: GoogleFonts.inter(
-                                  color: Colors.white,
+                                  color: c.onBackground,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -2566,7 +2581,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                                       ex.primaryMuscles.join(', '),
                                       overflow: TextOverflow.ellipsis,
                                       style: GoogleFonts.inter(
-                                        color: const Color(0xFF888888),
+                                        color: c.muted,
                                         fontSize: 12,
                                       ),
                                     ),
@@ -2577,9 +2592,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
                                   ],
                                 ],
                               ),
-                              trailing: const Icon(
+                              trailing: Icon(
                                 Icons.add_circle_outline,
-                                color: Color(0xFF00C97B),
+                                color: AppColors.primary,
                               ),
                               onTap: () async {
                                 Navigator.pop(ctx);
@@ -2624,30 +2639,33 @@ class _WorkoutTabState extends State<_WorkoutTab>
   List<String> _focusToMuscles(String focus) =>
       GreedyAlgorithm.musclesForFocus(focus);
 
-  Widget _buildRestDay() => Center(
+  Widget _buildRestDay() {
+    final c = context.colors;
+    return Center(
     child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Icon(Icons.bedtime_rounded, size: 64, color: Color(0xFF444444)),
+        Icon(Icons.bedtime_rounded, size: 64, color: c.subtle),
         const SizedBox(height: 16),
         Text(
           'Rest Day',
           style: GoogleFonts.spaceGrotesk(
             fontSize: 24,
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            color: c.onBackground,
           ),
         ),
         const SizedBox(height: 8),
         Text(
           'Recovery is part of the plan.',
-          style: GoogleFonts.inter(color: const Color(0xFF888888)),
+          style: GoogleFonts.inter(color: c.muted),
         ),
       ],
     ),
-  );
+  );}
 
   Widget _buildWorkoutDay(WorkoutDay day) {
+    final c = context.colors;
     final isToday = _selectedDay == appNow().weekday - 1;
     final isCompleted = _todayLog != null && isToday;
     // The session covers the warm-up phase + the lifts; exercises stay locked
@@ -2704,13 +2722,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       style: GoogleFonts.spaceGrotesk(
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                        color: c.onBackground,
                       ),
                     ),
                     Text(
                       day.focus,
                       style: GoogleFonts.inter(
-                        color: const Color(0xFF00C97B),
+                        color: AppColors.primary,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -2724,25 +2742,25 @@ class _WorkoutTabState extends State<_WorkoutTab>
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF00C97B).withOpacity(0.15),
+                    color: AppColors.primary.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: const Color(0xFF00C97B).withOpacity(0.4),
+                      color: AppColors.primary.withOpacity(0.4),
                     ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.check_circle_rounded,
-                        color: Color(0xFF00C97B),
+                        color: AppColors.primary,
                         size: 14,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         'Completed · ${_todayLog!.durationMinutes} min',
                         style: GoogleFonts.inter(
-                          color: const Color(0xFF00C97B),
+                          color: AppColors.primary,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -2757,13 +2775,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A1A),
+                    color: c.surface,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     '${day.exercises.length} exercises',
                     style: GoogleFonts.inter(
-                      color: const Color(0xFF888888),
+                      color: c.muted,
                       fontSize: 13,
                     ),
                   ),
@@ -2785,13 +2803,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   ),
                   decoration: BoxDecoration(
                     color: _editMode
-                        ? const Color(0xFF00C97B).withValues(alpha: 0.15)
-                        : const Color(0xFF1A1A1A),
+                        ? AppColors.primary.withValues(alpha: 0.15)
+                        : c.surface,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: _editMode
-                          ? const Color(0xFF00C97B)
-                          : const Color(0xFF333333),
+                          ? AppColors.primary
+                          : c.borderLight,
                     ),
                   ),
                   child: Row(
@@ -2801,8 +2819,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                         _editMode ? Icons.check_rounded : Icons.edit_rounded,
                         size: 14,
                         color: _editMode
-                            ? const Color(0xFF00C97B)
-                            : const Color(0xFF888888),
+                            ? AppColors.primary
+                            : c.muted,
                       ),
                       const SizedBox(width: 4),
                       Text(
@@ -2811,8 +2829,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: _editMode
-                              ? const Color(0xFF00C97B)
-                              : const Color(0xFF888888),
+                              ? AppColors.primary
+                              : c.muted,
                         ),
                       ),
                     ],
@@ -2829,7 +2847,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 Text(
                   '${_completedExercises.length} / ${day.exercises.length}',
                   style: GoogleFonts.spaceGrotesk(
-                    color: const Color(0xFF00C97B),
+                    color: AppColors.primary,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                   ),
@@ -2842,9 +2860,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       value: day.exercises.isEmpty
                           ? 0
                           : _completedExercises.length / day.exercises.length,
-                      backgroundColor: const Color(0xFF2E2E2E),
-                      valueColor: const AlwaysStoppedAnimation(
-                        Color(0xFF00C97B),
+                      backgroundColor: c.border,
+                      valueColor: AlwaysStoppedAnimation(
+                        AppColors.primary,
                       ),
                       minHeight: 6,
                     ),
@@ -2875,8 +2893,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00C97B),
-                  foregroundColor: Colors.black,
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: c.onPrimary,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -2914,14 +2932,15 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
   // "Up Next / I'm Ready!" card shown between exercises
   Widget _buildReadyCard(WorkoutExercise we) {
+    final c = context.colors;
     final ex = we.exercise;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: c.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF00C97B).withOpacity(0.5)),
+        border: Border.all(color: AppColors.primary.withOpacity(0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2929,7 +2948,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
           Text(
             'Up Next',
             style: GoogleFonts.inter(
-              color: const Color(0xFF00C97B),
+              color: AppColors.primary,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -2938,7 +2957,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
           Text(
             ex.name,
             style: GoogleFonts.spaceGrotesk(
-              color: Colors.white,
+              color: c.onBackground,
               fontSize: 18,
               fontWeight: FontWeight.w700,
             ),
@@ -2946,7 +2965,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
           Text(
             '${ex.primaryMuscles.join(', ')} · ${we.sets} sets · ${we.reps} reps · ${we.restSeconds}s rest · ${we.timePerSetSeconds}s/set',
             style: GoogleFonts.inter(
-              color: const Color(0xFF888888),
+              color: c.muted,
               fontSize: 13,
             ),
           ),
@@ -2981,13 +3000,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   Container(
                     width: 44,
                     height: 44,
-                    decoration: const BoxDecoration(
-                      color: Colors.black54,
+                    decoration: BoxDecoration(
+                      color: c.shadow,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.play_arrow_rounded,
-                      color: Colors.white,
+                      color: c.onBackground,
                       size: 26,
                     ),
                   ),
@@ -3000,8 +3019,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
             child: ElevatedButton(
               onPressed: _iAmReady,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00C97B),
-                foregroundColor: Colors.black,
+                backgroundColor: AppColors.primary,
+                foregroundColor: c.onPrimary,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
@@ -3025,6 +3044,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
   /// default (keeps cards compact); tap to reveal. Available on active and
   /// non-active cards, keyed by exercise index.
   Widget _buildStepsExpander(Exercise ex, int exIndex) {
+    final c = context.colors;
     final expanded = _expandedSteps.contains(exIndex);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3040,16 +3060,16 @@ class _WorkoutTabState extends State<_WorkoutTab>
           }),
           child: Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.menu_book_rounded,
-                color: Color(0xFF888888),
+                color: c.muted,
                 size: 14,
               ),
               const SizedBox(width: 6),
               Text(
                 'Steps',
                 style: GoogleFonts.inter(
-                  color: const Color(0xFF888888),
+                  color: c.muted,
                   fontWeight: FontWeight.w600,
                   fontSize: 12,
                 ),
@@ -3059,7 +3079,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 expanded
                     ? Icons.keyboard_arrow_up_rounded
                     : Icons.keyboard_arrow_down_rounded,
-                color: const Color(0xFF888888),
+                color: c.muted,
                 size: 18,
               ),
             ],
@@ -3071,7 +3091,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             child: Text(
               ex.instructions,
               style: GoogleFonts.inter(
-                color: const Color(0xFF888888),
+                color: c.muted,
                 fontSize: 13,
                 height: 1.5,
               ),
@@ -3089,6 +3109,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
     required bool isDone,
     required bool workoutStarted,
   }) {
+    final c = context.colors;
     final ex = we.exercise;
     final String focus = _selectedDay < _plan.length
         ? _plan[_selectedDay].focus
@@ -3101,17 +3122,17 @@ class _WorkoutTabState extends State<_WorkoutTab>
       height: 32,
       decoration: BoxDecoration(
         color: isDone
-            ? const Color(0xFF00C97B)
-            : const Color(0xFF00C97B).withOpacity(0.15),
+            ? AppColors.primary
+            : AppColors.primary.withOpacity(0.15),
         shape: BoxShape.circle,
       ),
       child: Center(
         child: isDone
-            ? const Icon(Icons.check_rounded, color: Colors.black, size: 16)
+            ? Icon(Icons.check_rounded, color: c.onPrimary, size: 16)
             : Text(
                 '$number',
                 style: GoogleFonts.spaceGrotesk(
-                  color: const Color(0xFF00C97B),
+                  color: AppColors.primary,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -3180,13 +3201,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   Container(
                     width: 44,
                     height: 44,
-                    decoration: const BoxDecoration(
-                      color: Colors.black54,
+                    decoration: BoxDecoration(
+                      color: c.shadow,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.play_arrow_rounded,
-                      color: Colors.white,
+                      color: c.onBackground,
                       size: 26,
                     ),
                   ),
@@ -3206,12 +3227,12 @@ class _WorkoutTabState extends State<_WorkoutTab>
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: c.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isActive
-                ? const Color(0xFF00C97B).withOpacity(0.6)
-                : const Color(0xFF2E2E2E),
+                ? AppColors.primary.withOpacity(0.6)
+                : c.border,
             width: isActive ? 1.5 : 1.0,
           ),
         ),
@@ -3230,7 +3251,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       Text(
                         ex.name,
                         style: GoogleFonts.spaceGrotesk(
-                          color: Colors.white,
+                          color: c.onBackground,
                           fontWeight: FontWeight.w600,
                           fontSize: 15,
                         ),
@@ -3238,7 +3259,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       Text(
                         ex.primaryMuscles.join(', '),
                         style: GoogleFonts.inter(
-                          color: const Color(0xFF888888),
+                          color: c.muted,
                           fontSize: 12,
                         ),
                       ),
@@ -3273,7 +3294,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 Text(
                   _formatCountdown(_restRemaining),
                   style: GoogleFonts.spaceGrotesk(
-                    color: Colors.white,
+                    color: c.onBackground,
                     fontSize: 44,
                     fontWeight: FontWeight.w700,
                   ),
@@ -3283,8 +3304,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
                     value: _restTotal > 0 ? _restRemaining / _restTotal : 0,
-                    backgroundColor: const Color(0xFF2E2E2E),
-                    valueColor: const AlwaysStoppedAnimation(Color(0xFF00C97B)),
+                    backgroundColor: c.border,
+                    valueColor: AlwaysStoppedAnimation(AppColors.primary),
                     minHeight: 6,
                   ),
                 ),
@@ -3295,7 +3316,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                     child: Text(
                       'Skip Rest',
                       style: GoogleFonts.inter(
-                        color: const Color(0xFF00C97B),
+                        color: AppColors.primary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -3315,8 +3336,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: i < _activeSetNumber
-                              ? const Color(0xFF00C97B)
-                              : const Color(0xFF2E2E2E),
+                              ? AppColors.primary
+                              : c.border,
                         ),
                       ),
                     ),
@@ -3324,7 +3345,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                     Text(
                       'Set $_activeSetNumber of ${we.sets}',
                       style: GoogleFonts.spaceGrotesk(
-                        color: Colors.white,
+                        color: c.onBackground,
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
                       ),
@@ -3349,8 +3370,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                         ),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00C97B),
-                        foregroundColor: Colors.black,
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: c.onPrimary,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
@@ -3364,7 +3385,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                     Text(
                       _loggedSetSummary(),
                       style: GoogleFonts.inter(
-                        color: const Color(0xFF888888),
+                        color: c.muted,
                         fontSize: 13,
                       ),
                     ),
@@ -3380,7 +3401,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   Text(
                     _formatCountdown(_setRemaining),
                     style: GoogleFonts.spaceGrotesk(
-                      color: Colors.white,
+                      color: c.onBackground,
                       fontSize: 44,
                       fontWeight: FontWeight.w700,
                     ),
@@ -3390,9 +3411,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
                       value: _setTotal > 0 ? _setRemaining / _setTotal : 0,
-                      backgroundColor: const Color(0xFF2E2E2E),
-                      valueColor: const AlwaysStoppedAnimation(
-                        Color(0xFF00C97B),
+                      backgroundColor: c.border,
+                      valueColor: AlwaysStoppedAnimation(
+                        AppColors.primary,
                       ),
                       minHeight: 6,
                     ),
@@ -3411,8 +3432,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                         ),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00C97B),
-                        foregroundColor: Colors.black,
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: c.onPrimary,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
@@ -3427,20 +3448,20 @@ class _WorkoutTabState extends State<_WorkoutTab>
               const SizedBox(height: 12),
               Row(
                 children: [
-                  _statBox('Sets', '${we.sets}', const Color(0xFF00C97B)),
+                  _statBox('Sets', '${we.sets}', AppColors.primary),
                   const SizedBox(width: 8),
-                  _statBox('Reps', we.reps, const Color(0xFF6C63FF)),
+                  _statBox('Reps', we.reps, AppColors.purple),
                   const SizedBox(width: 8),
                   _statBox(
                     'Rest',
                     '${we.restSeconds}s',
-                    const Color(0xFFFF6B35),
+                    AppColors.orange,
                   ),
                   const SizedBox(width: 8),
                   _statBox(
                     'Time/set',
                     '${we.timePerSetSeconds}s',
-                    const Color(0xFF00B8D4),
+                    AppColors.cyan,
                   ),
                 ],
               ),
@@ -3458,43 +3479,45 @@ class _WorkoutTabState extends State<_WorkoutTab>
     );
   }
 
-  Widget _gifPlaceholder({bool loading = false, double height = 160}) =>
-      Container(
+  Widget _gifPlaceholder({bool loading = false, double height = 160}) {
+      final c = context.colors;
+      return Container(
         width: double.infinity,
         height: height,
-        color: const Color(0xFF222222),
+        color: c.inputFill,
         child: loading
-            ? const Center(
+            ? Center(
                 child: CircularProgressIndicator(
-                  color: Color(0xFF00C97B),
+                  color: AppColors.primary,
                   strokeWidth: 2,
                 ),
               )
             : Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.play_circle_outline_rounded,
-                    color: Color(0xFF444444),
+                    color: c.subtle,
                     size: 48,
                   ),
                   const SizedBox(height: 10),
                   Text(
                     'Exercise Demo',
                     style: GoogleFonts.inter(
-                      color: const Color(0xFF444444),
+                      color: c.subtle,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
               ),
-      );
+      );}
 
   void _showGifDialog(BuildContext context, String gifUrl, String name) {
+    final c = context.colors;
     showDialog(
       context: context,
       builder: (_) => Dialog(
-        backgroundColor: const Color(0xFF111111),
+        backgroundColor: c.surfaceElevated,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -3504,7 +3527,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
               Text(
                 name,
                 style: GoogleFonts.spaceGrotesk(
-                  color: Colors.white,
+                  color: c.onBackground,
                   fontWeight: FontWeight.w700,
                   fontSize: 16,
                 ),
@@ -3521,9 +3544,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   loadingBuilder: (_, child, p) => p == null
                       ? child
                       : _gifPlaceholder(loading: true, height: 200),
-                  errorBuilder: (_, __, ___) => const Icon(
+                  errorBuilder: (_, __, ___) => Icon(
                     Icons.broken_image,
-                    color: Color(0xFF444444),
+                    color: c.subtle,
                     size: 60,
                   ),
                 ),
@@ -3534,7 +3557,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 child: Text(
                   'Close',
                   style: GoogleFonts.inter(
-                    color: const Color(0xFF00C97B),
+                    color: AppColors.primary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -3577,9 +3600,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
   Widget _diffBadge(String d) {
     final c = d == 'beginner'
-        ? const Color(0xFF00C97B)
+        ? AppColors.primary
         : d == 'intermediate'
-        ? const Color(0xFFFF6B35)
+        ? AppColors.orange
         : Colors.redAccent;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -3627,14 +3650,6 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
   UserProfile? _profile;
   bool _isInitializing = true;
   String _cuisine = 'any';
-
-  // Cache of the last optimized 7-day GA plan. "Generate All" runs the GA once
-  // (forceRegen); single-meal regen pulls the next day's slot from this cache
-  // for variety without re-evolving the whole population each tap. Invalidated
-  // when the cuisine changes.
-  List<DayMealPlan> _cachedPlan = [];
-  String? _cachedCuisine;
-  int _dayCursor = 0;
 
   Map<String, List<FoodItem>> _loggedFoods = {
     'breakfast': [],
@@ -3752,27 +3767,44 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     });
   }
 
-  // ── Generation (Genetic Algorithm over USDA ingredients) ───────────────────
+  // ── Generation (budget-aware meal completion over USDA ingredients) ─────────
 
-  /// Returns the next optimized day from the cached GA plan, running the
-  /// Genetic Algorithm only when the cache is empty/stale or [forceRegen] is
-  /// set. Returns `null` when no ingredient satisfies the user's restrictions
-  /// (GA returns an empty plan) — callers must surface a "no match" message
-  /// rather than fabricate meals.
-  DayMealPlan? _nextPlanDay({bool forceRegen = false}) {
-    if (forceRegen || _cachedPlan.isEmpty || _cachedCuisine != _cuisine) {
-      _cachedPlan = GeneticAlgorithm().generatePlan(
-        allIngredients: _allIngredients,
-        profile: _profile!,
-        cuisine: _cuisine, // 'any' | 'filipino' | 'western' | 'asian'
-      );
-      _cachedCuisine = _cuisine;
-      _dayCursor = 0;
+  /// Daily calorie share for [mealType] (GA's fixed meal ratios).
+  double _ratioFor(String mealType) => switch (mealType) {
+    'breakfast' => GeneticAlgorithm.breakfastRatio,
+    'lunch' => GeneticAlgorithm.lunchRatio,
+    'dinner' => GeneticAlgorithm.dinnerRatio,
+    _ => GeneticAlgorithm.snackRatio,
+  };
+
+  /// Calories already logged into [mealType] today.
+  double _loggedCals(String mealType) =>
+      (_loggedFoods[mealType] ?? []).fold(0.0, (s, f) => s + f.totalCalories);
+
+  /// Food groups already present in [mealType] (so completion complements them
+  /// instead of repeating). Mirrors the GA's own pool partitioning thresholds.
+  Set<String> _presentCategories(String mealType) =>
+      (_loggedFoods[mealType] ?? []).map(_inferCategory).toSet();
+
+  /// Coarse food group of a logged [FoodItem]: protein/grain/vegetable/fruit/fat.
+  /// FoodItems carry no category, so infer it from name hints + macro thresholds
+  /// (same cuts the GA uses to build its sub-pools).
+  String _inferCategory(FoodItem f) {
+    final n = f.name.toLowerCase();
+    if (RegExp(
+      r'\b(banana|apple|mango|papaya|strawberry|blueberry|orange|saba|grape|pineapple|watermelon|pear|berry|kiwi)\b',
+    ).hasMatch(n)) {
+      return 'fruit';
     }
-    if (_cachedPlan.isEmpty) return null;
-    final day = _cachedPlan[_dayCursor % _cachedPlan.length];
-    _dayCursor++;
-    return day;
+    if (RegExp(r'\b(milk|yogurt|yoghurt|cheese|cottage|whey)\b').hasMatch(n) &&
+        !n.contains('milkfish')) {
+      return 'protein';
+    }
+    if (f.protein >= 8) return 'protein';
+    if (f.fat >= 8 && f.carbs < 10) return 'fat';
+    if (f.carbs >= 15 && f.protein < 8) return 'grain';
+    if (f.calories <= 60 && f.carbs < 15) return 'vegetable';
+    return 'other'; // unknown → blocks no slot
   }
 
   void _showNoMatchMessage() {
@@ -3786,12 +3818,16 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     );
   }
 
-  Meal _slotOf(DayMealPlan day, String mealType) => switch (mealType) {
-    'breakfast' => day.breakfast,
-    'lunch' => day.lunch,
-    'dinner' => day.dinner,
-    _ => day.snack,
-  };
+  void _showInfo(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: context.colors.surface,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
 
   /// True when the ingredient pool hasn't been seeded; surfaces a hint instead
   /// of silently producing empty meals.
@@ -3813,14 +3849,33 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     if (_profile == null || !_guardIngredients()) return;
     setState(() => _loadingMeals.add(mealType));
     try {
-      final day = _nextPlanDay();
-      if (day == null) {
+      final goal =
+          context.read<ProfileProvider>().dailyEffectiveGoal.toDouble();
+      // Fill this meal to its own natural slice, minus what's already logged in
+      // it — so completing a logged meal tops it up rather than doubling it.
+      final budget = (_ratioFor(mealType) * goal - _loggedCals(mealType))
+          .clamp(0.0, double.infinity);
+      final hasLogged = (_loggedFoods[mealType] ?? []).isNotEmpty;
+      if (budget <= 30) {
+        _showInfo(
+          hasLogged
+              ? 'This meal already meets its calorie share.'
+              : 'No calories left for this meal today.',
+        );
+        return;
+      }
+      final meal = GeneticAlgorithm().completeMeal(
+        allIngredients: _allIngredients,
+        profile: _profile!,
+        mealType: mealType,
+        calorieBudget: budget,
+        presentCategories: _presentCategories(mealType),
+        cuisine: _cuisine,
+      );
+      if (meal.items.isEmpty) {
         _showNoMatchMessage();
         return;
       }
-      // The GA already normalized each slot to its calorie-ratio share, so no
-      // second scaling is needed here.
-      final meal = _slotOf(day, mealType);
       _setPending(mealType, meal);
       context.read<PlanProvider>().setMeal(
         mealType,
@@ -3844,25 +3899,40 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
 
   Future<void> _generateAll() async {
     if (_profile == null || !_guardIngredients()) return;
-    final toGenerate = [
-      'breakfast',
-      'lunch',
-      'dinner',
-      'snack',
-    ].where((m) => (_loggedFoods[m] ?? []).isEmpty).toList();
-    if (toGenerate.isEmpty) return;
+    const allMeals = ['breakfast', 'lunch', 'dinner', 'snack'];
 
-    setState(() => _loadingMeals.addAll(toGenerate));
+    setState(() => _loadingMeals.addAll(allMeals));
     try {
-      // One fresh GA run optimizes the whole day's macros jointly; pull each
-      // slot. Slots are already normalized to their calorie-ratio share.
-      final day = _nextPlanDay(forceRegen: true);
-      if (day == null) {
-        _showNoMatchMessage();
+      final goal =
+          context.read<ProfileProvider>().dailyEffectiveGoal.toDouble();
+      // Distribute the day's *remaining* budget across meals so logged +
+      // generated ≈ goal. Logged meals get a proportionally smaller addition
+      // (and are completed, not skipped).
+      final budgets = GeneticAlgorithm.mealBudgets(
+        goal: goal,
+        loggedCalsByMeal: {for (final m in allMeals) m: _loggedCals(m)},
+      );
+      if (budgets.values.every((b) => b <= 30)) {
+        _showInfo("Today's meals already meet your calorie goal.");
         return;
       }
-      for (final mealType in toGenerate) {
-        final meal = _slotOf(day, mealType);
+
+      bool anyMatchFailure = false;
+      for (final mealType in allMeals) {
+        final budget = budgets[mealType] ?? 0;
+        if (budget <= 30) continue; // meal already at/over its share
+        final meal = GeneticAlgorithm().completeMeal(
+          allIngredients: _allIngredients,
+          profile: _profile!,
+          mealType: mealType,
+          calorieBudget: budget,
+          presentCategories: _presentCategories(mealType),
+          cuisine: _cuisine,
+        );
+        if (meal.items.isEmpty) {
+          anyMatchFailure = true;
+          continue;
+        }
         _setPending(mealType, meal);
         context.read<PlanProvider>().setMeal(
           mealType,
@@ -3870,6 +3940,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
           saveToFirestore: false,
         );
       }
+      if (anyMatchFailure) _showNoMatchMessage();
     } finally {
       if (mounted) setState(() => _loadingMeals.clear());
     }
@@ -3892,7 +3963,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('${_capitalize(mealType)} logged!'),
-            backgroundColor: const Color(0xFF00C97B),
+            backgroundColor: AppColors.primary,
             duration: const Duration(seconds: 2),
           ),
         );
@@ -3945,13 +4016,14 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    if (_isInitializing) return _buildLoading('Loading...');
+    if (_isInitializing) return _buildLoading('Loading...', ctx: context);
     return _buildPlan();
   }
 
   Widget _buildPlan() {
+    final c = context.colors;
     final totalCals = _totalCals();
-    final targetCal = _profile?.calorieGoal ?? 2000;
+    final targetCal = context.read<ProfileProvider>().dailyEffectiveGoal;
 
     return Column(
       children: [
@@ -3960,16 +4032,16 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
           child: Row(
             children: [
               if (_profile != null) ...[
-                _chip(_profile!.fitnessGoal, const Color(0xFF00C97B)),
+                _chip(_profile!.fitnessGoal, AppColors.primary),
                 const SizedBox(width: 6),
-                _chip('$targetCal kcal', const Color(0xFFFF6B35)),
+                _chip('$targetCal kcal', AppColors.orange),
               ],
               const Spacer(),
               PopupMenuButton<String>(
-                color: const Color(0xFF1A1A1A),
-                icon: const Icon(
+                color: c.surface,
+                icon: Icon(
                   Icons.restaurant_menu_rounded,
-                  color: Color(0xFF00C97B),
+                  color: AppColors.primary,
                   size: 20,
                 ),
                 onSelected: (val) => setState(() => _cuisine = val),
@@ -3982,15 +4054,15 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
               ),
               TextButton.icon(
                 onPressed: _generateAll,
-                icon: const Icon(
+                icon: Icon(
                   Icons.auto_awesome_rounded,
                   size: 16,
-                  color: Color(0xFF00C97B),
+                  color: AppColors.primary,
                 ),
                 label: Text(
                   'All',
                   style: GoogleFonts.inter(
-                    color: const Color(0xFF00C97B),
+                    color: AppColors.primary,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
@@ -4008,7 +4080,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
+              color: c.surface,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -4016,7 +4088,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                 Text(
                   '${totalCals.round()} / $targetCal kcal',
                   style: GoogleFonts.spaceGrotesk(
-                    color: Colors.white,
+                    color: c.onBackground,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -4026,11 +4098,11 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
                       value: (totalCals / targetCal).clamp(0.0, 1.1),
-                      backgroundColor: const Color(0xFF2E2E2E),
+                      backgroundColor: c.border,
                       valueColor: AlwaysStoppedAnimation(
                         totalCals > targetCal * 1.05
                             ? Colors.redAccent
-                            : const Color(0xFF00C97B),
+                            : AppColors.primary,
                       ),
                       minHeight: 6,
                     ),
@@ -4043,8 +4115,8 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
         const SizedBox(height: 12),
         Expanded(
           child: RefreshIndicator(
-            color: const Color(0xFF00C97B),
-            backgroundColor: const Color(0xFF1A1A1A),
+            color: AppColors.primary,
+            backgroundColor: c.surface,
             onRefresh: _loadTodayLogs,
             child: SingleChildScrollView(
               controller: _scrollController,
@@ -4108,15 +4180,16 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     double cardCals = loggedFoods.fold(0.0, (s, f) => s + f.totalCalories);
     if (pendingMeal != null) cardCals += pendingMeal.totalCalories;
 
+    final c = context.colors;
     return Container(
       key: key,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: c.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           // Green border for the card the user tapped from Nutrition screen
-          color: isFocused ? const Color(0xFF00C97B) : const Color(0xFF2E2E2E),
+          color: isFocused ? AppColors.primary : c.border,
           width: isFocused ? 1.5 : 1.0,
         ),
       ),
@@ -4130,7 +4203,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
               Text(
                 label,
                 style: GoogleFonts.spaceGrotesk(
-                  color: Colors.white,
+                  color: c.onBackground,
                   fontWeight: FontWeight.w600,
                   fontSize: 16,
                 ),
@@ -4140,16 +4213,16 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                 Text(
                   '${cardCals.round()} kcal',
                   style: GoogleFonts.inter(
-                    color: const Color(0xFF00C97B),
+                    color: AppColors.primary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: () => _clearAll(mealType),
-                  child: const Icon(
+                  child: Icon(
                     Icons.close_rounded,
-                    color: Color(0xFF555555),
+                    color: c.inactive,
                     size: 18,
                   ),
                 ),
@@ -4157,14 +4230,14 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
             ],
           ),
           const SizedBox(height: 12),
-          const Divider(color: Color(0xFF2E2E2E), height: 1),
+          Divider(color: c.border, height: 1),
           const SizedBox(height: 12),
           if (isLoading)
-            const Center(
+            Center(
               child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
+                padding: const EdgeInsets.symmetric(vertical: 16),
                 child: CircularProgressIndicator(
-                  color: Color(0xFF00C97B),
+                  color: AppColors.primary,
                   strokeWidth: 2,
                 ),
               ),
@@ -4185,19 +4258,20 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
   }
 
   Widget _buildEmptyCard(String mealType, String label) {
+    final c = context.colors;
     return Column(
       children: [
         Row(
           children: [
-            const Icon(
+            Icon(
               Icons.add_circle_outline_rounded,
-              color: Color(0xFF333333),
+              color: c.borderLight,
               size: 32,
             ),
             const SizedBox(width: 12),
             Text(
               'No $label added yet',
-              style: GoogleFonts.inter(color: const Color(0xFF555555)),
+              style: GoogleFonts.inter(color: c.inactive),
             ),
           ],
         ),
@@ -4216,8 +4290,8 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                   ),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00C97B),
-                  foregroundColor: Colors.black,
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: c.onPrimary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -4246,8 +4320,8 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFFFF6B35),
-                  side: const BorderSide(color: Color(0xFFFF6B35)),
+                  foregroundColor: AppColors.orange,
+                  side: BorderSide(color: AppColors.orange),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -4268,9 +4342,21 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     Meal? pendingMeal,
     bool hasManual,
   ) {
-    final mealForRecipe =
-        pendingMeal ?? _mealFromLoggedFoods(mealType, loggedFoods);
+    // Recipe sees the whole meal: logged items + any generated additions.
+    final Meal mealForRecipe;
+    if (pendingMeal != null && hasManual) {
+      mealForRecipe = Meal(
+        mealType: mealType,
+        items: [
+          ..._mealFromLoggedFoods(mealType, loggedFoods).items,
+          ...pendingMeal.items,
+        ],
+      );
+    } else {
+      mealForRecipe = pendingMeal ?? _mealFromLoggedFoods(mealType, loggedFoods);
+    }
 
+    final c = context.colors;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -4282,8 +4368,8 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                 Container(
                   width: 6,
                   height: 6,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFFF6B35),
+                  decoration: BoxDecoration(
+                    color: AppColors.orange,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -4292,7 +4378,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                   child: Text(
                     food.name,
                     style: GoogleFonts.inter(
-                      color: Colors.white,
+                      color: c.onBackground,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -4300,7 +4386,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                 Text(
                   '${food.quantity.toStringAsFixed(1)}× ${food.servingSize.round()}${food.servingSizeUnit}',
                   style: GoogleFonts.inter(
-                    color: const Color(0xFF888888),
+                    color: c.muted,
                     fontSize: 12,
                   ),
                 ),
@@ -4308,7 +4394,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                 Text(
                   '${food.totalCalories.round()} kcal',
                   style: GoogleFonts.inter(
-                    color: const Color(0xFF444444),
+                    color: c.subtle,
                     fontSize: 12,
                   ),
                 ),
@@ -4316,8 +4402,9 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
             ),
           ),
         ),
-        if (pendingMeal != null && !hasManual) ...[
-          // Genetic-Algorithm meal: ingredient list with gram portions + kcal
+        if (pendingMeal != null) ...[
+          // Generated additions (green) — shown alongside any logged items
+          // (orange) above when completing a partially-logged meal.
           ...pendingMeal.items.map(
             (item) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -4326,8 +4413,8 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                   Container(
                     width: 6,
                     height: 6,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF00C97B),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -4336,7 +4423,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                     child: Text(
                       item.ingredient.name,
                       style: GoogleFonts.inter(
-                        color: Colors.white,
+                        color: c.onBackground,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -4344,7 +4431,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                   Text(
                     '${item.portionGrams.round()}g',
                     style: GoogleFonts.inter(
-                      color: const Color(0xFF888888),
+                      color: c.muted,
                       fontSize: 12,
                     ),
                   ),
@@ -4352,7 +4439,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                   Text(
                     '${item.calories.round()} kcal',
                     style: GoogleFonts.inter(
-                      color: const Color(0xFF444444),
+                      color: c.subtle,
                       fontSize: 12,
                     ),
                   ),
@@ -4364,9 +4451,12 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
         const SizedBox(height: 10),
         _macroSummaryRow(loggedFoods, pendingMeal, hasManual),
         const SizedBox(height: 12),
-        const Divider(color: Color(0xFF2E2E2E), height: 1),
+        Divider(color: c.border, height: 1),
         const SizedBox(height: 12),
-        if (hasManual)
+        if (hasManual && pendingMeal != null)
+          // Completed meal: logged items kept, generated additions pending.
+          // "Log Additions" persists ONLY the new items (logged ones are
+          // already saved), so there's no double-save.
           Row(
             children: [
               Expanded(
@@ -4387,8 +4477,8 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                     ),
                   ),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF00C97B),
-                    side: const BorderSide(color: Color(0xFF00C97B)),
+                    foregroundColor: AppColors.primary,
+                    side: BorderSide(color: AppColors.primary),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -4397,6 +4487,54 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                 ),
               ),
               const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _logPendingMeal(mealType),
+                  icon: const Icon(
+                    Icons.check_circle_outline_rounded,
+                    size: 15,
+                  ),
+                  label: Text(
+                    'Log Additions',
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.orange,
+                    foregroundColor: c.onBackground,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: () => _generateMeal(mealType),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.purple,
+                  side: BorderSide(color: AppColors.purple),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 10,
+                    horizontal: 12,
+                  ),
+                  minimumSize: Size.zero,
+                ),
+                child: const Icon(Icons.refresh_rounded, size: 16),
+              ),
+            ],
+          )
+        else if (hasManual)
+          // Logged-only meal: add more manually, or auto-complete it with
+          // complementary AI ingredients that fill the remaining budget.
+          Row(
+            children: [
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () async {
@@ -4417,8 +4555,32 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                     ),
                   ),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFFF6B35),
-                    side: const BorderSide(color: Color(0xFFFF6B35)),
+                    foregroundColor: AppColors.orange,
+                    side: BorderSide(color: AppColors.orange),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _loadingMeals.contains(mealType)
+                      ? null
+                      : () => _generateMeal(mealType),
+                  icon: const Icon(Icons.auto_awesome_rounded, size: 15),
+                  label: Text(
+                    'Complete meal',
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: c.onBackground,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -4449,8 +4611,8 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                     ),
                   ),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF00C97B),
-                    side: const BorderSide(color: Color(0xFF00C97B)),
+                    foregroundColor: AppColors.primary,
+                    side: BorderSide(color: AppColors.primary),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -4474,8 +4636,8 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                     ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF6B35),
-                    foregroundColor: Colors.white,
+                    backgroundColor: AppColors.orange,
+                    foregroundColor: c.onBackground,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -4487,8 +4649,8 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
               OutlinedButton(
                 onPressed: () => _generateMeal(mealType),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF6C63FF),
-                  side: const BorderSide(color: Color(0xFF6C63FF)),
+                  foregroundColor: AppColors.purple,
+                  side: BorderSide(color: AppColors.purple),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -4515,7 +4677,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     double c = loggedFoods.fold(0.0, (s, f) => s + f.totalCarbs);
     double fat = loggedFoods.fold(0.0, (s, f) => s + f.totalFat);
     double fib = loggedFoods.fold(0.0, (s, f) => s + f.totalFiber);
-    if (pendingMeal != null && !hasManual) {
+    if (pendingMeal != null) {
       p += pendingMeal.totalProtein;
       c += pendingMeal.totalCarbs;
       fat += pendingMeal.totalFat;
@@ -4523,10 +4685,10 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     }
     return Row(
       children: [
-        _miniMacro('P', '${p.round()}g', const Color(0xFF00C97B)),
-        _miniMacro('C', '${c.round()}g', const Color(0xFF6C63FF)),
-        _miniMacro('F', '${fat.round()}g', const Color(0xFFFF6B35)),
-        _miniMacro('Fiber', '${fib.round()}g', const Color(0xFF00B4D8)),
+        _miniMacro('P', '${p.round()}g', AppColors.primary),
+        _miniMacro('C', '${c.round()}g', AppColors.purple),
+        _miniMacro('F', '${fat.round()}g', AppColors.orange),
+        _miniMacro('Fiber', '${fib.round()}g', AppColors.cyan),
       ],
     );
   }
@@ -4536,7 +4698,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     child: Text(
       label,
       style: GoogleFonts.inter(
-        color: _cuisine == value ? const Color(0xFF00C97B) : Colors.white,
+        color: _cuisine == value ? AppColors.primary : context.colors.onBackground,
         fontWeight: _cuisine == value ? FontWeight.w700 : FontWeight.normal,
       ),
     ),
@@ -4556,7 +4718,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
         Text(
           label,
           style: GoogleFonts.inter(
-            color: const Color(0xFF666666),
+            color: context.colors.disabled,
             fontSize: 10,
           ),
         ),
@@ -4569,22 +4731,26 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
 }
 
 // ─── SHARED HELPERS ───────────────────────────────────────────────────────────
-Widget _buildLoading(String message) => Center(
+Widget _buildLoading(String message, {BuildContext? ctx}) {
+  final c = ctx?.colors;
+  return Center(
   child: Column(
     mainAxisAlignment: MainAxisAlignment.center,
     children: [
-      const CircularProgressIndicator(color: Color(0xFF00C97B)),
+      CircularProgressIndicator(color: AppColors.primary),
       const SizedBox(height: 16),
       Text(
         message,
-        style: GoogleFonts.inter(color: const Color(0xFF888888), height: 1.6),
+        style: GoogleFonts.inter(color: c?.muted ?? const Color(0xFF888888), height: 1.6),
         textAlign: TextAlign.center,
       ),
     ],
   ),
-);
+);}
 
-Widget _buildError(String error, VoidCallback onRetry) => Center(
+Widget _buildError(String error, VoidCallback onRetry, {BuildContext? ctx}) {
+  final c = ctx?.colors;
+  return Center(
   child: Padding(
     padding: const EdgeInsets.all(24),
     child: Column(
@@ -4594,15 +4760,15 @@ Widget _buildError(String error, VoidCallback onRetry) => Center(
         const SizedBox(height: 16),
         Text(
           error,
-          style: GoogleFonts.inter(color: Colors.white),
+          style: GoogleFonts.inter(color: c?.onBackground ?? Colors.white),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 24),
         ElevatedButton(
           onPressed: onRetry,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF00C97B),
-            foregroundColor: Colors.black,
+            backgroundColor: AppColors.primary,
+            foregroundColor: c?.onPrimary ?? Colors.black,
           ),
           child: Text(
             'Retry',
@@ -4612,7 +4778,7 @@ Widget _buildError(String error, VoidCallback onRetry) => Center(
       ],
     ),
   ),
-);
+);}
 
 Widget _chip(String label, Color color) => Container(
   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),

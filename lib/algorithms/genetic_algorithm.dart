@@ -87,6 +87,12 @@ class GeneticAlgorithm {
     return true;
   }
 
+  /// Public, side-effect-free accessor for the diet-style-aware daily macro gram
+  /// targets — used by the meal-completion UI to compute remaining budgets
+  /// consistently with how the GA itself scores macros.
+  Map<String, double> macroTargetsFor(UserProfile profile) =>
+      _macroTargetsFor(profile);
+
   /// Macro gram targets for the fitness function. A selected diet style overrides
   /// the `fitnessGoal`-derived split; otherwise (Balanced / none) the profile's
   /// own `macroGoals` are used unchanged.
@@ -193,15 +199,8 @@ class GeneticAlgorithm {
     // the cuisine narrows the pool to empty we relax the cuisine only; if even
     // that is empty, nothing satisfies the restrictions, so we return an empty
     // plan (sentinel) and let the UI warn — we never serve violating food.
-    final filtered = _filterIngredients(allIngredients, profile, cuisine);
-    final List<MealIngredient> pool;
-    if (filtered.isNotEmpty) {
-      pool = filtered;
-    } else {
-      final relaxed = _filterIngredients(allIngredients, profile, 'any');
-      if (relaxed.isEmpty) return const [];
-      pool = relaxed;
-    }
+    final pool = _buildPool(allIngredients, profile, cuisine);
+    if (pool.isEmpty) return const [];
 
     // Breakfast-specific pools
     final breakfastProteins = pool.where((i) {
@@ -315,29 +314,21 @@ class GeneticAlgorithm {
   ) {
     final target = profile.calorieGoal.toDouble();
     return plan.map((day) {
-      var breakfast = day.breakfast.scaleToCalories(target * breakfastRatio);
-      var lunch = day.lunch.scaleToCalories(target * lunchRatio);
-      var dinner = day.dinner.scaleToCalories(target * dinnerRatio);
-      var snack = day.snack.scaleToCalories(target * snackRatio);
-
-      // Fine-tune: adjust dinner's first item to close remaining gap
-      final total =
-          breakfast.totalCalories +
-          lunch.totalCalories +
-          dinner.totalCalories +
-          snack.totalCalories;
-      final diff = target - total;
-
-      if (dinner.items.isNotEmpty && diff.abs() > 5) {
-        final item = dinner.items.first;
-        if (item.ingredient.calories > 0) {
-          final gramsNeeded = (diff / item.ingredient.calories) * 100;
-          final newGrams = (item.portionGrams + gramsNeeded).clamp(30.0, 400.0);
-          final adjustedItems = List<MealItem>.from(dinner.items);
-          adjustedItems[0] = item.copyWith(portionGrams: newGrams);
-          dinner = Meal(mealType: 'dinner', items: adjustedItems);
-        }
-      }
+      // Scale each meal to its calorie-ratio share, then close any residual the
+      // per-item clamp truncated (all meals, all items — generalises the old
+      // dinner-only fine-tune).
+      final breakfast = day.breakfast
+          .scaleToCalories(target * breakfastRatio)
+          .closeResidual(target * breakfastRatio);
+      final lunch = day.lunch
+          .scaleToCalories(target * lunchRatio)
+          .closeResidual(target * lunchRatio);
+      final dinner = day.dinner
+          .scaleToCalories(target * dinnerRatio)
+          .closeResidual(target * dinnerRatio);
+      final snack = day.snack
+          .scaleToCalories(target * snackRatio)
+          .closeResidual(target * snackRatio);
 
       return DayMealPlan(
         dayName: day.dayName,
@@ -586,4 +577,184 @@ class GeneticAlgorithm {
       return true;
     }).toList();
   }
+
+  /// Fail-safe ingredient pool: dietary restrictions are never dropped. Tries
+  /// the cuisine-filtered pool first, relaxes the cuisine only if empty, and
+  /// returns an empty list (sentinel) when nothing satisfies the restrictions.
+  /// Shared by [generatePlan] and [completeMeal].
+  List<MealIngredient> _buildPool(
+    List<MealIngredient> allIngredients,
+    UserProfile profile,
+    String cuisine,
+  ) {
+    final filtered = _filterIngredients(allIngredients, profile, cuisine);
+    if (filtered.isNotEmpty) return filtered;
+    return _filterIngredients(allIngredients, profile, 'any');
+  }
+
+  // ── Meal completion (budget-aware) ─────────────────────────────────────────
+
+  /// Per-meal calorie budgets for the *additions* needed to complete today so
+  /// that `logged + generated ≈ daily goal`. Pure & static for testing.
+  ///
+  /// `remainingDay = goal − Σ logged`; each meal's natural deficit
+  /// `d_m = max(0, ratio_m·goal − logged_m)` is scaled by `remainingDay / Σd`,
+  /// so the returned budgets sum to `remainingDay` and a partially-logged meal
+  /// gets a proportionally smaller addition. Returns all-zero when the day is
+  /// already at/over goal (never overloads).
+  static Map<String, double> mealBudgets({
+    required double goal,
+    required Map<String, double> loggedCalsByMeal,
+  }) {
+    const ratios = {
+      'breakfast': breakfastRatio,
+      'lunch': lunchRatio,
+      'dinner': dinnerRatio,
+      'snack': snackRatio,
+    };
+    double logged(String m) => loggedCalsByMeal[m] ?? 0;
+    final loggedDay = ratios.keys.fold(0.0, (s, m) => s + logged(m));
+    final remainingDay = (goal - loggedDay).clamp(0.0, double.infinity);
+
+    final deficits = <String, double>{};
+    double d = 0;
+    ratios.forEach((m, r) {
+      final def = (r * goal - logged(m)).clamp(0.0, double.infinity);
+      deficits[m] = def;
+      d += def;
+    });
+
+    if (d <= 0 || remainingDay <= 0) {
+      return {for (final m in ratios.keys) m: 0.0};
+    }
+    final factor = remainingDay / d;
+    return {for (final m in ratios.keys) m: deficits[m]! * factor};
+  }
+
+  /// Generates the complementary *additions* (NOT including any already-logged
+  /// food) to fill [calorieBudget] for [mealType], honouring dietary
+  /// restrictions and cuisine. Slots whose food group is in [presentCategories]
+  /// are dropped, so a meal that already has a protein gets a carb + fruit/veg
+  /// rather than more protein. Returns an empty meal when the budget is
+  /// negligible or no ingredient matches.
+  Meal completeMeal({
+    required List<MealIngredient> allIngredients,
+    required UserProfile profile,
+    required String mealType,
+    required double calorieBudget,
+    Set<String> presentCategories = const {},
+    String cuisine = 'any',
+  }) {
+    if (calorieBudget <= 30) return Meal(mealType: mealType, items: const []);
+    final pool = _buildPool(allIngredients, profile, cuisine);
+    if (pool.isEmpty) return Meal(mealType: mealType, items: const []);
+
+    // Snack is a single complementary item from the snack-appropriate pool.
+    if (mealType == 'snack') {
+      var snackPool = pool.where(_isSnackAppropriate).toList();
+      if (snackPool.isEmpty) snackPool = pool;
+      // Avoid duplicating a food group already present, if possible.
+      final fresh = snackPool
+          .where((i) => !presentCategories.contains(_slotCategoryOf(i)))
+          .toList();
+      final candidates = fresh.isNotEmpty ? fresh : snackPool;
+      final ing = candidates[_random.nextInt(candidates.length)];
+      return Meal(
+        mealType: mealType,
+        items: [
+          MealItem(ingredient: ing, portionGrams: _portionFor(ing, calorieBudget)),
+        ],
+      );
+    }
+
+    // Slot plan (category, weight) per meal type — mirrors _randomMeal shares.
+    final slots = mealType == 'breakfast'
+        ? [
+            const _Slot('protein', 0.50),
+            const _Slot('grain', 0.35),
+            const _Slot('fruit', 0.15),
+          ]
+        : [
+            const _Slot('protein', 0.45),
+            const _Slot('grain', 0.30),
+            const _Slot('vegetable', 0.15),
+            const _Slot('fat', 0.10),
+          ];
+
+    // Drop slots whose food group is already logged (complement, don't repeat).
+    var active =
+        slots.where((s) => !presentCategories.contains(s.category)).toList();
+    // Everything already present → still add one low-density item for balance.
+    if (active.isEmpty) active = [const _Slot('vegetable', 1.0)];
+
+    final totalW = active.fold(0.0, (s, x) => s + x.weight);
+    final items = <MealItem>[];
+    for (final slot in active) {
+      final candidates = _poolForCategory(pool, slot.category);
+      if (candidates.isEmpty) continue;
+      final ing = candidates[_random.nextInt(candidates.length)];
+      final share = slot.weight / totalW;
+      items.add(
+        MealItem(
+          ingredient: ing,
+          portionGrams: _portionFor(ing, calorieBudget * share),
+        ),
+      );
+    }
+    if (items.isEmpty) return Meal(mealType: mealType, items: const []);
+    // Scale to land on the budget regardless of how many slots survived, then
+    // close any residual the per-item clamp truncated during the scale-up.
+    return Meal(mealType: mealType, items: items)
+        .scaleToCalories(calorieBudget)
+        .closeResidual(calorieBudget);
+  }
+
+  /// Coarse slot group for an ingredient: protein/grain/vegetable/fruit/fat.
+  /// Uses `category` first (robust), falling back to the GA's macro thresholds.
+  String _slotCategoryOf(MealIngredient i) {
+    switch (i.category) {
+      case 'protein':
+      case 'dairy':
+      case 'legume':
+        return 'protein';
+      case 'grain':
+        return 'grain';
+      case 'vegetable':
+        return 'vegetable';
+      case 'fruit':
+        return 'fruit';
+      case 'fat':
+        return 'fat';
+    }
+    if (i.protein >= 8) return 'protein';
+    if (i.fat >= 8 && i.carbs < 10) return 'fat';
+    if (i.carbs >= 15 && i.protein < 8) return 'grain';
+    if (i.calories <= 60 && i.carbs < 15) return 'vegetable';
+    return 'grain';
+  }
+
+  /// Candidate ingredients for a complementary [slotCategory], with a sensible
+  /// non-empty fallback so a slot is only skipped when the whole pool is bare.
+  List<MealIngredient> _poolForCategory(
+    List<MealIngredient> pool,
+    String slotCategory,
+  ) {
+    final exact =
+        pool.where((i) => _slotCategoryOf(i) == slotCategory).toList();
+    if (exact.isNotEmpty) return exact;
+    // Fallbacks: fruit→grain (sweet carbs), vegetable→grain, else any non-condiment.
+    if (slotCategory == 'fruit' || slotCategory == 'vegetable') {
+      final grains = pool.where((i) => _slotCategoryOf(i) == 'grain').toList();
+      if (grains.isNotEmpty) return grains;
+    }
+    return pool;
+  }
+}
+
+/// A complementary slot in a completed meal: a food-group [category] and its
+/// relative calorie [weight].
+class _Slot {
+  final String category;
+  final double weight;
+  const _Slot(this.category, this.weight);
 }

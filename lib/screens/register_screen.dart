@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/auth_service.dart';
+import '../theme/app_colors.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -17,6 +18,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -30,7 +32,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 32,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                  color: c.onBackground,
                 ),
               ),
               const SizedBox(height: 8),
@@ -38,18 +40,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 'Start your fitness journey',
                 style: GoogleFonts.inter(
                   fontSize: 16,
-                  color: const Color(0xFF888888),
+                  color: c.muted,
                 ),
               ),
               const SizedBox(height: 40),
               TextField(
                 controller: _emailController,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: c.onBackground),
                 keyboardType: TextInputType.emailAddress,
                 decoration: InputDecoration(
                   labelText: 'Email',
                   filled: true,
-                  fillColor: const Color(0xFF222222),
+                  fillColor: c.inputFill,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide.none,
@@ -60,11 +62,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
               TextField(
                 controller: _passwordController,
                 obscureText: true,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: c.onBackground),
                 decoration: InputDecoration(
                   labelText: 'Password',
                   filled: true,
-                  fillColor: const Color(0xFF222222),
+                  fillColor: c.inputFill,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide.none,
@@ -75,11 +77,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
               TextField(
                 controller: _confirmPasswordController,
                 obscureText: true,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: c.onBackground),
                 decoration: InputDecoration(
                   labelText: 'Confirm Password',
                   filled: true,
-                  fillColor: const Color(0xFF222222),
+                  fillColor: c.inputFill,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide.none,
@@ -98,7 +100,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           final password = _passwordController.text.trim();
                           final confirm = _confirmPasswordController.text.trim();
 
-                          // Validation
                           String? error;
                           if (!email.contains('@') || email.isEmpty) {
                             error = 'Enter a valid email address';
@@ -117,7 +118,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           setState(() => _isLoading = true);
                           try {
                             await AuthService().register(email, password);
-                            // Pop the register screen to let the StreamBuilder handle navigation
                             if (mounted) Navigator.pop(context);
                           } catch (e) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -127,14 +127,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           }
                         },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00C97B),
-                    foregroundColor: Colors.black,
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: c.onPrimary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                   child: _isLoading
-                      ? const CircularProgressIndicator(color: Colors.black)
+                      ? CircularProgressIndicator(color: c.onPrimary)
                       : Text(
                           'Create Account',
                           style: GoogleFonts.spaceGrotesk(
@@ -150,7 +150,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   onPressed: () => Navigator.pop(context),
                   child: Text(
                     'Already have an account? Sign in',
-                    style: GoogleFonts.inter(color: const Color(0xFF00C97B)),
+                    style: GoogleFonts.inter(color: AppColors.primary),
                   ),
                 ),
               ),

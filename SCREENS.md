@@ -288,17 +288,16 @@ Toggle the "Edit session" button (visible before a workout starts). While editin
 
 ### Meal Tab (inside PlansScreen)
 
-Shows generated meal cards for Breakfast, Lunch, Dinner, Snack. Each card can be:
-- **Generated** via `_generateMeal(mealType)` or **all at once** via `_generateAll()` — both run the **Genetic Algorithm** over the USDA-seeded ingredient pool.
+Shows meal cards for Breakfast, Lunch, Dinner, Snack. Each card can be:
+- **Generated / completed** via `_generateMeal(mealType)` or **all at once** via `_generateAll()` — both run `GeneticAlgorithm.completeMeal` to fill the meal's *remaining* calorie budget with complementary ingredients.
 - **Logged** via `_logPendingMeal(mealType)` → `PlanProvider.setMeal(saveToFirestore: true)` → `_saveMealToFirestore` writes each ingredient as its own `FoodItem` (`barcode: 'ai_generated'`).
 - **Viewed** in `RecipeScreen`.
 
-Meal generation flow (Genetic Algorithm — `_generateMeal` / `_generateAll`):
+Meal generation flow — **budget-aware completion** (`_generateMeal` / `_generateAll`):
 1. `_allIngredients` is loaded once via `FirestoreService.getIngredients()` (reads the `ingredients` collection; seed it with the Profile → "Seed Ingredients" button, gated by `kShowSeedTools`, which also calls `clearIngredientCache()`). An empty pool surfaces a "not seeded" SnackBar.
-2. `_nextPlanDay({forceRegen})` calls `GeneticAlgorithm().generatePlan(allIngredients, profile, cuisine: _cuisine)` and **caches** the resulting 7-day plan (`_cachedPlan`, keyed on cuisine). `_generateAll()` forces a fresh GA run (`forceRegen: true`); a single-meal regen pulls the **next** day's slot from the cache (`_dayCursor`) for variety without re-evolving the population each tap. The GA filters the pool by cuisine + dietary restrictions (three kinds — see `GeneticAlgorithm` in CLAUDE.md) and evolves ingredient combos against a calorie/macro fitness function whose macro targets honour the selected diet style.
-3. The GA already normalizes each slot to its calorie-ratio share, so the slot's `Meal` is set as the pending meal directly (no second `scaleToCalories`); the card renders the ingredient list (name + grams + per-item kcal) and a macro summary row.
-4. `_generateAll()` runs the GA **once** and fills every not-already-logged slot from that single day so the day's macros are jointly optimized.
-5. **Fail-safe:** when the GA returns an empty plan (no ingredient satisfies the user's restrictions), `_nextPlanDay` returns `null` and `_showNoMatchMessage()` warns instead of fabricating meals. There is **no day selector** in the Meal tab — meals are always generated and logged for *today*.
+2. **Logged food is accounted for, not skipped.** Both generators first call `_effectiveGoalForToday()` → today's goal nudged by yesterday's over/under-eating (`DailyCarry`, see CLAUDE.md), shown via a one-off snackbar; this `goal` is used **only for sizing**, never as the displayed goal. `_generateAll()` uses `GeneticAlgorithm.mealBudgets(goal, loggedCalsByMeal)` to split the day's *remaining* budget across meals (so logged + generated ≈ goal); `_generateMeal(mealType)` fills one meal to `ratio·goal − loggedCals(meal)`. Each calls `GeneticAlgorithm().completeMeal(...)` with `presentCategories` (from `_inferCategory` over the meal's logged `FoodItem`s) so additions **complement** what's already logged (logged protein → carb + fruit, not more protein). The result (`scaleToCalories` + `closeResidual`, landing within ~±75 kcal of budget) is the *additions only* and becomes the pending meal.
+3. A card with both logged items (orange) and pending additions (green) renders them together; **"Log Additions"** persists only the new items (logged food is already saved → no double-save). A logged-only card shows **"Complete meal"** (auto-fill) alongside "Log Food" (manual). The macro summary and Recipe both include logged + pending.
+4. **Fail-safe:** an empty pool / no-match → `_showNoMatchMessage()`; a meal/day already at-or-over its calorie share → an info SnackBar and no additions (never overloads). There is **no day selector** — meals are always generated and logged for *today*. The 7-day `generatePlan` is retained for tests but no longer driven by the Meal tab.
 
 Calorie split: Breakfast 25%, Lunch 35%, Dinner 30%, Snack 10% of `profile.calorieGoal`.
 

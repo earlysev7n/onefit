@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_colors.dart';
 
 class BarcodeScanScreen extends StatefulWidget {
   const BarcodeScanScreen({super.key});
@@ -14,15 +15,16 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: c.background,
       appBar: AppBar(
         title: Text(
           'Scan Barcode',
           style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
         ),
-        backgroundColor: const Color(0xFF0D0D0D),
-        foregroundColor: Colors.white,
+        backgroundColor: c.background,
+        foregroundColor: c.onBackground,
       ),
       body: Stack(
         children: [
@@ -80,7 +82,7 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
             Container(
               color: Colors.black54,
               child: const Center(
-                child: CircularProgressIndicator(color: Color(0xFF00C97B)),
+                child: CircularProgressIndicator(color: AppColors.primary),
               ),
             ),
         ],

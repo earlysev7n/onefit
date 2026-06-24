@@ -10,6 +10,7 @@ import '../models/food_item.dart';
 import '../models/workout_log.dart';
 import '../providers/plan_provider.dart';
 import '../providers/profile_provider.dart';
+import '../theme/app_colors.dart';
 import '../app_clock.dart';
 import 'plans_screen.dart';
 import 'progress_screen.dart';
@@ -41,9 +42,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showMealTypeSelector({bool autoScan = false}) {
+    final c = context.colors;
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: c.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -58,7 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: GoogleFonts.spaceGrotesk(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
-                color: Colors.white,
+                color: c.onBackground,
               ),
             ),
             const SizedBox(height: 20),
@@ -77,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildMealTypeOption(String mealType, {bool autoScan = false}) {
+    final c = context.colors;
     return GestureDetector(
       onTap: () {
         Navigator.pop(context);
@@ -93,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFF222222),
+          color: c.inputFill,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -104,11 +107,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white,
+                  color: c.onBackground,
                 ),
               ),
             ),
-            const Icon(Icons.chevron_right, color: Color(0xFF444444)),
+            Icon(Icons.chevron_right, color: c.subtle),
           ],
         ),
       ),
@@ -116,9 +119,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showAddSheet() {
+    final c = context.colors;
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: c.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -133,7 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: GoogleFonts.spaceGrotesk(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
-                color: Colors.white,
+                color: c.onBackground,
               ),
             ),
             const SizedBox(height: 20),
@@ -143,7 +147,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 _buildAddOption(
                   Icons.fitness_center_rounded,
                   'Log\nWorkout',
-                  const Color(0xFF00C97B),
+                  AppColors.primary,
                   onTap: () {
                     Navigator.pop(context);
                     setState(() => _currentIndex = 1);
@@ -152,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 _buildAddOption(
                   Icons.restaurant_menu_rounded,
                   'Log\nMeal',
-                  const Color(0xFFFF6B35),
+                  AppColors.orange,
                   onTap: () {
                     Navigator.pop(context);
                     _showMealTypeSelector();
@@ -161,7 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 _buildAddOption(
                   FontAwesomeIcons.barcode,
                   'Scan\nBarcode',
-                  const Color(0xFF6C63FF),
+                  AppColors.purple,
                   onTap: () {
                     Navigator.pop(context);
                     _showMealTypeSelector(autoScan: true);
@@ -182,6 +186,7 @@ class _HomeScreenState extends State<HomeScreen> {
     Color color, {
     VoidCallback? onTap,
   }) {
+    final c = context.colors;
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -199,7 +204,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(
             label,
             textAlign: TextAlign.center,
-            style: GoogleFonts.inter(color: Colors.white, fontSize: 12),
+            style: GoogleFonts.inter(color: c.onBackground, fontSize: 12),
           ),
         ],
       ),
@@ -221,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
               'Press back again to exit',
               style: GoogleFonts.inter(fontWeight: FontWeight.w600),
             ),
-            backgroundColor: const Color(0xFF00C97B),
+            backgroundColor: AppColors.primary,
             duration: const Duration(seconds: 2),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
@@ -238,6 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final profileProvider = context.watch<ProfileProvider>();
     final profile = profileProvider.profile;
     final isLoading = profileProvider.isLoading && profile == null;
@@ -256,12 +262,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return WillPopScope(
       onWillPop: _onBackPress,
       child: Scaffold(
-        backgroundColor: const Color(0xFF0D0D0D),
+        backgroundColor: c.background,
         body: screens[_currentIndex],
         bottomNavigationBar: Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF111111),
-            border: Border(top: BorderSide(color: Color(0xFF222222))),
+          decoration: BoxDecoration(
+            color: c.surfaceElevated,
+            border: Border(top: BorderSide(color: c.inputFill)),
           ),
           child: SafeArea(
             child: SizedBox(
@@ -278,12 +284,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           width: 52,
                           height: 52,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF00C97B),
+                            color: AppColors.primary,
                             borderRadius: BorderRadius.circular(16),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.add,
-                            color: Colors.black,
+                            color: c.onPrimary,
                             size: 28,
                           ),
                         ),
@@ -302,6 +308,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildNavItem(int index, IconData icon, String label) {
+    final c = context.colors;
     final isActive = _currentIndex == index;
     return Expanded(
       child: GestureDetector(
@@ -311,9 +318,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Icon(
               icon,
-              color: isActive
-                  ? const Color(0xFF00C97B)
-                  : const Color(0xFF555555),
+              color: isActive ? AppColors.primary : c.inactive,
               size: 24,
             ),
             const SizedBox(height: 2),
@@ -321,9 +326,7 @@ class _HomeScreenState extends State<HomeScreen> {
               label,
               style: GoogleFonts.inter(
                 fontSize: 10,
-                color: isActive
-                    ? const Color(0xFF00C97B)
-                    : const Color(0xFF555555),
+                color: isActive ? AppColors.primary : c.inactive,
                 fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
               ),
             ),
@@ -396,20 +399,22 @@ class _HomeDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     if (isLoading)
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFF00C97B)),
+      return Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
       );
 
     final user = FirebaseAuth.instance.currentUser;
     if (user == null)
-      return const Center(
-        child: Text('Not logged in', style: TextStyle(color: Colors.white)),
+      return Center(
+        child: Text('Not logged in', style: TextStyle(color: c.onBackground)),
       );
 
     final planProvider = context.watch<PlanProvider>();
-    final calorieGoal = profile?.calorieGoal ?? 2000;
-    final macros = profile?.macroGoals ?? {};
+    final profileProvider = context.watch<ProfileProvider>();
+    final calorieGoal = profileProvider.dailyEffectiveGoal;
+    final macros = profileProvider.effectiveMacroGoals;
     final todayWorkout = planProvider.todayWorkout;
     final todayName = _getDayName();
 
@@ -456,7 +461,7 @@ class _HomeDashboard extends StatelessWidget {
                         Text(
                           _getGreeting(),
                           style: GoogleFonts.inter(
-                            color: const Color(0xFF888888),
+                            color: c.muted,
                             fontSize: 13,
                           ),
                         ),
@@ -465,7 +470,7 @@ class _HomeDashboard extends StatelessWidget {
                           style: GoogleFonts.spaceGrotesk(
                             fontSize: 22,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                            color: c.onBackground,
                           ),
                         ),
                       ],
@@ -473,7 +478,7 @@ class _HomeDashboard extends StatelessWidget {
                     Text(
                       _getDate(),
                       style: GoogleFonts.inter(
-                        color: const Color(0xFF888888),
+                        color: c.muted,
                         fontSize: 12,
                       ),
                     ),
@@ -490,7 +495,7 @@ class _HomeDashboard extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
+                      color: c.surface,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
@@ -499,7 +504,10 @@ class _HomeDashboard extends StatelessWidget {
                           width: 100,
                           height: 100,
                           child: CustomPaint(
-                            painter: _CaloriePainter(progress),
+                            painter: _CaloriePainter(
+                              progress,
+                              trackColor: c.inputFill,
+                            ),
                             child: Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -509,14 +517,14 @@ class _HomeDashboard extends StatelessWidget {
                                     style: GoogleFonts.spaceGrotesk(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w700,
-                                      color: Colors.white,
+                                      color: c.onBackground,
                                     ),
                                   ),
                                   Text(
                                     'left',
                                     style: GoogleFonts.inter(
                                       fontSize: 11,
-                                      color: const Color(0xFF888888),
+                                      color: c.muted,
                                     ),
                                   ),
                                 ],
@@ -531,33 +539,37 @@ class _HomeDashboard extends StatelessWidget {
                               _buildMacroRow(
                                 'Goal',
                                 '$calorieGoal kcal',
-                                const Color(0xFF555555),
+                                c.inactive,
+                                colors: c,
                               ),
                               const SizedBox(height: 8),
                               _buildMacroRow(
                                 'Eaten',
                                 '${caloriesEaten.round()} kcal',
-                                const Color(0xFFFF6B35),
+                                AppColors.orange,
+                                colors: c,
                               ),
                               const SizedBox(height: 8),
                               _buildMacroRow(
                                 'Remaining',
                                 '${caloriesRemaining.round()} kcal',
-                                const Color(0xFF00C97B),
+                                AppColors.primary,
+                                colors: c,
                               ),
                               const SizedBox(height: 8),
                               _buildMacroRow(
                                 'Protein',
                                 '${proteinEaten.round()}g / ${macros['protein'] ?? 0}g',
-                                const Color(0xFF00B4D8),
+                                AppColors.cyan,
+                                colors: c,
                               ),
                             ],
                           ),
                         ),
                         const SizedBox(width: 8),
-                        const Icon(
+                        Icon(
                           Icons.chevron_right,
-                          color: Color(0xFF444444),
+                          color: c.subtle,
                         ),
                       ],
                     ),
@@ -574,7 +586,7 @@ class _HomeDashboard extends StatelessWidget {
                       style: GoogleFonts.spaceGrotesk(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: Colors.white,
+                        color: c.onBackground,
                       ),
                     ),
                     GestureDetector(
@@ -587,7 +599,7 @@ class _HomeDashboard extends StatelessWidget {
                       child: Text(
                         'See all',
                         style: GoogleFonts.inter(
-                          color: const Color(0xFF00C97B),
+                          color: AppColors.primary,
                           fontSize: 13,
                         ),
                       ),
@@ -603,7 +615,7 @@ class _HomeDashboard extends StatelessWidget {
                   mealType: 'breakfast',
                   calories: mealsMap['breakfast']!,
                   icon: Icons.wb_sunny_rounded,
-                  color: const Color(0xFFFFD60A),
+                  color: AppColors.yellow,
                   foodLogs: foodLogs
                       .where((f) => f.mealType.toLowerCase() == 'breakfast')
                       .toList(),
@@ -617,7 +629,7 @@ class _HomeDashboard extends StatelessWidget {
                   mealType: 'lunch',
                   calories: mealsMap['lunch']!,
                   icon: Icons.lunch_dining_rounded,
-                  color: const Color(0xFFFF6B35),
+                  color: AppColors.orange,
                   foodLogs: foodLogs
                       .where((f) => f.mealType.toLowerCase() == 'lunch')
                       .toList(),
@@ -631,7 +643,7 @@ class _HomeDashboard extends StatelessWidget {
                   mealType: 'dinner',
                   calories: mealsMap['dinner']!,
                   icon: Icons.dinner_dining_rounded,
-                  color: const Color(0xFF6C63FF),
+                  color: AppColors.purple,
                   foodLogs: foodLogs
                       .where((f) => f.mealType.toLowerCase() == 'dinner')
                       .toList(),
@@ -647,7 +659,7 @@ class _HomeDashboard extends StatelessWidget {
                       style: GoogleFonts.spaceGrotesk(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: Colors.white,
+                        color: c.onBackground,
                       ),
                     ),
                     GestureDetector(
@@ -655,7 +667,7 @@ class _HomeDashboard extends StatelessWidget {
                       child: Text(
                         'See all',
                         style: GoogleFonts.inter(
-                          color: const Color(0xFF00C97B),
+                          color: AppColors.primary,
                           fontSize: 13,
                         ),
                       ),
@@ -672,10 +684,10 @@ class _HomeDashboard extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
+                      color: c.surface,
                       borderRadius: BorderRadius.circular(16),
                       border: workoutLog != null
-                          ? Border.all(color: const Color(0xFF00C97B).withOpacity(0.4))
+                          ? Border.all(color: AppColors.primary.withOpacity(0.4))
                           : null,
                     ),
                     child: todayWorkout == null
@@ -685,14 +697,12 @@ class _HomeDashboard extends StatelessWidget {
                                 width: 44,
                                 height: 44,
                                 decoration: BoxDecoration(
-                                  color: const Color(
-                                    0xFF00C97B,
-                                  ).withOpacity(0.15),
+                                  color: AppColors.primary.withOpacity(0.15),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: const Icon(
                                   Icons.fitness_center_rounded,
-                                  color: Color(0xFF00C97B),
+                                  color: AppColors.primary,
                                   size: 22,
                                 ),
                               ),
@@ -704,23 +714,23 @@ class _HomeDashboard extends StatelessWidget {
                                     Text(
                                       'No workout generated yet',
                                       style: GoogleFonts.spaceGrotesk(
-                                        color: Colors.white,
+                                        color: c.onBackground,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                     Text(
                                       'Go to Plans to generate',
                                       style: GoogleFonts.inter(
-                                        color: const Color(0xFF888888),
+                                        color: c.muted,
                                         fontSize: 12,
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                              const Icon(
+                              Icon(
                                 Icons.chevron_right,
-                                color: Color(0xFF444444),
+                                color: c.subtle,
                               ),
                             ],
                           )
@@ -731,14 +741,12 @@ class _HomeDashboard extends StatelessWidget {
                                 width: 44,
                                 height: 44,
                                 decoration: BoxDecoration(
-                                  color: const Color(
-                                    0xFF444444,
-                                  ).withOpacity(0.3),
+                                  color: c.subtle.withOpacity(0.3),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: const Icon(
+                                child: Icon(
                                   Icons.bedtime_rounded,
-                                  color: Color(0xFF888888),
+                                  color: c.muted,
                                   size: 22,
                                 ),
                               ),
@@ -750,14 +758,14 @@ class _HomeDashboard extends StatelessWidget {
                                     Text(
                                       'Rest Day',
                                       style: GoogleFonts.spaceGrotesk(
-                                        color: Colors.white,
+                                        color: c.onBackground,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                     Text(
                                       'Recovery is part of the plan',
                                       style: GoogleFonts.inter(
-                                        color: const Color(0xFF888888),
+                                        color: c.muted,
                                         fontSize: 12,
                                       ),
                                     ),
@@ -775,14 +783,12 @@ class _HomeDashboard extends StatelessWidget {
                                     width: 44,
                                     height: 44,
                                     decoration: BoxDecoration(
-                                      color: const Color(
-                                        0xFF00C97B,
-                                      ).withOpacity(0.15),
+                                      color: AppColors.primary.withOpacity(0.15),
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: const Icon(
                                       Icons.fitness_center_rounded,
-                                      color: Color(0xFF00C97B),
+                                      color: AppColors.primary,
                                       size: 22,
                                     ),
                                   ),
@@ -795,14 +801,14 @@ class _HomeDashboard extends StatelessWidget {
                                         Text(
                                           '$todayName — ${todayWorkout.focus}',
                                           style: GoogleFonts.spaceGrotesk(
-                                            color: Colors.white,
+                                            color: c.onBackground,
                                             fontWeight: FontWeight.w600,
                                           ),
                                         ),
                                         Text(
                                           '${todayWorkout.exercises.length} exercises',
                                           style: GoogleFonts.inter(
-                                            color: const Color(0xFF888888),
+                                            color: c.muted,
                                             fontSize: 12,
                                           ),
                                         ),
@@ -810,8 +816,8 @@ class _HomeDashboard extends StatelessWidget {
                                     ),
                                   ),
                                   workoutLog != null
-                                      ? const Icon(Icons.check_circle_rounded, color: Color(0xFF00C97B), size: 22)
-                                      : const Icon(Icons.chevron_right, color: Color(0xFF444444)),
+                                      ? const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 22)
+                                      : Icon(Icons.chevron_right, color: c.subtle),
                                 ],
                               ),
                               if (workoutLog != null) ...[
@@ -819,13 +825,13 @@ class _HomeDashboard extends StatelessWidget {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF00C97B).withOpacity(0.12),
+                                    color: AppColors.primary.withOpacity(0.12),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text(
                                     'Completed · ${workoutLog.durationMinutes} min · ${workoutLog.focus}',
                                     style: GoogleFonts.inter(
-                                      color: const Color(0xFF00C97B),
+                                      color: AppColors.primary,
                                       fontSize: 12,
                                       fontWeight: FontWeight.w500,
                                     ),
@@ -833,8 +839,8 @@ class _HomeDashboard extends StatelessWidget {
                                 ),
                               ] else if (todayWorkout.exercises.isNotEmpty) ...[
                                 const SizedBox(height: 12),
-                                const Divider(
-                                  color: Color(0xFF2E2E2E),
+                                Divider(
+                                  color: c.border,
                                   height: 1,
                                 ),
                                 const SizedBox(height: 10),
@@ -851,7 +857,7 @@ class _HomeDashboard extends StatelessWidget {
                                               width: 6,
                                               height: 6,
                                               decoration: const BoxDecoration(
-                                                color: Color(0xFF00C97B),
+                                                color: AppColors.primary,
                                                 shape: BoxShape.circle,
                                               ),
                                             ),
@@ -860,7 +866,7 @@ class _HomeDashboard extends StatelessWidget {
                                               child: Text(
                                                 we.exercise.name,
                                                 style: GoogleFonts.inter(
-                                                  color: Colors.white,
+                                                  color: c.onBackground,
                                                   fontWeight: FontWeight.w500,
                                                   fontSize: 13,
                                                 ),
@@ -869,7 +875,7 @@ class _HomeDashboard extends StatelessWidget {
                                             Text(
                                               '${we.sets}×${we.reps}',
                                               style: GoogleFonts.inter(
-                                                color: const Color(0xFF888888),
+                                                color: c.muted,
                                                 fontSize: 12,
                                               ),
                                             ),
@@ -881,7 +887,7 @@ class _HomeDashboard extends StatelessWidget {
                                   Text(
                                     '+${todayWorkout.exercises.length - 2} more exercises',
                                     style: GoogleFonts.inter(
-                                      color: const Color(0xFF555555),
+                                      color: c.inactive,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -900,7 +906,8 @@ class _HomeDashboard extends StatelessWidget {
     );
   }
 
-  Widget _buildMacroRow(String label, String value, Color color) {
+  Widget _buildMacroRow(String label, String value, Color color, {required AppColors colors}) {
+    final c = colors;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -915,7 +922,7 @@ class _HomeDashboard extends StatelessWidget {
             Text(
               label,
               style: GoogleFonts.inter(
-                color: const Color(0xFF888888),
+                color: c.muted,
                 fontSize: 13,
               ),
             ),
@@ -924,7 +931,7 @@ class _HomeDashboard extends StatelessWidget {
         Text(
           value,
           style: GoogleFonts.inter(
-            color: Colors.white,
+            color: c.onBackground,
             fontSize: 13,
             fontWeight: FontWeight.w600,
           ),
@@ -943,6 +950,7 @@ class _HomeDashboard extends StatelessWidget {
     required Color color,
     required List<FoodItem> foodLogs,
   }) {
+    final c = context.colors;
     final hasData = calories > 0;
 
     return GestureDetector(
@@ -953,7 +961,7 @@ class _HomeDashboard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: c.surface,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
@@ -975,7 +983,7 @@ class _HomeDashboard extends StatelessWidget {
                   Text(
                     meal,
                     style: GoogleFonts.inter(
-                      color: Colors.white,
+                      color: c.onBackground,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -987,7 +995,7 @@ class _HomeDashboard extends StatelessWidget {
                               ? ' +${foodLogs.length - 2} more'
                               : ''),
                       style: GoogleFonts.inter(
-                        color: const Color(0xFF888888),
+                        color: c.muted,
                         fontSize: 11,
                       ),
                       maxLines: 1,
@@ -999,15 +1007,13 @@ class _HomeDashboard extends StatelessWidget {
             Text(
               hasData ? '${calories.round()} kcal' : '0 kcal',
               style: GoogleFonts.inter(
-                color: hasData
-                    ? const Color(0xFF00C97B)
-                    : const Color(0xFF888888),
+                color: hasData ? AppColors.primary : c.muted,
                 fontSize: 13,
                 fontWeight: hasData ? FontWeight.w600 : FontWeight.normal,
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.chevron_right, color: Color(0xFF444444), size: 18),
+            Icon(Icons.chevron_right, color: c.subtle, size: 18),
           ],
         ),
       ),
@@ -1017,19 +1023,20 @@ class _HomeDashboard extends StatelessWidget {
 
 class _CaloriePainter extends CustomPainter {
   final double progress;
-  _CaloriePainter(this.progress);
+  final Color trackColor;
+  _CaloriePainter(this.progress, {required this.trackColor});
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2 - 8;
     final bgPaint = Paint()
-      ..color = const Color(0xFF222222)
+      ..color = trackColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 8
       ..strokeCap = StrokeCap.round;
     final fgPaint = Paint()
-      ..color = const Color(0xFF00C97B)
+      ..color = AppColors.primary
       ..style = PaintingStyle.stroke
       ..strokeWidth = 8
       ..strokeCap = StrokeCap.round;
@@ -1044,5 +1051,6 @@ class _CaloriePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_CaloriePainter old) => old.progress != progress;
+  bool shouldRepaint(_CaloriePainter old) =>
+      old.progress != progress || old.trackColor != trackColor;
 }

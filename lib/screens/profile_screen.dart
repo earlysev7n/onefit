@@ -1,4 +1,3 @@
-import '../main.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -6,29 +5,54 @@ import '../providers/profile_provider.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../data/seed_data.dart';
-import 'login_screen.dart';
-import 'profile_input_screen.dart';
+import '../theme/app_colors.dart';
+import 'settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final profile = context.watch<ProfileProvider>().profile;
-    final macros = profile?.macroGoals ?? {};
+    final c = context.colors;
+    final profileProvider = context.watch<ProfileProvider>();
+    final profile = profileProvider.profile;
+    final macros = profileProvider.effectiveMacroGoals;
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Profile',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
+            // Header with gear icon
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Profile',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    color: c.onBackground,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const SettingsScreen(),
+                    ),
+                  ),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: c.surface,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.settings_outlined, color: c.muted, size: 22),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
 
@@ -38,7 +62,7 @@ class ProfileScreen extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 40,
-                    backgroundColor: const Color(0xFF00C97B).withOpacity(0.15),
+                    backgroundColor: AppColors.primary.withOpacity(0.15),
                     child: Text(
                       (profile?.name.isNotEmpty == true)
                           ? profile!.name[0].toUpperCase()
@@ -46,7 +70,7 @@ class ProfileScreen extends StatelessWidget {
                       style: GoogleFonts.spaceGrotesk(
                         fontSize: 32,
                         fontWeight: FontWeight.w700,
-                        color: const Color(0xFF00C97B),
+                        color: AppColors.primary,
                       ),
                     ),
                   ),
@@ -56,12 +80,12 @@ class ProfileScreen extends StatelessWidget {
                     style: GoogleFonts.spaceGrotesk(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
-                      color: Colors.white,
+                      color: c.onBackground,
                     ),
                   ),
                   Text(
                     AuthService().currentUser?.email ?? '',
-                    style: GoogleFonts.inter(color: const Color(0xFF888888)),
+                    style: GoogleFonts.inter(color: c.muted),
                   ),
                 ],
               ),
@@ -72,10 +96,10 @@ class ProfileScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
+                color: c.surface,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: const Color(0xFF00C97B).withOpacity(0.3),
+                  color: AppColors.primary.withOpacity(0.3),
                 ),
               ),
               child: Column(
@@ -85,37 +109,34 @@ class ProfileScreen extends StatelessWidget {
                     children: [
                       const Icon(
                         Icons.local_fire_department_rounded,
-                        color: Color(0xFF00C97B),
+                        color: AppColors.primary,
                         size: 18,
                       ),
                       const SizedBox(width: 8),
                       Text(
                         'Daily Targets',
                         style: GoogleFonts.spaceGrotesk(
-                          color: const Color(0xFF00C97B),
+                          color: AppColors.primary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  // Calorie goal big number
                   Center(
                     child: Column(
                       children: [
                         Text(
-                          '${profile?.calorieGoal ?? 2000}',
+                          '${profileProvider.dailyEffectiveGoal}',
                           style: GoogleFonts.spaceGrotesk(
                             fontSize: 36,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                            color: c.onBackground,
                           ),
                         ),
                         Text(
                           'kcal / day',
-                          style: GoogleFonts.inter(
-                            color: const Color(0xFF888888),
-                          ),
+                          style: GoogleFonts.inter(color: c.muted),
                         ),
                       ],
                     ),
@@ -124,178 +145,92 @@ class ProfileScreen extends StatelessWidget {
                   Row(
                     children: [
                       _buildMacroTarget(
+                        context,
                         'Protein',
                         '${macros['protein'] ?? 0}g',
-                        const Color(0xFF00C97B),
+                        AppColors.primary,
                       ),
                       _buildMacroTarget(
+                        context,
                         'Carbs',
                         '${macros['carbs'] ?? 0}g',
-                        const Color(0xFF6C63FF),
+                        AppColors.purple,
                       ),
                       _buildMacroTarget(
+                        context,
                         'Fat',
                         '${macros['fat'] ?? 0}g',
-                        const Color(0xFFFF6B35),
+                        AppColors.orange,
                       ),
                       _buildMacroTarget(
+                        context,
                         'Fiber',
                         '${macros['fiber'] ?? 0}g',
-                        const Color(0xFF00B4D8),
+                        AppColors.cyan,
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  const Divider(color: Color(0xFF2E2E2E)),
+                  Divider(color: c.border),
                   const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'BMR',
-                        style: GoogleFonts.inter(
-                          color: const Color(0xFF888888),
-                          fontSize: 13,
-                        ),
-                      ),
-                      Text(
-                        '${profile?.bmr ?? 0} kcal',
-                        style: GoogleFonts.inter(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
+                  _infoRow(context, 'BMR', '${profile?.bmr ?? 0} kcal'),
                   const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'TDEE',
-                        style: GoogleFonts.inter(
-                          color: const Color(0xFF888888),
-                          fontSize: 13,
-                        ),
-                      ),
-                      Text(
-                        '${profile?.tdee ?? 0} kcal',
-                        style: GoogleFonts.inter(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
+                  _infoRow(context, 'TDEE', '${profile?.tdee ?? 0} kcal'),
                   const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'BMI',
-                        style: GoogleFonts.inter(
-                          color: const Color(0xFF888888),
-                          fontSize: 13,
-                        ),
-                      ),
-                      Text(
-                        profile?.bmiDisplay ?? '-',
-                        style: GoogleFonts.inter(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
+                  _infoRow(context, 'BMI', profile?.bmiDisplay ?? '-'),
                 ],
               ),
             ),
             const SizedBox(height: 12),
 
-            // Biometrics
-            _buildInfoCard('Biometrics', [
-              _infoRow('Age', '${profile?.age ?? '-'} yrs'),
-              _infoRow('Weight', profile?.weightDisplay ?? '-'),
-              _infoRow('Height', profile?.heightDisplay ?? '-'),
-              _infoRow('Gender', profile?.gender ?? '-'),
+            _buildInfoCard(context, 'Biometrics', [
+              _infoRow(context, 'Age', '${profile?.age ?? '-'} yrs'),
+              _infoRow(context, 'Weight', profile?.weightDisplay ?? '-'),
+              _infoRow(context, 'Height', profile?.heightDisplay ?? '-'),
+              _infoRow(context, 'Gender', profile?.gender ?? '-'),
               _infoRow(
+                context,
                 'Units',
                 profile?.unitSystem == 'imperial' ? 'Imperial' : 'Metric',
               ),
               _infoRow(
+                context,
                 'Avg Sleep',
                 '${profile?.avgHoursSlept.toStringAsFixed(1) ?? '-'} h',
               ),
             ]),
             const SizedBox(height: 12),
 
-            // Fitness
-            _buildInfoCard('Fitness', [
-              _infoRow('Goal', profile?.fitnessGoal ?? '-'),
-              _infoRow('Level', profile?.experienceLevel ?? '-'),
-              _infoRow('Activity', profile?.activityLevel ?? '-'),
-              _infoRow('Location', profile?.workoutLocation ?? '-'),
-              _infoRow('Split', profile?.workoutSplit ?? '-'),
-              _infoRow('Days / Week', '${profile?.workoutDaysPerWeek ?? '-'}'),
-              _infoRow('Session', '${profile?.sessionMinutes ?? '-'} min'),
+            _buildInfoCard(context, 'Fitness', [
+              _infoRow(context, 'Goal', profile?.fitnessGoal ?? '-'),
+              _infoRow(context, 'Level', profile?.experienceLevel ?? '-'),
+              _infoRow(context, 'Activity', profile?.activityLevel ?? '-'),
+              _infoRow(context, 'Location', profile?.workoutLocation ?? '-'),
+              _infoRow(context, 'Split', profile?.workoutSplit ?? '-'),
+              _infoRow(context, 'Days / Week', '${profile?.workoutDaysPerWeek ?? '-'}'),
+              _infoRow(context, 'Session', '${profile?.sessionMinutes ?? '-'} min'),
               if (profile?.equipment.isNotEmpty == true)
-                _infoRow('Equipment', profile!.equipment.join(', ')),
+                _infoRow(context, 'Equipment', profile!.equipment.join(', ')),
             ]),
             const SizedBox(height: 12),
 
-            // Diet
-            _buildInfoCard('Diet', [
+            _buildInfoCard(context, 'Diet', [
               _infoRow(
+                context,
                 'Restrictions',
                 profile?.dietaryRestrictions.isEmpty == true
                     ? 'None'
                     : profile!.dietaryRestrictions.join(', '),
               ),
-              _infoRow('Sugar limit', '${profile?.macroGoals['sugar'] ?? 50}g'),
+              _infoRow(context, 'Sugar limit', '${profile?.macroGoals['sugar'] ?? 50}g'),
               _infoRow(
+                context,
                 'Sodium limit',
                 '${profile?.macroGoals['sodium'] ?? 2300}mg',
               ),
             ]),
             const SizedBox(height: 24),
 
-            // Edit Profile — reuses the onboarding screen in edit mode.
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton.icon(
-                onPressed: profile == null
-                    ? null
-                    : () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                ProfileInputScreen(existing: profile),
-                          ),
-                        ),
-                icon: const Icon(Icons.edit_outlined, color: Colors.black),
-                label: Text(
-                  'Edit Profile',
-                  style: GoogleFonts.spaceGrotesk(
-                    color: Colors.black,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00C97B),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Dev-only: one-tap seeding of the USDA `ingredients` collection
-            // that the Genetic Algorithm draws on. Gated by kShowSeedTools.
             if (kShowSeedTools) ...[
               SizedBox(
                 width: double.infinity,
@@ -309,13 +244,11 @@ class ProfileScreen extends StatelessWidget {
                     ));
                     try {
                       await SeedData.seedIngredients();
-                      // Drop the in-memory cache so the freshly seeded fields
-                      // (allergens / category) load on the next read.
                       FirestoreService.clearIngredientCache();
                       messenger.hideCurrentSnackBar();
                       messenger.showSnackBar(const SnackBar(
-                        content: Text('Ingredients seeded ✓'),
-                        backgroundColor: Color(0xFF00C97B),
+                        content: Text('Ingredients seeded'),
+                        backgroundColor: AppColors.primary,
                       ));
                     } catch (e) {
                       messenger.hideCurrentSnackBar();
@@ -325,16 +258,16 @@ class ProfileScreen extends StatelessWidget {
                       ));
                     }
                   },
-                  icon: const Icon(Icons.cloud_upload_outlined, color: Color(0xFF00C97B)),
+                  icon: const Icon(Icons.cloud_upload_outlined, color: AppColors.primary),
                   label: Text(
                     'Seed Ingredients',
                     style: GoogleFonts.spaceGrotesk(
-                      color: const Color(0xFF00C97B),
+                      color: AppColors.primary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFF00C97B)),
+                    side: const BorderSide(color: AppColors.primary),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -343,41 +276,13 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
             ],
-
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: OutlinedButton.icon(
-                onPressed: () async {
-                  await AuthService().signOut();
-                  navigatorKey.currentState?.pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    (route) => false,
-                  );
-                },
-                icon: const Icon(Icons.logout, color: Colors.redAccent),
-                label: Text(
-                  'Sign Out',
-                  style: GoogleFonts.spaceGrotesk(
-                    color: Colors.redAccent,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.redAccent),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildMacroTarget(String label, String value, Color color) {
+  Widget _buildMacroTarget(BuildContext context, String label, String value, Color color) {
     return Expanded(
       child: Column(
         children: [
@@ -392,7 +297,7 @@ class ProfileScreen extends StatelessWidget {
           Text(
             label,
             style: GoogleFonts.inter(
-              color: const Color(0xFF888888),
+              color: context.colors.muted,
               fontSize: 11,
             ),
           ),
@@ -401,11 +306,12 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoCard(String title, List<Widget> rows) {
+  Widget _buildInfoCard(BuildContext context, String title, List<Widget> rows) {
+    final c = context.colors;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: c.surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -414,7 +320,7 @@ class ProfileScreen extends StatelessWidget {
           Text(
             title,
             style: GoogleFonts.spaceGrotesk(
-              color: const Color(0xFF00C97B),
+              color: AppColors.primary,
               fontWeight: FontWeight.w600,
               fontSize: 13,
             ),
@@ -426,17 +332,18 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _infoRow(String label, String value) {
+  Widget _infoRow(BuildContext context, String label, String value) {
+    final c = context.colors;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: GoogleFonts.inter(color: const Color(0xFF888888))),
+          Text(label, style: GoogleFonts.inter(color: c.muted)),
           Text(
             value,
             style: GoogleFonts.inter(
-              color: Colors.white,
+              color: c.onBackground,
               fontWeight: FontWeight.w500,
             ),
           ),

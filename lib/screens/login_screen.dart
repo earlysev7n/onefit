@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'register_screen.dart';
 import '../services/auth_service.dart';
+import '../theme/app_colors.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -17,6 +18,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: SafeArea(
@@ -28,13 +30,13 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Center(child: Image.asset('assets/images/logo2.png')),
-                SizedBox(height: 24),
+                const SizedBox(height: 24),
                 Text(
                   'Welcome back',
                   style: GoogleFonts.spaceGrotesk(
                     fontSize: 32,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    color: c.onBackground,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -42,17 +44,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   'Sign in to continue',
                   style: GoogleFonts.inter(
                     fontSize: 16,
-                    color: const Color(0xFF888888),
+                    color: c.muted,
                   ),
                 ),
                 const SizedBox(height: 40),
                 TextField(
                   controller: _emailController,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: c.onBackground),
                   decoration: InputDecoration(
                     labelText: 'Email',
                     filled: true,
-                    fillColor: const Color(0xFF222222),
+                    fillColor: c.inputFill,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide.none,
@@ -63,11 +65,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextField(
                   controller: _passwordController,
                   obscureText: true,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: c.onBackground),
                   decoration: InputDecoration(
                     labelText: 'Password',
                     filled: true,
-                    fillColor: const Color(0xFF222222),
+                    fillColor: c.inputFill,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide.none,
@@ -96,14 +98,14 @@ class _LoginScreenState extends State<LoginScreen> {
                             setState(() => _isLoading = false);
                           },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00C97B),
-                      foregroundColor: Colors.black,
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: c.onPrimary,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
                     child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.black)
+                        ? CircularProgressIndicator(color: c.onPrimary)
                         : Text(
                             'Sign In',
                             style: GoogleFonts.spaceGrotesk(
@@ -121,7 +123,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     child: Text(
                       'Don\'t have an account? Sign up',
-                      style: GoogleFonts.inter(color: const Color(0xFF00C97B)),
+                      style: GoogleFonts.inter(color: AppColors.primary),
                     ),
                   ),
                 ),

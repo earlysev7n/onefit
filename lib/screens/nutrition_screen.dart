@@ -7,6 +7,7 @@ import '../services/firestore_service.dart';
 import '../providers/profile_provider.dart';
 import '../models/food_item.dart';
 import '../app_clock.dart';
+import '../theme/app_colors.dart';
 import 'food_log_screen.dart';
 
 class NutritionScreen extends StatefulWidget {
@@ -21,11 +22,12 @@ class _NutritionScreenState extends State<NutritionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: c.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
-        foregroundColor: Colors.white,
+        backgroundColor: c.background,
+        foregroundColor: c.onBackground,
         title: Text(
           'Nutrition',
           style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
@@ -48,17 +50,17 @@ class _NutritionScreenState extends State<NutritionScreen> {
                   Container(
                     margin: const EdgeInsets.symmetric(horizontal: 20),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
+                      color: c.surface,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: TabBar(
                       indicator: BoxDecoration(
-                        color: const Color(0xFF00C97B),
+                        color: AppColors.primary,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       indicatorSize: TabBarIndicatorSize.tab,
-                      labelColor: Colors.black,
-                      unselectedLabelColor: const Color(0xFF888888),
+                      labelColor: c.onPrimary,
+                      unselectedLabelColor: c.muted,
                       labelStyle: GoogleFonts.spaceGrotesk(
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
@@ -102,18 +104,19 @@ class _NutritionScreenState extends State<NutritionScreen> {
     );
     final isToday = selected == today;
 
+    final c = context.colors;
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 8, 20, 12),
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: c.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           IconButton(
-            icon: const Icon(Icons.chevron_left, color: Colors.white),
+            icon: Icon(Icons.chevron_left, color: c.onBackground),
             onPressed: () {
               setState(() {
                 _selectedDate = _selectedDate.subtract(const Duration(days: 1));
@@ -123,14 +126,14 @@ class _NutritionScreenState extends State<NutritionScreen> {
           Text(
             _formatDate(_selectedDate),
             style: GoogleFonts.spaceGrotesk(
-              color: Colors.white,
+              color: c.onBackground,
               fontWeight: FontWeight.w600,
               fontSize: 15,
             ),
           ),
           if (!isToday)
             IconButton(
-              icon: const Icon(Icons.chevron_right, color: Colors.white),
+              icon: Icon(Icons.chevron_right, color: c.onBackground),
               onPressed: () {
                 setState(() {
                   final tomorrow = _selectedDate.add(const Duration(days: 1));
@@ -182,11 +185,14 @@ class _NutritionScreenState extends State<NutritionScreen> {
       firstDate: appNow().subtract(const Duration(days: 365)),
       lastDate: appNow(),
       builder: (context, child) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final base = isDark ? ThemeData.dark() : ThemeData.light();
+        final c = context.colors;
         return Theme(
-          data: ThemeData.dark().copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF00C97B),
-              surface: Color(0xFF1A1A1A),
+          data: base.copyWith(
+            colorScheme: (isDark ? const ColorScheme.dark() : const ColorScheme.light()).copyWith(
+              primary: AppColors.primary,
+              surface: c.surface,
             ),
           ),
           child: child!,
@@ -227,10 +233,11 @@ class _CaloriesTabState extends State<_CaloriesTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final c = context.colors;
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return const Center(
-        child: Text('Not logged in', style: TextStyle(color: Colors.white)),
+      return Center(
+        child: Text('Not logged in', style: TextStyle(color: c.onBackground)),
       );
     }
 
@@ -242,7 +249,7 @@ class _CaloriesTabState extends State<_CaloriesTab>
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
-            child: CircularProgressIndicator(color: Color(0xFF00C97B)),
+            child: CircularProgressIndicator(color: AppColors.primary),
           );
         }
         if (snapshot.hasError) {
@@ -257,8 +264,8 @@ class _CaloriesTabState extends State<_CaloriesTab>
         final foodLogs = snapshot.data ?? [];
         final totals = _calculateTotals(foodLogs);
 
-        final profile = context.watch<ProfileProvider>().profile;
-        final calorieGoal = profile?.calorieGoal ?? 2000;
+        final profileProvider = context.watch<ProfileProvider>();
+        final calorieGoal = profileProvider.dailyEffectiveGoal;
         final eaten = totals['calories'] ?? 0;
         final remaining = calorieGoal - eaten;
 
@@ -273,7 +280,8 @@ class _CaloriesTabState extends State<_CaloriesTab>
                     child: CustomPaint(
                       painter: _RingPainter(
                         eaten / calorieGoal,
-                        const Color(0xFF00C97B),
+                        AppColors.primary,
+                        ringBackground: c.inputFill,
                       ),
                       child: Center(
                         child: Column(
@@ -284,13 +292,13 @@ class _CaloriesTabState extends State<_CaloriesTab>
                               style: GoogleFonts.spaceGrotesk(
                                 fontSize: 36,
                                 fontWeight: FontWeight.w700,
-                                color: Colors.white,
+                                color: c.onBackground,
                               ),
                             ),
                             Text(
                               'kcal left',
                               style: GoogleFonts.inter(
-                                color: const Color(0xFF888888),
+                                color: c.muted,
                               ),
                             ),
                           ],
@@ -304,15 +312,15 @@ class _CaloriesTabState extends State<_CaloriesTab>
                       _buildCalCard(
                         'Goal',
                         '$calorieGoal',
-                        const Color(0xFF555555),
+                        c.inactive,
                       ),
                       const SizedBox(width: 12),
-                      _buildCalCard('Eaten', '$eaten', const Color(0xFFFF6B35)),
+                      _buildCalCard('Eaten', '$eaten', AppColors.orange),
                       const SizedBox(width: 12),
                       _buildCalCard(
                         'Remaining',
                         '${remaining.clamp(0, calorieGoal)}',
-                        const Color(0xFF00C97B),
+                        AppColors.primary,
                       ),
                     ],
                   ),
@@ -379,34 +387,37 @@ class _CaloriesTabState extends State<_CaloriesTab>
     };
   }
 
-  Widget _buildCalCard(String label, String value, Color color) => Expanded(
-    child: Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: color,
+  Widget _buildCalCard(String label, String value, Color color) {
+    final c = context.colors;
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
             ),
-          ),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              color: const Color(0xFF888888),
-              fontSize: 12,
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                color: c.muted,
+                fontSize: 12,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _buildMealRow(
     BuildContext context, {
@@ -414,6 +425,7 @@ class _CaloriesTabState extends State<_CaloriesTab>
     required String mealType,
     required int calories,
   }) {
+    final c = context.colors;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -422,7 +434,7 @@ class _CaloriesTabState extends State<_CaloriesTab>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
+            color: c.surface,
             borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
@@ -430,19 +442,19 @@ class _CaloriesTabState extends State<_CaloriesTab>
               Text(
                 label,
                 style: GoogleFonts.inter(
-                  color: Colors.white,
+                  color: c.onBackground,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               const Spacer(),
               Text(
                 '$calories kcal',
-                style: GoogleFonts.inter(color: const Color(0xFF888888)),
+                style: GoogleFonts.inter(color: c.muted),
               ),
               const SizedBox(width: 6),
-              const Icon(
+              Icon(
                 Icons.chevron_right,
-                color: Color(0xFF555555),
+                color: c.inactive,
                 size: 18,
               ),
             ],
@@ -565,10 +577,11 @@ class _NutrientsTabState extends State<_NutrientsTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final c = context.colors;
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return const Center(
-        child: Text('Not logged in', style: TextStyle(color: Colors.white)),
+      return Center(
+        child: Text('Not logged in', style: TextStyle(color: c.onBackground)),
       );
     }
 
@@ -580,23 +593,24 @@ class _NutrientsTabState extends State<_NutrientsTab>
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
-            child: CircularProgressIndicator(color: Color(0xFF00C97B)),
+            child: CircularProgressIndicator(color: AppColors.primary),
           );
         }
 
         final foodLogs = snapshot.data ?? [];
         final n = _sumNutrients(foodLogs);
 
-        final profile = context.watch<ProfileProvider>().profile;
-        final macroGoals = profile == null
+        final profileProvider = context.watch<ProfileProvider>();
+        final effectiveMacros = profileProvider.effectiveMacroGoals;
+        final macroGoals = effectiveMacros.isEmpty
             ? <String, int>{}
             : {
-                'protein': profile.macroGoals['protein'] ?? 50,
-                'carbs': profile.macroGoals['carbs'] ?? 275,
-                'fat': profile.macroGoals['fat'] ?? 78,
-                'fiber': profile.macroGoals['fiber'] ?? 28,
-                'sugar': profile.macroGoals['sugar'] ?? 50,
-                'sodium': profile.macroGoals['sodium'] ?? 2300,
+                'protein': effectiveMacros['protein'] ?? 50,
+                'carbs': effectiveMacros['carbs'] ?? 275,
+                'fat': effectiveMacros['fat'] ?? 78,
+                'fiber': effectiveMacros['fiber'] ?? 28,
+                'sugar': effectiveMacros['sugar'] ?? 50,
+                'sodium': effectiveMacros['sodium'] ?? 2300,
               };
 
         // Merge profile macro goals into RDA map for macros only
@@ -617,7 +631,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
                     current: n['protein']!,
                     goal: macroGoal('protein', 50).toDouble(),
                     unit: 'g',
-                    color: const Color(0xFF00C97B),
+                    color: AppColors.primary,
                   ),
                   const SizedBox(height: 10),
                   _nutrientCard(
@@ -626,7 +640,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
                     current: n['carbs']!,
                     goal: macroGoal('carbs', 275).toDouble(),
                     unit: 'g',
-                    color: const Color(0xFF6C63FF),
+                    color: AppColors.purple,
                   ),
                   const SizedBox(height: 10),
                   _nutrientCard(
@@ -635,7 +649,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
                     current: n['fat']!,
                     goal: macroGoal('fat', 78).toDouble(),
                     unit: 'g',
-                    color: const Color(0xFFFF6B35),
+                    color: AppColors.orange,
                   ),
 
                   // ── Fiber & Sugars ────────────────────────────────────────
@@ -648,7 +662,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
                     current: n['fiber']!,
                     goal: macroGoal('fiber', 28).toDouble(),
                     unit: 'g',
-                    color: const Color(0xFF00B4D8),
+                    color: AppColors.cyan,
                   ),
                   const SizedBox(height: 10),
                   _nutrientCard(
@@ -657,7 +671,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
                     current: n['sugar']!,
                     goal: macroGoal('sugar', 50).toDouble(),
                     unit: 'g',
-                    color: const Color(0xFFFFD60A),
+                    color: AppColors.yellow,
                     isLimit: true,
                   ),
 
@@ -866,10 +880,11 @@ class _NutrientsTabState extends State<_NutrientsTab>
   }
 
   Widget _sectionHeader(String title) {
+    final c = context.colors;
     return Text(
       title.toUpperCase(),
       style: GoogleFonts.spaceGrotesk(
-        color: const Color(0xFF888888),
+        color: c.muted,
         fontSize: 11,
         fontWeight: FontWeight.w600,
         letterSpacing: 1.2,
@@ -895,6 +910,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
     required Color color,
     bool isLimit = false,
   }) {
+    final c = context.colors;
     final progress = goal > 0 ? (current / goal).clamp(0.0, 1.0) : 0.0;
     final isOver = isLimit && current > goal;
     final barColor = isOver ? const Color(0xFFFF4D4D) : color;
@@ -913,7 +929,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: c.surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -929,7 +945,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
                     Text(
                       name,
                       style: GoogleFonts.spaceGrotesk(
-                        color: Colors.white,
+                        color: c.onBackground,
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
                       ),
@@ -938,7 +954,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
                     Text(
                       desc,
                       style: GoogleFonts.inter(
-                        color: const Color(0xFF555555),
+                        color: c.inactive,
                         fontSize: 11,
                       ),
                     ),
@@ -957,7 +973,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
                           style: GoogleFonts.spaceGrotesk(
                             color: isOver
                                 ? const Color(0xFFFF4D4D)
-                                : Colors.white,
+                                : c.onBackground,
                             fontWeight: FontWeight.w700,
                             fontSize: 15,
                           ),
@@ -965,7 +981,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
                         TextSpan(
                           text: ' / ${_fmt(goal, unit)}$unit',
                           style: GoogleFonts.inter(
-                            color: const Color(0xFF555555),
+                            color: c.inactive,
                             fontSize: 12,
                           ),
                         ),
@@ -989,7 +1005,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
             borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
               value: progress,
-              backgroundColor: const Color(0xFF222222),
+              backgroundColor: c.inputFill,
               valueColor: AlwaysStoppedAnimation(barColor),
               minHeight: 7,
             ),
@@ -1004,14 +1020,15 @@ class _NutrientsTabState extends State<_NutrientsTab>
 class _RingPainter extends CustomPainter {
   final double progress;
   final Color color;
-  _RingPainter(this.progress, this.color);
+  final Color ringBackground;
+  _RingPainter(this.progress, this.color, {this.ringBackground = const Color(0xFF222222)});
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2 - 10;
     final bg = Paint()
-      ..color = const Color(0xFF222222)
+      ..color = ringBackground
       ..style = PaintingStyle.stroke
       ..strokeWidth = 12
       ..strokeCap = StrokeCap.round;
@@ -1031,5 +1048,8 @@ class _RingPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RingPainter old) => old.progress != progress;
+  bool shouldRepaint(_RingPainter old) =>
+      old.progress != progress ||
+      old.color != color ||
+      old.ringBackground != ringBackground;
 }

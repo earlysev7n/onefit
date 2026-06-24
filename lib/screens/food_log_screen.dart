@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import 'dart:convert';
 import '../services/openfoodfacts_service.dart';
 import '../services/firestore_service.dart';
+import '../services/dietary_filter.dart';
+import '../providers/profile_provider.dart';
 import '../models/food_item.dart';
 import '../app_clock.dart';
 import 'barcode_scan_screen.dart';
+import '../theme/app_colors.dart';
 
 class FoodLogScreen extends StatefulWidget {
   final String mealType;
@@ -32,6 +36,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   bool _isLoading = false;
   bool _isLoadingHistory = true;
   bool _hasSearched = false;
+  int _hiddenCount = 0;
   String? _error;
 
   final Set<String> _loggingIds = {};
@@ -158,10 +163,11 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
     Map<String, dynamic> product,
   ) async {
     double quantity = 1.0;
+    final c = context.colors;
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: c.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -189,7 +195,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                       errorBuilder: (_, __, ___) => const Icon(
                         Icons.fastfood,
                         size: 60,
-                        color: Color(0xFF00C97B),
+                        color: AppColors.primary,
                       ),
                     ),
                   ),
@@ -200,14 +206,14 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                  color: c.onBackground,
                 ),
                 maxLines: 2,
               ),
               const SizedBox(height: 8),
               Text(
                 'Per serving: ${foodItem.servingSize.toStringAsFixed(0)}${foodItem.servingSizeUnit}',
-                style: GoogleFonts.inter(color: const Color(0xFF888888)),
+                style: GoogleFonts.inter(color: c.muted),
               ),
               const SizedBox(height: 12),
               _macroRow(
@@ -222,7 +228,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                 style: GoogleFonts.inter(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
-                  color: Colors.white,
+                  color: c.onBackground,
                 ),
               ),
               Slider(
@@ -230,8 +236,8 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                 min: 0.5,
                 max: 5.0,
                 divisions: 18,
-                activeColor: const Color(0xFF00C97B),
-                inactiveColor: const Color(0xFF333333),
+                activeColor: AppColors.primary,
+                inactiveColor: c.borderLight,
                 label: quantity.toStringAsFixed(1),
                 onChanged: (v) => setModalState(() => quantity = v),
               ),
@@ -242,7 +248,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                     child: OutlinedButton(
                       onPressed: () => Navigator.pop(context, false),
                       style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Color(0xFF444444)),
+                        side: BorderSide(color: c.subtle),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
@@ -266,8 +272,8 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                         if (context.mounted) Navigator.pop(context, true);
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00C97B),
-                        foregroundColor: Colors.black,
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: c.onPrimary,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
@@ -295,10 +301,15 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
 
   Future<void> _search(String query) async {
     if (query.trim().isEmpty) return;
+    // Capture before the async gap — don't touch context after an await.
+    final restrictions =
+        context.read<ProfileProvider>().profile?.dietaryRestrictions ??
+            const <String>[];
     setState(() {
       _isLoading = true;
       _error = null;
       _hasSearched = true;
+      _hiddenCount = 0;
     });
     try {
       final uri = Uri.parse('$_baseUrl/foods/search').replace(
@@ -366,8 +377,19 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
           .where((f) => f.calories > 0)
           .toList();
 
+      // Hide results that conflict with the user's dietary restrictions.
+      // USDA has no dietary tags, so this is a name-keyword denylist — it hides
+      // obvious conflicts (pork for Halal, meat for Vegetarian, …) but cannot
+      // certify compliance. See DietaryFilter.
+      final compliant = DietaryFilter.filter(
+        results,
+        restrictions,
+        (f) => '${f.name} ${f.brandOwner}',
+      );
+
       setState(() {
-        _results = results;
+        _results = compliant;
+        _hiddenCount = results.length - compliant.length;
         _isLoading = false;
       });
     } catch (e) {
@@ -429,7 +451,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
           '$name logged to ${_capitalize(widget.mealType)}',
           style: GoogleFonts.inter(fontWeight: FontWeight.w600),
         ),
-        backgroundColor: const Color(0xFF00C97B),
+        backgroundColor: AppColors.primary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
@@ -440,11 +462,12 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: c.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
-        foregroundColor: Colors.white,
+        backgroundColor: c.background,
+        foregroundColor: c.onBackground,
         title: Text(
           'Log ${_capitalize(widget.mealType)}',
           style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
@@ -463,16 +486,16 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: TextField(
               controller: _searchController,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: c.onBackground),
               textInputAction: TextInputAction.search,
               onSubmitted: _search,
               decoration: InputDecoration(
                 hintText: 'Search foods, brands, flavors...',
-                hintStyle: GoogleFonts.inter(color: const Color(0xFF555555)),
-                prefixIcon: const Icon(Icons.search, color: Color(0xFF555555)),
+                hintStyle: GoogleFonts.inter(color: c.inactive),
+                prefixIcon: Icon(Icons.search, color: c.inactive),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear, color: Color(0xFF555555)),
+                        icon: Icon(Icons.clear, color: c.inactive),
                         onPressed: () {
                           _searchController.clear();
                           setState(() {
@@ -483,7 +506,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                       )
                     : null,
                 filled: true,
-                fillColor: const Color(0xFF1A1A1A),
+                fillColor: c.surface,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide.none,
@@ -508,8 +531,8 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF00C97B),
-                  side: const BorderSide(color: Color(0xFF00C97B), width: 1.5),
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: AppColors.primary, width: 1.5),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -520,7 +543,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
           Expanded(
             child: _isLoading
                 ? const Center(
-                    child: CircularProgressIndicator(color: Color(0xFF00C97B)),
+                    child: CircularProgressIndicator(color: AppColors.primary),
                   )
                 : _error != null
                 ? _buildError()
@@ -533,33 +556,37 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
     );
   }
 
-  Widget _buildError() => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.error_outline, color: Color(0xFFFF6B35), size: 48),
-          const SizedBox(height: 16),
-          Text(
-            _error!,
-            style: GoogleFonts.inter(color: const Color(0xFF888888)),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          TextButton(
-            onPressed: () => setState(() => _error = null),
-            child: Text(
-              'Dismiss',
-              style: GoogleFonts.inter(color: const Color(0xFF00C97B)),
+  Widget _buildError() {
+    final c = context.colors;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, color: AppColors.orange, size: 48),
+            const SizedBox(height: 16),
+            Text(
+              _error!,
+              style: GoogleFonts.inter(color: c.muted),
+              textAlign: TextAlign.center,
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () => setState(() => _error = null),
+              child: Text(
+                'Dismiss',
+                style: GoogleFonts.inter(color: AppColors.primary),
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _buildDefaultView() {
+    final c = context.colors;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
@@ -569,22 +596,22 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
             Text(
               'History',
               style: GoogleFonts.spaceGrotesk(
-                color: Colors.white,
+                color: c.onBackground,
                 fontWeight: FontWeight.w700,
                 fontSize: 18,
               ),
             ),
             TextButton.icon(
               onPressed: _loadHistory,
-              icon: const Icon(
+              icon: Icon(
                 Icons.refresh,
-                color: Color(0xFF888888),
+                color: c.muted,
                 size: 14,
               ),
               label: Text(
                 'Refresh',
                 style: GoogleFonts.inter(
-                  color: const Color(0xFF888888),
+                  color: c.muted,
                   fontSize: 12,
                 ),
               ),
@@ -594,11 +621,11 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
         ),
         const SizedBox(height: 8),
         if (_isLoadingHistory)
-          const Center(
+          Center(
             child: Padding(
-              padding: EdgeInsets.all(24),
+              padding: const EdgeInsets.all(24),
               child: CircularProgressIndicator(
-                color: Color(0xFF00C97B),
+                color: AppColors.primary,
                 strokeWidth: 2,
               ),
             ),
@@ -609,17 +636,17 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
               padding: const EdgeInsets.all(32),
               child: Column(
                 children: [
-                  const Icon(Icons.history, color: Color(0xFF333333), size: 48),
+                  Icon(Icons.history, color: c.borderLight, size: 48),
                   const SizedBox(height: 12),
                   Text(
                     'No history yet',
-                    style: GoogleFonts.inter(color: const Color(0xFF555555)),
+                    style: GoogleFonts.inter(color: c.inactive),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'Search for foods above to get started',
                     style: GoogleFonts.inter(
-                      color: const Color(0xFF333333),
+                      color: c.borderLight,
                       fontSize: 12,
                     ),
                   ),
@@ -634,6 +661,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   }
 
   Widget _buildHistoryCard(FoodItem food) {
+    final c = context.colors;
     final isLogging = _loggingIds.contains(food.id);
     final uid = FirebaseAuth.instance.currentUser?.uid;
     return Dismissible(
@@ -659,9 +687,9 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: c.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFF2E2E2E)),
+          border: Border.all(color: c.border),
         ),
         child: Row(
           children: [
@@ -672,7 +700,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                   Text(
                     food.name,
                     style: GoogleFonts.inter(
-                      color: Colors.white,
+                      color: c.onBackground,
                       fontWeight: FontWeight.w600,
                     ),
                     maxLines: 1,
@@ -682,7 +710,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                   Text(
                     '${food.totalCalories.round()} kcal · ${food.quantity.toStringAsFixed(0)} × ${food.servingSize.round()}${food.servingSizeUnit}',
                     style: GoogleFonts.inter(
-                      color: const Color(0xFF888888),
+                      color: c.muted,
                       fontSize: 12,
                     ),
                   ),
@@ -692,15 +720,15 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                     children: [
                       _macroTag(
                         'P: ${food.totalProtein.round()}g',
-                        const Color(0xFF00C97B),
+                        AppColors.primary,
                       ),
                       _macroTag(
                         'C: ${food.totalCarbs.round()}g',
-                        const Color(0xFF6C63FF),
+                        AppColors.purple,
                       ),
                       _macroTag(
                         'F: ${food.totalFat.round()}g',
-                        const Color(0xFFFF6B35),
+                        AppColors.orange,
                       ),
                     ],
                   ),
@@ -714,14 +742,10 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: const Color(
-                    0xFF00C97B,
-                  ).withOpacity(isLogging ? 0.05 : 0.15),
+                  color: AppColors.primary.withOpacity(isLogging ? 0.05 : 0.15),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: const Color(
-                      0xFF00C97B,
-                    ).withOpacity(isLogging ? 0.2 : 0.4),
+                    color: AppColors.primary.withOpacity(isLogging ? 0.2 : 0.4),
                   ),
                 ),
                 child: isLogging
@@ -730,14 +754,14 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
-                            color: Color(0xFF00C97B),
+                            color: AppColors.primary,
                             strokeWidth: 2,
                           ),
                         ),
                       )
                     : const Icon(
                         Icons.add,
-                        color: Color(0xFF00C97B),
+                        color: AppColors.primary,
                         size: 20,
                       ),
               ),
@@ -750,30 +774,68 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
 
   Widget _buildSearchResults() {
     if (_results.isEmpty) {
+      final c = context.colors;
+      // Surface the hidden-count notice even on an empty list, so a fully
+      // filtered-out result set isn't mysterious.
       return Center(
-        child: Text(
-          'No results found.',
-          style: GoogleFonts.inter(color: const Color(0xFF555555)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            _hiddenCount > 0
+                ? 'No results match your dietary preferences.'
+                : 'No results found.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(color: c.inactive),
+          ),
         ),
       );
     }
+    final hasBanner = _hiddenCount > 0;
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-      itemCount: _results.length,
-      itemBuilder: (context, i) => _buildSearchCard(_results[i]),
+      itemCount: _results.length + (hasBanner ? 1 : 0),
+      itemBuilder: (context, i) {
+        if (hasBanner && i == 0) return _buildHiddenNotice();
+        return _buildSearchCard(_results[i - (hasBanner ? 1 : 0)]);
+      },
+    );
+  }
+
+  Widget _buildHiddenNotice() {
+    final c = context.colors;
+    final plural = _hiddenCount == 1 ? 'item' : 'items';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10, top: 2),
+      child: Row(
+        children: [
+          Icon(Icons.filter_alt_outlined,
+              size: 14, color: c.muted),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              '$_hiddenCount $plural hidden by your dietary preferences',
+              style: GoogleFonts.inter(
+                color: c.muted,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildSearchCard(_USDAFoodItem food) {
+    final c = context.colors;
     return GestureDetector(
       onTap: () => _quickAddUSDA(food),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: c.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFF2E2E2E)),
+          border: Border.all(color: c.border),
         ),
         child: Row(
           children: [
@@ -784,7 +846,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                   Text(
                     food.name,
                     style: GoogleFonts.inter(
-                      color: Colors.white,
+                      color: c.onBackground,
                       fontWeight: FontWeight.w600,
                     ),
                     maxLines: 2,
@@ -794,7 +856,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                     Text(
                       food.brandOwner,
                       style: GoogleFonts.inter(
-                        color: const Color(0xFF555555),
+                        color: c.inactive,
                         fontSize: 12,
                       ),
                     ),
@@ -804,26 +866,26 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                     children: [
                       _macroTag(
                         '${food.calories.round()} kcal',
-                        const Color(0xFFFF6B35),
+                        AppColors.orange,
                       ),
                       _macroTag(
                         'P: ${food.protein.round()}g',
-                        const Color(0xFF00C97B),
+                        AppColors.primary,
                       ),
                       _macroTag(
                         'C: ${food.carbs.round()}g',
-                        const Color(0xFF6C63FF),
+                        AppColors.purple,
                       ),
                       _macroTag(
                         'F: ${food.fat.round()}g',
-                        const Color(0xFFFFD60A),
+                        AppColors.yellow,
                       ),
                     ],
                   ),
                   Text(
                     'per ${food.servingSize.round()}${food.servingUnit}',
                     style: GoogleFonts.inter(
-                      color: const Color(0xFF444444),
+                      color: c.subtle,
                       fontSize: 11,
                     ),
                   ),
@@ -835,10 +897,10 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: const Color(0xFF00C97B).withOpacity(0.15),
+                color: AppColors.primary.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.add, color: Color(0xFF00C97B), size: 20),
+              child: const Icon(Icons.add, color: AppColors.primary, size: 20),
             ),
           ],
         ),
@@ -847,13 +909,14 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   }
 
   Future<void> _showPortionDialog(_USDAFoodItem food) async {
+    final c = context.colors;
     final portionController = TextEditingController(
       text: food.servingSize.round().toString(),
     );
     double portion = food.servingSize;
     await showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: c.surface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -874,7 +937,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                 Text(
                   food.name,
                   style: GoogleFonts.spaceGrotesk(
-                    color: Colors.white,
+                    color: c.onBackground,
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
                   ),
@@ -883,26 +946,26 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                 const SizedBox(height: 16),
                 Text(
                   'Portion (g)',
-                  style: GoogleFonts.inter(color: const Color(0xFF888888)),
+                  style: GoogleFonts.inter(color: c.muted),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: portionController,
                   keyboardType: TextInputType.number,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: c.onBackground),
                   onChanged: (v) => setModalState(
                     () => portion = double.tryParse(v) ?? food.servingSize,
                   ),
                   decoration: InputDecoration(
                     filled: true,
-                    fillColor: const Color(0xFF222222),
+                    fillColor: c.inputFill,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
                     ),
                     suffixText: 'g',
                     suffixStyle: GoogleFonts.inter(
-                      color: const Color(0xFF888888),
+                      color: c.muted,
                     ),
                   ),
                 ),
@@ -925,8 +988,8 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                       await _logUSDAFood(food, portion);
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00C97B),
-                      foregroundColor: Colors.black,
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: c.onPrimary,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
@@ -958,12 +1021,13 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
     double fiber = 0,
     double sodium = 0,
   }) {
+    final c = context.colors;
     return Column(
       children: [
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF222222),
+            color: c.inputFill,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -972,19 +1036,19 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
               _nutriPreview(
                 'Calories',
                 '${cal.round()}',
-                const Color(0xFFFF6B35),
+                AppColors.orange,
               ),
               _nutriPreview(
                 'Protein',
                 '${protein.round()}g',
-                const Color(0xFF00C97B),
+                AppColors.primary,
               ),
               _nutriPreview(
                 'Carbs',
                 '${carbs.round()}g',
-                const Color(0xFF6C63FF),
+                AppColors.purple,
               ),
-              _nutriPreview('Fat', '${fat.round()}g', const Color(0xFFFFD60A)),
+              _nutriPreview('Fat', '${fat.round()}g', AppColors.yellow),
             ],
           ),
         ),
@@ -993,7 +1057,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: const Color(0xFF222222),
+              color: c.inputFill,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -1002,12 +1066,12 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                 _nutriPreview(
                   'Fiber',
                   '${fiber.round()}g',
-                  const Color(0xFF00B4D8),
+                  AppColors.cyan,
                 ),
                 _nutriPreview(
                   'Sodium',
                   '${sodium.round()}mg',
-                  const Color(0xFFFF6B35),
+                  AppColors.orange,
                 ),
               ],
             ),
@@ -1045,7 +1109,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
       ),
       Text(
         label,
-        style: GoogleFonts.inter(color: const Color(0xFF666666), fontSize: 10),
+        style: GoogleFonts.inter(color: context.colors.disabled, fontSize: 10),
       ),
     ],
   );

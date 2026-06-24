@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import '../models/user_profile.dart';
 import '../providers/profile_provider.dart';
+import '../theme/app_colors.dart';
 import 'home_screen.dart';
 import '../main.dart';
 
@@ -188,17 +189,20 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
       initialDate: _dob ?? DateTime(now.year - 25),
       firstDate: DateTime(now.year - 100),
       lastDate: DateTime(now.year - 10),
-      builder: (ctx, child) => Theme(
-        data: ThemeData.dark().copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: Color(0xFF00C97B),
-            onPrimary: Colors.black,
-            surface: Color(0xFF1A1A1A),
-            onSurface: Colors.white,
+      builder: (ctx, child) {
+        final c = ctx.colors;
+        return Theme(
+          data: ThemeData.dark().copyWith(
+            colorScheme: ColorScheme.dark(
+              primary: AppColors.primary,
+              onPrimary: c.onPrimary,
+              surface: c.surface,
+              onSurface: c.onBackground,
+            ),
           ),
-        ),
-        child: child!,
-      ),
+          child: child!,
+        );
+      },
     );
     if (picked != null) {
       setState(() {
@@ -269,24 +273,25 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     if (_currentPage == 1) {
       final err = _splitDaysError();
       if (err != null) {
+        final c = context.colors;
         showDialog(
           context: context,
           builder: (_) => AlertDialog(
-            backgroundColor: const Color(0xFF1A1A1A),
+            backgroundColor: c.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
             title: Text(
               'Incompatible schedule',
               style: GoogleFonts.spaceGrotesk(
-                color: Colors.white,
+                color: c.onBackground,
                 fontWeight: FontWeight.w700,
               ),
             ),
             content: Text(
               err,
               style: GoogleFonts.inter(
-                color: const Color(0xFF888888),
+                color: c.muted,
                 fontSize: 14,
                 height: 1.5,
               ),
@@ -296,7 +301,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                 onPressed: () => Navigator.pop(context),
                 child: Text(
                   'Got it',
-                  style: GoogleFonts.inter(color: const Color(0xFF00C97B)),
+                  style: GoogleFonts.inter(color: AppColors.primary),
                 ),
               ),
             ],
@@ -412,8 +417,9 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: c.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -428,8 +434,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                       height: 4,
                       decoration: BoxDecoration(
                         color: i <= _currentPage
-                            ? const Color(0xFF00C97B)
-                            : const Color(0xFF222222),
+                            ? AppColors.primary
+                            : c.inputFill,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -453,8 +459,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                       child: OutlinedButton(
                         onPressed: _prevPage,
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: const BorderSide(color: Color(0xFF444444)),
+                          foregroundColor: c.onBackground,
+                          side: BorderSide(color: c.subtle),
                           minimumSize: const Size(0, 54),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
@@ -474,15 +480,15 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _nextPage,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00C97B),
-                        foregroundColor: Colors.black,
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: c.onPrimary,
                         minimumSize: const Size(0, 54),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
                       ),
                       child: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.black)
+                          ? CircularProgressIndicator(color: c.onPrimary)
                           : Text(
                               _currentPage == 2
                                   ? (widget.existing != null
@@ -506,6 +512,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   }
 
   Widget _buildStep1() {
+    final c = context.colors;
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
       child: Column(
@@ -516,13 +523,13 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
             style: GoogleFonts.spaceGrotesk(
               fontSize: 28,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: c.onBackground,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             'Let\'s personalize your experience',
-            style: GoogleFonts.inter(color: const Color(0xFF888888)),
+            style: GoogleFonts.inter(color: c.muted),
           ),
           const SizedBox(height: 24),
           _buildLabel('Unit System'),
@@ -542,8 +549,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         decoration: BoxDecoration(
                           color: _unitSystem == u
-                              ? const Color(0xFF00C97B)
-                              : const Color(0xFF222222),
+                              ? AppColors.primary
+                              : c.inputFill,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Center(
@@ -553,8 +560,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                                 : 'Imperial (lbs/in)',
                             style: GoogleFonts.inter(
                               color: _unitSystem == u
-                                  ? Colors.black
-                                  : Colors.white,
+                                  ? c.onPrimary
+                                  : c.onBackground,
                               fontWeight: FontWeight.w600,
                               fontSize: 13,
                             ),
@@ -582,7 +589,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               decoration: BoxDecoration(
-                color: const Color(0xFF222222),
+                color: c.inputFill,
                 borderRadius: BorderRadius.circular(14),
                 border: _dobError != null
                     ? Border.all(color: const Color(0xFFFF6B6B))
@@ -590,9 +597,9 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.calendar_today_outlined,
-                    color: Color(0xFF00C97B),
+                    color: AppColors.primary,
                     size: 18,
                   ),
                   const SizedBox(width: 12),
@@ -600,8 +607,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                     _dobDisplay,
                     style: GoogleFonts.inter(
                       color: _dob == null
-                          ? const Color(0xFF888888)
-                          : Colors.white,
+                          ? c.muted
+                          : c.onBackground,
                       fontSize: 15,
                     ),
                   ),
@@ -656,15 +663,15 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         decoration: BoxDecoration(
                           color: _gender == g
-                              ? const Color(0xFF00C97B)
-                              : const Color(0xFF222222),
+                              ? AppColors.primary
+                              : c.inputFill,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Center(
                           child: Text(
                             g,
                             style: GoogleFonts.inter(
-                              color: _gender == g ? Colors.black : Colors.white,
+                              color: _gender == g ? c.onPrimary : c.onBackground,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -687,10 +694,10 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               Expanded(
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
-                    activeTrackColor: const Color(0xFF00C97B),
-                    inactiveTrackColor: const Color(0xFF222222),
-                    thumbColor: const Color(0xFF00C97B),
-                    overlayColor: const Color(0x3300C97B),
+                    activeTrackColor: AppColors.primary,
+                    inactiveTrackColor: c.inputFill,
+                    thumbColor: AppColors.primary,
+                    overlayColor: AppColors.primary.withValues(alpha: 0.2),
                   ),
                   child: Slider(
                     value: _avgSleep,
@@ -707,7 +714,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                   '${_avgSleep.toStringAsFixed(1)} h',
                   textAlign: TextAlign.end,
                   style: GoogleFonts.inter(
-                    color: Colors.white,
+                    color: c.onBackground,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -720,6 +727,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   }
 
   Widget _buildStep2() {
+    final c = context.colors;
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
       child: Column(
@@ -730,13 +738,13 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
             style: GoogleFonts.spaceGrotesk(
               fontSize: 28,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: c.onBackground,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             'Tell us about your fitness goals',
-            style: GoogleFonts.inter(color: const Color(0xFF888888)),
+            style: GoogleFonts.inter(color: c.muted),
           ),
           const SizedBox(height: 24),
           _buildLabel('Fitness Goal'),
@@ -768,8 +776,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         decoration: BoxDecoration(
                           color: _workoutLocation == l
-                              ? const Color(0xFF00C97B)
-                              : const Color(0xFF222222),
+                              ? AppColors.primary
+                              : c.inputFill,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Center(
@@ -777,8 +785,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                             l,
                             style: GoogleFonts.inter(
                               color: _workoutLocation == l
-                                  ? Colors.black
-                                  : Colors.white,
+                                  ? c.onPrimary
+                                  : c.onBackground,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -819,7 +827,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                   ? 'Home gym (rack) selected — barbell, bench and racked lifts unlocked.'
                   : "Bodyweight is always included. Add 'Home Gym' if you have a squat rack.",
               style: GoogleFonts.inter(
-                color: const Color(0xFF888888),
+                color: c.muted,
                 fontSize: 13,
                 fontStyle: FontStyle.italic,
               ),
@@ -831,23 +839,23 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
-              color: const Color(0xFF222222),
+              color: c.inputFill,
               borderRadius: BorderRadius.circular(14),
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 value: _activityLevel,
                 isExpanded: true,
-                dropdownColor: const Color(0xFF1A1A1A),
-                iconEnabledColor: const Color(0xFF00C97B),
-                style: GoogleFonts.inter(color: Colors.white),
+                dropdownColor: c.surface,
+                iconEnabledColor: AppColors.primary,
+                style: GoogleFonts.inter(color: c.onBackground),
                 items: _activityLevels.keys
                     .map(
                       (k) => DropdownMenuItem(
                         value: k,
                         child: Text(
                           k,
-                          style: GoogleFonts.inter(color: Colors.white),
+                          style: GoogleFonts.inter(color: c.onBackground),
                         ),
                       ),
                     )
@@ -875,15 +883,15 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                   height: 40,
                   decoration: BoxDecoration(
                     color: sel
-                        ? const Color(0xFF00C97B)
-                        : const Color(0xFF222222),
+                        ? AppColors.primary
+                        : c.inputFill,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Center(
                     child: Text(
                       '$d',
                       style: GoogleFonts.inter(
-                        color: sel ? Colors.black : Colors.white,
+                        color: sel ? c.onPrimary : c.onBackground,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -916,11 +924,11 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A1A),
+                  color: c.surface,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
                     color: _workoutSplit == e.key
-                        ? const Color(0xFF00C97B)
+                        ? AppColors.primary
                         : Colors.transparent,
                     width: 2,
                   ),
@@ -932,8 +940,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                           ? Icons.check_circle
                           : Icons.circle_outlined,
                       color: _workoutSplit == e.key
-                          ? const Color(0xFF00C97B)
-                          : const Color(0xFF444444),
+                          ? AppColors.primary
+                          : c.subtle,
                       size: 22,
                     ),
                     const SizedBox(width: 12),
@@ -944,7 +952,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                           Text(
                             e.key,
                             style: GoogleFonts.spaceGrotesk(
-                              color: Colors.white,
+                              color: c.onBackground,
                               fontWeight: FontWeight.w600,
                               fontSize: 15,
                             ),
@@ -953,7 +961,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                           Text(
                             e.value,
                             style: GoogleFonts.inter(
-                              color: const Color(0xFF888888),
+                              color: c.muted,
                               fontSize: 12,
                             ),
                           ),
@@ -1006,6 +1014,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   }
 
   Widget _buildStep3() {
+    final c = context.colors;
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
       child: Column(
@@ -1016,13 +1025,13 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
             style: GoogleFonts.spaceGrotesk(
               fontSize: 28,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: c.onBackground,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             'Any dietary restrictions?',
-            style: GoogleFonts.inter(color: const Color(0xFF888888)),
+            style: GoogleFonts.inter(color: c.muted),
           ),
           const SizedBox(height: 24),
           _buildLabel('Dietary Restrictions'),
@@ -1053,14 +1062,14 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
+              color: c.surface,
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.info_outline,
-                  color: Color(0xFF00C97B),
+                  color: AppColors.primary,
                   size: 20,
                 ),
                 const SizedBox(width: 12),
@@ -1068,7 +1077,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                   child: Text(
                     'Your meal plan will be tailored to your dietary needs and calorie goals.',
                     style: GoogleFonts.inter(
-                      color: const Color(0xFF888888),
+                      color: c.muted,
                       fontSize: 13,
                     ),
                   ),
@@ -1088,16 +1097,17 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     String? errorText,
     ValueChanged<String>? onChanged,
   }) {
+    final c = context.colors;
     return TextField(
       controller: controller,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: c.onBackground),
       onChanged: onChanged,
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: GoogleFonts.inter(color: const Color(0xFF888888)),
+        labelStyle: GoogleFonts.inter(color: c.muted),
         filled: true,
-        fillColor: const Color(0xFF222222),
+        fillColor: c.inputFill,
         errorText: errorText,
         errorStyle: GoogleFonts.inter(
           color: const Color(0xFFFF6B6B),
@@ -1113,7 +1123,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
 
   Widget _buildLabel(String text) => Text(
     text,
-    style: GoogleFonts.inter(color: const Color(0xFF888888), fontSize: 14),
+    style: GoogleFonts.inter(color: context.colors.muted, fontSize: 14),
   );
 
   /// Section label with a small "?" info button. Tapping it opens a bottom
@@ -1125,10 +1135,10 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
         const SizedBox(width: 6),
         GestureDetector(
           onTap: () => _showHelpSheet(text, help),
-          child: const Icon(
+          child: Icon(
             Icons.help_outline,
             size: 16,
-            color: Color(0xFF00C97B),
+            color: AppColors.primary,
           ),
         ),
       ],
@@ -1136,9 +1146,10 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   }
 
   void _showHelpSheet(String title, Map<String, String> help) {
+    final c = context.colors;
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: c.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -1153,7 +1164,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               style: GoogleFonts.spaceGrotesk(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
-                color: Colors.white,
+                color: c.onBackground,
               ),
             ),
             const SizedBox(height: 16),
@@ -1166,7 +1177,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                     Text(
                       e.key,
                       style: GoogleFonts.inter(
-                        color: const Color(0xFF00C97B),
+                        color: AppColors.primary,
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
                       ),
@@ -1175,7 +1186,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                     Text(
                       e.value,
                       style: GoogleFonts.inter(
-                        color: const Color(0xFF888888),
+                        color: c.muted,
                         fontSize: 13,
                       ),
                     ),
@@ -1194,6 +1205,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     String selected,
     Function(String) onSelect,
   ) {
+    final c = context.colors;
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -1208,14 +1220,14 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                 ),
                 decoration: BoxDecoration(
                   color: selected == o
-                      ? const Color(0xFF00C97B)
-                      : const Color(0xFF222222),
+                      ? AppColors.primary
+                      : c.inputFill,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   o,
                   style: GoogleFonts.inter(
-                    color: selected == o ? Colors.black : Colors.white,
+                    color: selected == o ? c.onPrimary : c.onBackground,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1231,6 +1243,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     List<String> selected,
     Function(String) onToggle,
   ) {
+    final c = context.colors;
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -1245,14 +1258,14 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                 ),
                 decoration: BoxDecoration(
                   color: selected.contains(o)
-                      ? const Color(0xFF00C97B)
-                      : const Color(0xFF222222),
+                      ? AppColors.primary
+                      : c.inputFill,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   o,
                   style: GoogleFonts.inter(
-                    color: selected.contains(o) ? Colors.black : Colors.white,
+                    color: selected.contains(o) ? c.onPrimary : c.onBackground,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
