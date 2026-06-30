@@ -154,6 +154,59 @@ class GreedyAlgorithm {
     return true;
   }
 
+  /// Human-readable equipment/location restrictions [e] fails for [p]
+  /// (empty = no restriction). Mirrors the gates in [isEligibleForUser]; keep
+  /// in sync. Gender-variant duplicates are NOT reported (not a real
+  /// restriction). Used by PlansScreen's picker to warn-then-allow so the user
+  /// can deliberately add a move they don't have the gear for.
+  static List<String> equipmentRestrictions(Exercise e, UserProfile p) {
+    final reasons = <String>[];
+    // At a gym everything is available — no equipment restriction.
+    if (p.workoutLocation == 'Gym') return reasons;
+
+    final name = e.name.toLowerCase();
+
+    if (!e.locations.contains('home')) {
+      reasons.add('Not typically doable at home.');
+      return reasons;
+    }
+    if (_gymOnlyName.hasMatch(name)) {
+      reasons.add('Requires gym machine equipment (cable / Smith / leverage).');
+      return reasons;
+    }
+
+    final exEquip = e.equipment.map((x) => x.toLowerCase()).toList();
+    final isBodyweight = exEquip.contains('bodyweight');
+    if (isBodyweight) {
+      if (_pullupTag.hasMatch(name)) {
+        final hasBar =
+            p.equipment.any((x) => x.toLowerCase() == 'pull-up bar');
+        if (!hasBar) reasons.add('Needs a Pull-up Bar you don\'t have.');
+      }
+      return reasons;
+    }
+
+    final userEquip = p.equipment.map((x) => x.toLowerCase()).toSet();
+    final hasBarbell = userEquip.contains('barbell');
+    final hasBench = userEquip.contains('bench');
+    final hasRack = userEquip.contains('home gym');
+    final usesBarbell = exEquip.any(_barbellEquip.contains);
+
+    final owns = exEquip.any(userEquip.contains) || (usesBarbell && hasBarbell);
+    if (!owns) {
+      reasons.add('Needs equipment you don\'t have (${e.equipment.join(', ')}).');
+    }
+    if (usesBarbell && _rackTag.hasMatch(name) && !hasRack) {
+      reasons.add('Needs a squat/bench rack (Home Gym) you don\'t have.');
+    }
+    if (_benchTag.hasMatch(name) &&
+        exEquip.any(_freeWeights.contains) &&
+        !hasBench) {
+      reasons.add('Needs a Bench you don\'t have.');
+    }
+    return reasons;
+  }
+
   // Canonical multi-joint lift names. The catalog has no `mechanic` field, so
   // staple compounds are detected by name keyword or a secondary-muscle proxy.
   static final _compoundKeywords = RegExp(

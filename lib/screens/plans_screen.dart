@@ -237,6 +237,18 @@ class _WorkoutTabState extends State<_WorkoutTab>
       ExerciseDBService().getExercises().then((ex) {
         if (mounted && ex.isNotEmpty) setState(() => _allExercises = ex);
       });
+      // _generate() is skipped on this path, so the local _profile (which the
+      // header chips + picker eligibility read) would stay null and the chips
+      // would vanish until a reload. Populate it from ProfileProvider.
+      final pp = context.read<ProfileProvider>();
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (pp.profile != null) {
+        _profile = pp.profile;
+      } else if (uid != null) {
+        pp.load(uid).then((_) {
+          if (mounted) setState(() => _profile = pp.profile);
+        });
+      }
     } else {
       _generate();
     }
@@ -1626,18 +1638,21 @@ class _WorkoutTabState extends State<_WorkoutTab>
   Widget _buildPlan() {
     final c = context.colors;
     final day = _plan.isNotEmpty ? _plan[_selectedDay] : null;
+    // Fall back to the provider profile so the chips never vanish even if the
+    // local _profile hasn't been populated on this code path yet.
+    final headerProfile = _profile ?? context.watch<ProfileProvider>().profile;
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
-              if (_profile != null) ...[
-                _chip(_profile!.fitnessGoal, AppColors.primary),
+              if (headerProfile != null) ...[
+                _chip(headerProfile.fitnessGoal, AppColors.primary),
                 const SizedBox(width: 6),
-                _chip(_profile!.experienceLevel, AppColors.purple),
+                _chip(headerProfile.experienceLevel, AppColors.purple),
                 const SizedBox(width: 6),
-                _chip(_profile!.workoutLocation, AppColors.orange),
+                _chip(headerProfile.workoutLocation, AppColors.orange),
               ],
               const Spacer(),
               IconButton(
@@ -1865,16 +1880,22 @@ class _WorkoutTabState extends State<_WorkoutTab>
         GreedyAlgorithm.difficultyAllowed(e.difficulty, p.experienceLevel);
   }
 
-  /// Manual-picker eligibility: hard constraints only (gender / location /
-  /// equipment / Home bench rule), WITHOUT the strict experience gate. The user
-  /// may deliberately add an above-tier exercise from the picker (with a
-  /// warning) — the automatic generation / gap-fill / volume-debt paths keep the
-  /// full [_usableByUser] gate so the algorithm never auto-injects above-tier
-  /// moves.
-  bool _pickableByUser(Exercise e) {
+  /// All restrictions [e] fails for the current profile, as warn-then-allow
+  /// messages: equipment/location (via [GreedyAlgorithm.equipmentRestrictions])
+  /// plus the experience-tier note. Empty when the user can perform it freely.
+  /// The picker shows every exercise and surfaces these on add — the automatic
+  /// generation / gap-fill / volume-debt paths keep the full [_usableByUser]
+  /// gate so the algorithm never auto-injects restricted moves.
+  List<String> _restrictionsFor(Exercise e) {
     final p = _profile;
-    if (p == null) return true;
-    return GreedyAlgorithm.isEligibleForUser(e, p);
+    if (p == null) return const [];
+    final reasons = GreedyAlgorithm.equipmentRestrictions(e, p);
+    if (_isAboveUserTier(e)) {
+      reasons.add(
+        'Rated ${e.difficulty}, above your ${p.experienceLevel} level.',
+      );
+    }
+    return reasons;
   }
 
   /// True when [e] is above the user's experience tier (informational badge +
@@ -1907,8 +1928,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
   }
 
   /// Informed-consent confirm when the user picks an above-tier exercise.
-  Future<bool?> _confirmAboveTier(Exercise e) {
-    final level = _profile?.experienceLevel ?? 'your';
+  Future<bool?> _confirmRestrictions(Exercise e, List<String> reasons) {
     final c = context.colors;
     return showDialog<bool>(
       context: context,
@@ -1916,19 +1936,54 @@ class _WorkoutTabState extends State<_WorkoutTab>
         backgroundColor: c.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
-          'Above your level',
+          'Check before adding',
           style: GoogleFonts.spaceGrotesk(
             color: c.onBackground,
             fontWeight: FontWeight.w700,
           ),
         ),
-        content: Text(
-          '"${e.name}" is rated ${e.difficulty}, above your '
-          '$level level. Make sure you can perform it safely — add it anyway?',
-          style: GoogleFonts.inter(
-            color: c.muted,
-            fontSize: 14,
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '"${e.name}" has the following restrictions for your profile:',
+              style: GoogleFonts.inter(color: c.muted, fontSize: 14),
+            ),
+            const SizedBox(height: 10),
+            ...reasons.map(
+              (r) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '•  ',
+                      style: GoogleFonts.inter(
+                        color: AppColors.amber,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        r,
+                        style: GoogleFonts.inter(
+                          color: c.onBackground,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Add it anyway?',
+              style: GoogleFonts.inter(color: c.muted, fontSize: 14),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -2451,13 +2506,12 @@ class _WorkoutTabState extends State<_WorkoutTab>
         : _focusToMuscles(day.focus);
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final planProvider = context.read<PlanProvider>();
-    // Use cached exercises from the last generated plan's full list;
-    // fallback to exercises already in the plan if cache is unavailable.
-    // _pickableByUser applies hard constraints only (no experience gate) so the
-    // user may deliberately add an above-tier move, with a warning on tap.
+    // Use cached exercises from the last generated plan's full list.
+    // The picker shows EVERY exercise for the day's focus — including ones the
+    // user lacks equipment for or that are above their tier — and surfaces any
+    // restrictions as a warn-then-allow dialog on tap (see _restrictionsFor).
     final allEx = _allExercises;
     final relevant = allEx.where((e) {
-      if (!_pickableByUser(e)) return false;
       if (targetMuscles.isEmpty) return true;
       return e.primaryMuscles.any((m) => targetMuscles.contains(m));
     }).toList()..sort((a, b) => a.name.compareTo(b.name));
@@ -2562,6 +2616,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
                           itemBuilder: (_, i) {
                             final ex = filtered[i];
                             final aboveTier = _isAboveUserTier(ex);
+                            final equipReasons =
+                                _profile == null
+                                ? const <String>[]
+                                : GreedyAlgorithm.equipmentRestrictions(
+                                    ex,
+                                    _profile!,
+                                  );
                             return ListTile(
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 8,
@@ -2590,6 +2651,14 @@ class _WorkoutTabState extends State<_WorkoutTab>
                                     const SizedBox(width: 8),
                                     _difficultyBadge(ex.difficulty, aboveTier),
                                   ],
+                                  if (equipReasons.isNotEmpty) ...[
+                                    const SizedBox(width: 6),
+                                    Icon(
+                                      Icons.warning_amber_rounded,
+                                      size: 16,
+                                      color: AppColors.amber,
+                                    ),
+                                  ],
                                 ],
                               ),
                               trailing: Icon(
@@ -2598,8 +2667,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
                               ),
                               onTap: () async {
                                 Navigator.pop(ctx);
-                                if (aboveTier) {
-                                  final ok = await _confirmAboveTier(ex);
+                                final reasons = _restrictionsFor(ex);
+                                if (reasons.isNotEmpty) {
+                                  final ok =
+                                      await _confirmRestrictions(ex, reasons);
                                   if (ok != true) return;
                                 }
                                 final we = WorkoutExercise(
