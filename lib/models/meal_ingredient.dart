@@ -8,6 +8,23 @@ class MealIngredient {
   final double fiber;
   final double sugar;
   final double sodium;
+  // Micronutrients (mirrors FoodItem; units: A mcg RAE, C mg, D mcg, E mg,
+  // K mcg, B6 mg, B12 mcg, folate mcg DFE, minerals mg). Seeded to Firestore by
+  // SeedData but historically dropped at load — now read so meals can show them.
+  final double vitaminA;
+  final double vitaminC;
+  final double vitaminD;
+  final double vitaminE;
+  final double vitaminK;
+  final double vitaminB6;
+  final double vitaminB12;
+  final double folate;
+  final double iron;
+  final double calcium;
+  final double magnesium;
+  final double potassium;
+  final double zinc;
+  final double phosphorus;
   final List<String> dietaryTags;
   final String cuisine;
 
@@ -33,6 +50,20 @@ class MealIngredient {
     required this.sodium,
     required this.dietaryTags,
     required this.cuisine,
+    this.vitaminA = 0,
+    this.vitaminC = 0,
+    this.vitaminD = 0,
+    this.vitaminE = 0,
+    this.vitaminK = 0,
+    this.vitaminB6 = 0,
+    this.vitaminB12 = 0,
+    this.folate = 0,
+    this.iron = 0,
+    this.calcium = 0,
+    this.magnesium = 0,
+    this.potassium = 0,
+    this.zinc = 0,
+    this.phosphorus = 0,
     this.allergens = const [],
     this.category = 'other',
   });
@@ -42,6 +73,22 @@ class MealIngredient {
   double carbsFor(double grams) => (carbs * grams) / 100;
   double fatFor(double grams) => (fat * grams) / 100;
   double fiberFor(double grams) => (fiber * grams) / 100;
+  double sugarFor(double grams) => (sugar * grams) / 100;
+  double sodiumFor(double grams) => (sodium * grams) / 100;
+  double vitaminAFor(double grams) => (vitaminA * grams) / 100;
+  double vitaminCFor(double grams) => (vitaminC * grams) / 100;
+  double vitaminDFor(double grams) => (vitaminD * grams) / 100;
+  double vitaminEFor(double grams) => (vitaminE * grams) / 100;
+  double vitaminKFor(double grams) => (vitaminK * grams) / 100;
+  double vitaminB6For(double grams) => (vitaminB6 * grams) / 100;
+  double vitaminB12For(double grams) => (vitaminB12 * grams) / 100;
+  double folateFor(double grams) => (folate * grams) / 100;
+  double ironFor(double grams) => (iron * grams) / 100;
+  double calciumFor(double grams) => (calcium * grams) / 100;
+  double magnesiumFor(double grams) => (magnesium * grams) / 100;
+  double potassiumFor(double grams) => (potassium * grams) / 100;
+  double zincFor(double grams) => (zinc * grams) / 100;
+  double phosphorusFor(double grams) => (phosphorus * grams) / 100;
 
   factory MealIngredient.fromMap(Map<String, dynamic> map) {
     return MealIngredient(
@@ -56,6 +103,20 @@ class MealIngredient {
       sodium: (map['sodium'] ?? 0).toDouble(),
       dietaryTags: List<String>.from(map['dietaryTags'] ?? []),
       cuisine: map['cuisine'] ?? 'universal',
+      vitaminA: (map['vitaminA'] ?? 0).toDouble(),
+      vitaminC: (map['vitaminC'] ?? 0).toDouble(),
+      vitaminD: (map['vitaminD'] ?? 0).toDouble(),
+      vitaminE: (map['vitaminE'] ?? 0).toDouble(),
+      vitaminK: (map['vitaminK'] ?? 0).toDouble(),
+      vitaminB6: (map['vitaminB6'] ?? 0).toDouble(),
+      vitaminB12: (map['vitaminB12'] ?? 0).toDouble(),
+      folate: (map['folate'] ?? 0).toDouble(),
+      iron: (map['iron'] ?? 0).toDouble(),
+      calcium: (map['calcium'] ?? 0).toDouble(),
+      magnesium: (map['magnesium'] ?? 0).toDouble(),
+      potassium: (map['potassium'] ?? 0).toDouble(),
+      zinc: (map['zinc'] ?? 0).toDouble(),
+      phosphorus: (map['phosphorus'] ?? 0).toDouble(),
       allergens: List<String>.from(map['allergens'] ?? []),
       category: map['category'] ?? 'other',
     );
@@ -73,6 +134,20 @@ class MealIngredient {
     'sodium': sodium,
     'dietaryTags': dietaryTags,
     'cuisine': cuisine,
+    'vitaminA': vitaminA,
+    'vitaminC': vitaminC,
+    'vitaminD': vitaminD,
+    'vitaminE': vitaminE,
+    'vitaminK': vitaminK,
+    'vitaminB6': vitaminB6,
+    'vitaminB12': vitaminB12,
+    'folate': folate,
+    'iron': iron,
+    'calcium': calcium,
+    'magnesium': magnesium,
+    'potassium': potassium,
+    'zinc': zinc,
+    'phosphorus': phosphorus,
     'allergens': allergens,
     'category': category,
   };
@@ -89,6 +164,22 @@ class MealItem {
   double get carbs => ingredient.carbsFor(portionGrams);
   double get fat => ingredient.fatFor(portionGrams);
   double get fiber => ingredient.fiberFor(portionGrams);
+  double get sugar => ingredient.sugarFor(portionGrams);
+  double get sodium => ingredient.sodiumFor(portionGrams);
+  double get vitaminA => ingredient.vitaminAFor(portionGrams);
+  double get vitaminC => ingredient.vitaminCFor(portionGrams);
+  double get vitaminD => ingredient.vitaminDFor(portionGrams);
+  double get vitaminE => ingredient.vitaminEFor(portionGrams);
+  double get vitaminK => ingredient.vitaminKFor(portionGrams);
+  double get vitaminB6 => ingredient.vitaminB6For(portionGrams);
+  double get vitaminB12 => ingredient.vitaminB12For(portionGrams);
+  double get folate => ingredient.folateFor(portionGrams);
+  double get iron => ingredient.ironFor(portionGrams);
+  double get calcium => ingredient.calciumFor(portionGrams);
+  double get magnesium => ingredient.magnesiumFor(portionGrams);
+  double get potassium => ingredient.potassiumFor(portionGrams);
+  double get zinc => ingredient.zincFor(portionGrams);
+  double get phosphorus => ingredient.phosphorusFor(portionGrams);
 
   MealItem copyWith({double? portionGrams}) => MealItem(
     ingredient: ingredient,
@@ -107,6 +198,22 @@ class Meal {
   double get totalCarbs => items.fold(0, (sum, i) => sum + i.carbs);
   double get totalFat => items.fold(0, (sum, i) => sum + i.fat);
   double get totalFiber => items.fold(0, (sum, i) => sum + i.fiber);
+  double get totalSugar => items.fold(0, (sum, i) => sum + i.sugar);
+  double get totalSodium => items.fold(0, (sum, i) => sum + i.sodium);
+  double get totalVitaminA => items.fold(0, (sum, i) => sum + i.vitaminA);
+  double get totalVitaminC => items.fold(0, (sum, i) => sum + i.vitaminC);
+  double get totalVitaminD => items.fold(0, (sum, i) => sum + i.vitaminD);
+  double get totalVitaminE => items.fold(0, (sum, i) => sum + i.vitaminE);
+  double get totalVitaminK => items.fold(0, (sum, i) => sum + i.vitaminK);
+  double get totalVitaminB6 => items.fold(0, (sum, i) => sum + i.vitaminB6);
+  double get totalVitaminB12 => items.fold(0, (sum, i) => sum + i.vitaminB12);
+  double get totalFolate => items.fold(0, (sum, i) => sum + i.folate);
+  double get totalIron => items.fold(0, (sum, i) => sum + i.iron);
+  double get totalCalcium => items.fold(0, (sum, i) => sum + i.calcium);
+  double get totalMagnesium => items.fold(0, (sum, i) => sum + i.magnesium);
+  double get totalPotassium => items.fold(0, (sum, i) => sum + i.potassium);
+  double get totalZinc => items.fold(0, (sum, i) => sum + i.zinc);
+  double get totalPhosphorus => items.fold(0, (sum, i) => sum + i.phosphorus);
 
   String get name => items.map((i) => i.ingredient.name).join(' + ');
 

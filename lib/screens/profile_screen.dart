@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../models/user_profile.dart';
 import '../providers/profile_provider.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
@@ -38,9 +39,7 @@ class ProfileScreen extends StatelessWidget {
                 GestureDetector(
                   onTap: () => Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => const SettingsScreen(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
                   ),
                   child: Container(
                     width: 40,
@@ -49,7 +48,11 @@ class ProfileScreen extends StatelessWidget {
                       color: c.surface,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(Icons.settings_outlined, color: c.muted, size: 22),
+                    child: Icon(
+                      Icons.settings_outlined,
+                      color: c.muted,
+                      size: 22,
+                    ),
                   ),
                 ),
               ],
@@ -98,9 +101,7 @@ class ProfileScreen extends StatelessWidget {
               decoration: BoxDecoration(
                 color: c.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: AppColors.primary.withOpacity(0.3),
-                ),
+                border: Border.all(color: AppColors.primary.withOpacity(0.3)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -207,8 +208,16 @@ class ProfileScreen extends StatelessWidget {
               _infoRow(context, 'Activity', profile?.activityLevel ?? '-'),
               _infoRow(context, 'Location', profile?.workoutLocation ?? '-'),
               _infoRow(context, 'Split', profile?.workoutSplit ?? '-'),
-              _infoRow(context, 'Days / Week', '${profile?.workoutDaysPerWeek ?? '-'}'),
-              _infoRow(context, 'Session', '${profile?.sessionMinutes ?? '-'} min'),
+              _infoRow(
+                context,
+                'Days / Week',
+                '${profile?.workoutDaysPerWeek ?? '-'}',
+              ),
+              _infoRow(
+                context,
+                'Session',
+                '${profile?.sessionMinutes ?? '-'} min',
+              ),
               if (profile?.equipment.isNotEmpty == true)
                 _infoRow(context, 'Equipment', profile!.equipment.join(', ')),
             ]),
@@ -217,17 +226,14 @@ class ProfileScreen extends StatelessWidget {
             _buildInfoCard(context, 'Diet', [
               _infoRow(
                 context,
-                'Restrictions',
-                profile?.dietaryRestrictions.isEmpty == true
-                    ? 'None'
-                    : profile!.dietaryRestrictions.join(', '),
+                'Style',
+                profile?.dietaryRestrictions.firstWhere(
+                      _dietStyleOptions.contains,
+                      orElse: () => 'Balanced',
+                    ) ??
+                    'Balanced',
               ),
-              _infoRow(context, 'Sugar limit', '${profile?.macroGoals['sugar'] ?? 50}g'),
-              _infoRow(
-                context,
-                'Sodium limit',
-                '${profile?.macroGoals['sodium'] ?? 2300}mg',
-              ),
+              _infoRow(context, 'Restrictions', _restrictionsLabel(profile)),
             ]),
             const SizedBox(height: 24),
 
@@ -238,27 +244,38 @@ class ProfileScreen extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: () async {
                     final messenger = ScaffoldMessenger.of(context);
-                    messenger.showSnackBar(const SnackBar(
-                      content: Text('Seeding ingredients… this may take a minute.'),
-                      duration: Duration(minutes: 2),
-                    ));
+                    messenger.showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Seeding ingredients… this may take a minute.',
+                        ),
+                        duration: Duration(minutes: 2),
+                      ),
+                    );
                     try {
                       await SeedData.seedIngredients();
                       FirestoreService.clearIngredientCache();
                       messenger.hideCurrentSnackBar();
-                      messenger.showSnackBar(const SnackBar(
-                        content: Text('Ingredients seeded'),
-                        backgroundColor: AppColors.primary,
-                      ));
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('Ingredients seeded'),
+                          backgroundColor: AppColors.primary,
+                        ),
+                      );
                     } catch (e) {
                       messenger.hideCurrentSnackBar();
-                      messenger.showSnackBar(SnackBar(
-                        content: Text('Seed failed: $e'),
-                        backgroundColor: Colors.redAccent,
-                      ));
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text('Seed failed: $e'),
+                          backgroundColor: Colors.redAccent,
+                        ),
+                      );
                     }
                   },
-                  icon: const Icon(Icons.cloud_upload_outlined, color: AppColors.primary),
+                  icon: const Icon(
+                    Icons.cloud_upload_outlined,
+                    color: AppColors.primary,
+                  ),
                   label: Text(
                     'Seed Ingredients',
                     style: GoogleFonts.spaceGrotesk(
@@ -282,7 +299,12 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildMacroTarget(BuildContext context, String label, String value, Color color) {
+  Widget _buildMacroTarget(
+    BuildContext context,
+    String label,
+    String value,
+    Color color,
+  ) {
     return Expanded(
       child: Column(
         children: [
@@ -296,14 +318,20 @@ class ProfileScreen extends StatelessWidget {
           ),
           Text(
             label,
-            style: GoogleFonts.inter(
-              color: context.colors.muted,
-              fontSize: 11,
-            ),
+            style: GoogleFonts.inter(color: context.colors.muted, fontSize: 11),
           ),
         ],
       ),
     );
+  }
+
+  static const _dietStyleOptions = {'High-protein', 'Low-carb', 'Balanced'};
+
+  String _restrictionsLabel(UserProfile? profile) {
+    final restrictions = (profile?.dietaryRestrictions ?? [])
+        .where((r) => !_dietStyleOptions.contains(r))
+        .toList();
+    return restrictions.isEmpty ? 'None' : restrictions.join(', ');
   }
 
   Widget _buildInfoCard(BuildContext context, String title, List<Widget> rows) {

@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 
 /// Master switch for the debug day-changer overlay.
 /// MUST be `false` for any build intended for real use.
-const bool kDebugDayChanger = true;
+const bool kDebugDayChanger = false;
 
 /// Number of days to shift the app's notion of "today" by. 0 = real today.
 /// Wrapped in a [ValueNotifier] so the UI can rebuild live when it changes

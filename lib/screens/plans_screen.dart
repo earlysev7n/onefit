@@ -3644,6 +3644,9 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
 
   final Set<String> _loadingMeals = {};
 
+  // Meal types whose nutrition summary is expanded to show full macros + micros.
+  final Set<String> _expandedMacros = {};
+
   // USDA ingredient pool the Genetic Algorithm draws on (loaded once).
   List<MealIngredient> _allIngredients = [];
 
@@ -3976,6 +3979,221 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
           ),
         );
     }
+  }
+
+  /// Lets the user manually extend a generated meal with one more ingredient.
+  /// Draws from the same fail-safe, dietary-restriction/cuisine-filtered pool
+  /// as generation (`GeneticAlgorithm.buildPool`), so a hand-picked ingredient
+  /// can't violate the user's restrictions either.
+  void _showAddIngredientPicker(String mealType, Meal pendingMeal) {
+    final profile = _profile;
+    if (profile == null) return;
+    final pool = GeneticAlgorithm().buildPool(_allIngredients, profile, _cuisine)
+      ..sort((a, b) => a.name.compareTo(b.name));
+
+    final searchController = TextEditingController();
+    final c = context.colors;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        builder: (_, sc) => StatefulBuilder(
+          builder: (context, setSheetState) {
+            final query = searchController.text.trim().toLowerCase();
+            final filtered = query.isEmpty
+                ? pool
+                : pool.where((i) => i.name.toLowerCase().contains(query)).toList();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+                  child: Text(
+                    'Add ingredient',
+                    style: GoogleFonts.spaceGrotesk(
+                      color: c.onBackground,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: TextField(
+                    controller: searchController,
+                    onChanged: (_) => setSheetState(() {}),
+                    style: GoogleFonts.inter(color: c.onBackground),
+                    cursorColor: AppColors.primary,
+                    decoration: InputDecoration(
+                      hintText: 'Search ingredients',
+                      hintStyle: GoogleFonts.inter(color: c.muted),
+                      prefixIcon: Icon(Icons.search, color: c.muted),
+                      suffixIcon: searchController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: Icon(Icons.close, color: c.muted),
+                              onPressed: () =>
+                                  setSheetState(() => searchController.clear()),
+                            ),
+                      filled: true,
+                      fillColor: c.background,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: AppColors.primary),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: filtered.isEmpty
+                      ? Center(
+                          child: Text(
+                            'No matching ingredients found.',
+                            style: GoogleFonts.inter(color: c.muted),
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: sc,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: filtered.length,
+                          itemBuilder: (_, i) {
+                            final ing = filtered[i];
+                            return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              title: Text(
+                                ing.name,
+                                style: GoogleFonts.inter(
+                                  color: c.onBackground,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              subtitle: Text(
+                                '${ing.calories.round()} kcal / 100g',
+                                style: GoogleFonts.inter(
+                                  color: c.muted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              trailing: Icon(
+                                Icons.add_circle_outline,
+                                color: AppColors.primary,
+                              ),
+                              onTap: () {
+                                Navigator.pop(ctx);
+                                _promptPortionAndAdd(mealType, pendingMeal, ing);
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    ).whenComplete(searchController.dispose);
+  }
+
+  /// Asks for a gram portion, then appends the chosen ingredient to the
+  /// pending meal — mirrors `_generateMeal`'s save pattern exactly, so
+  /// "Log Food"/"Log Additions" persists it the same way as a generated item.
+  void _promptPortionAndAdd(
+    String mealType,
+    Meal pendingMeal,
+    MealIngredient ingredient,
+  ) {
+    final c = context.colors;
+    final gramsController = TextEditingController(text: '100');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: c.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          ingredient.name,
+          style: GoogleFonts.spaceGrotesk(
+            color: c.onBackground,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: TextField(
+          controller: gramsController,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: GoogleFonts.inter(color: c.onBackground),
+          cursorColor: AppColors.primary,
+          decoration: InputDecoration(
+            labelText: 'Grams',
+            labelStyle: GoogleFonts.inter(color: c.muted),
+            suffixText: 'g',
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: c.border),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: AppColors.primary),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.inter(color: c.muted, fontWeight: FontWeight.w600),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              final grams = double.tryParse(gramsController.text.trim());
+              Navigator.pop(ctx);
+              final updated = pendingMeal.copyWith(
+                items: [
+                  ...pendingMeal.items,
+                  MealItem(
+                    ingredient: ingredient,
+                    portionGrams: (grams != null && grams > 0) ? grams : 100,
+                  ),
+                ],
+              );
+              _setPending(mealType, updated);
+              context.read<PlanProvider>().setMeal(
+                mealType,
+                updated,
+                saveToFirestore: false,
+              );
+            },
+            child: Text(
+              'Add',
+              style: GoogleFonts.inter(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _clearAll(String mealType) async {
@@ -4447,9 +4665,33 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
               ),
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.only(top: 2, bottom: 2),
+            child: GestureDetector(
+              onTap: () => _showAddIngredientPicker(mealType, pendingMeal),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.add_circle_outline_rounded,
+                    color: AppColors.primary,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Add ingredient',
+                    style: GoogleFonts.inter(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
         const SizedBox(height: 10),
-        _macroSummaryRow(loggedFoods, pendingMeal, hasManual),
+        _macroSummaryRow(mealType, loggedFoods, pendingMeal, hasManual),
         const SizedBox(height: 12),
         Divider(color: c.border, height: 1),
         const SizedBox(height: 12),
@@ -4669,6 +4911,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
   }
 
   Widget _macroSummaryRow(
+    String mealType,
     List<FoodItem> loggedFoods,
     Meal? pendingMeal,
     bool hasManual,
@@ -4683,13 +4926,132 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
       fat += pendingMeal.totalFat;
       fib += pendingMeal.totalFiber;
     }
-    return Row(
+    final expanded = _expandedMacros.contains(mealType);
+    final clr = context.colors;
+    return Column(
       children: [
-        _miniMacro('P', '${p.round()}g', AppColors.primary),
-        _miniMacro('C', '${c.round()}g', AppColors.purple),
-        _miniMacro('F', '${fat.round()}g', AppColors.orange),
-        _miniMacro('Fiber', '${fib.round()}g', AppColors.cyan),
+        InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => setState(() {
+            expanded
+                ? _expandedMacros.remove(mealType)
+                : _expandedMacros.add(mealType);
+          }),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                _miniMacro('P', '${p.round()}g', AppColors.primary),
+                _miniMacro('C', '${c.round()}g', AppColors.purple),
+                _miniMacro('F', '${fat.round()}g', AppColors.orange),
+                _miniMacro('Fiber', '${fib.round()}g', AppColors.cyan),
+                Icon(
+                  expanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  color: clr.muted,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (expanded) _macroMicroDetail(loggedFoods, pendingMeal),
       ],
+    );
+  }
+
+  /// Full macro + micronutrient breakdown shown when the summary row is tapped.
+  /// Aggregates logged foods (FoodItem) and generated additions (Meal) so the
+  /// numbers match the combined card. Micros come from the USDA-seeded fields
+  /// now carried on MealIngredient.
+  Widget _macroMicroDetail(List<FoodItem> loggedFoods, Meal? pendingMeal) {
+    final clr = context.colors;
+    double sum(
+      double Function(FoodItem) fromFood,
+      double Function(Meal) fromMeal,
+    ) {
+      var v = loggedFoods.fold(0.0, (s, f) => s + fromFood(f));
+      if (pendingMeal != null) v += fromMeal(pendingMeal);
+      return v;
+    }
+
+    final rows = <Widget>[
+      _nutrientDetailRow(
+        'Calories',
+        sum((f) => f.totalCalories, (m) => m.totalCalories),
+        'kcal',
+      ),
+      _nutrientDetailRow(
+        'Sugar', sum((f) => f.totalSugar, (m) => m.totalSugar), 'g'),
+      _nutrientDetailRow(
+        'Sodium', sum((f) => f.totalSodium, (m) => m.totalSodium), 'mg'),
+      _nutrientDetailRow('Vitamin A',
+          sum((f) => f.totalVitaminA, (m) => m.totalVitaminA), 'mcg'),
+      _nutrientDetailRow('Vitamin C',
+          sum((f) => f.totalVitaminC, (m) => m.totalVitaminC), 'mg'),
+      _nutrientDetailRow('Vitamin D',
+          sum((f) => f.totalVitaminD, (m) => m.totalVitaminD), 'mcg'),
+      _nutrientDetailRow('Vitamin E',
+          sum((f) => f.totalVitaminE, (m) => m.totalVitaminE), 'mg'),
+      _nutrientDetailRow('Vitamin K',
+          sum((f) => f.totalVitaminK, (m) => m.totalVitaminK), 'mcg'),
+      _nutrientDetailRow('Vitamin B6',
+          sum((f) => f.totalVitaminB6, (m) => m.totalVitaminB6), 'mg'),
+      _nutrientDetailRow('Vitamin B12',
+          sum((f) => f.totalVitaminB12, (m) => m.totalVitaminB12), 'mcg'),
+      _nutrientDetailRow(
+        'Folate', sum((f) => f.totalFolate, (m) => m.totalFolate), 'mcg'),
+      _nutrientDetailRow(
+        'Iron', sum((f) => f.totalIron, (m) => m.totalIron), 'mg'),
+      _nutrientDetailRow(
+        'Calcium', sum((f) => f.totalCalcium, (m) => m.totalCalcium), 'mg'),
+      _nutrientDetailRow('Magnesium',
+          sum((f) => f.totalMagnesium, (m) => m.totalMagnesium), 'mg'),
+      _nutrientDetailRow('Potassium',
+          sum((f) => f.totalPotassium, (m) => m.totalPotassium), 'mg'),
+      _nutrientDetailRow(
+        'Zinc', sum((f) => f.totalZinc, (m) => m.totalZinc), 'mg'),
+      _nutrientDetailRow('Phosphorus',
+          sum((f) => f.totalPhosphorus, (m) => m.totalPhosphorus), 'mg'),
+    ];
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: clr.background,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: clr.border),
+      ),
+      child: Column(children: rows),
+    );
+  }
+
+  Widget _nutrientDetailRow(String label, double value, String unit) {
+    final clr = context.colors;
+    final text = value >= 100
+        ? value.round().toString()
+        : value.toStringAsFixed(1);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.inter(color: clr.muted, fontSize: 12.5),
+          ),
+          Text(
+            '$text $unit',
+            style: GoogleFonts.inter(
+              color: clr.onBackground,
+              fontWeight: FontWeight.w600,
+              fontSize: 12.5,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

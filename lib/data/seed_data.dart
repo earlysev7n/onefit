@@ -21,8 +21,10 @@ class SeedData {
   // ── USDA nutrient fetch ────────────────────────────────────────────────────
 
   /// Searches USDA for [query], returns a nutrition map for the top result.
-  /// Falls back to all-zero values if the API call fails.
-  static Future<Map<String, double>> _fetchNutrition(String query) async {
+  /// Returns `null` when the API fails after retries or the record carries no
+  /// usable calorie value — so the caller can skip it rather than persist an
+  /// all-zero record (which is what produced the "0 kcal ingredient" bug).
+  static Future<Map<String, double>?> _fetchNutrition(String query) async {
     try {
       final uri = Uri.parse('$_baseUrl/foods/search').replace(
         queryParameters: {
@@ -32,9 +34,19 @@ class SeedData {
           'dataType': 'SR Legacy,Foundation,Survey (FNDDS)',
         },
       );
-      final response = await http.get(uri);
-      if (response.statusCode != 200)
-        throw Exception('HTTP ${response.statusCode}');
+
+      // Retry with exponential backoff — the API rate-limits (HTTP 429) under
+      // the ~150 rapid sequential seed calls, which previously fell straight
+      // through to an all-zero record.
+      http.Response? response;
+      for (var attempt = 0; attempt < 3; attempt++) {
+        response = await http.get(uri);
+        if (response.statusCode == 200) break;
+        await Future.delayed(Duration(milliseconds: 500 * (attempt + 1)));
+      }
+      if (response == null || response.statusCode != 200) {
+        throw Exception('HTTP ${response?.statusCode}');
+      }
 
       final foods = (jsonDecode(response.body)['foods'] as List?) ?? [];
       if (foods.isEmpty) throw Exception('No results for "$query"');
@@ -49,8 +61,18 @@ class SeedData {
         return ((n['value'] ?? n['amount'] ?? 0) as num).toDouble();
       }
 
+      // Energy: SR Legacy reports it as 1008 ("Energy", kcal), but Foundation
+      // Foods often report it only as Atwater energy (2048 specific / 2047
+      // general). Fall back so those top hits don't seed as 0 kcal.
+      var calories = getN(1008);
+      if (calories == 0) calories = getN(2048);
+      if (calories == 0) calories = getN(2047);
+
+      // No usable energy value → treat as a miss so the caller skips it.
+      if (calories == 0) throw Exception('No calorie data for "$query"');
+
       return {
-        'calories': getN(1008),
+        'calories': calories,
         'protein': getN(1003),
         'carbs': getN(1005),
         'fat': getN(1004),
@@ -73,30 +95,8 @@ class SeedData {
         'phosphorus': getN(1091),
       };
     } catch (e) {
-      print('  ⚠ USDA fetch failed for "$query": $e — using zeros');
-      return {
-        'calories': 0,
-        'protein': 0,
-        'carbs': 0,
-        'fat': 0,
-        'fiber': 0,
-        'sugar': 0,
-        'sodium': 0,
-        'vitaminA': 0,
-        'vitaminC': 0,
-        'vitaminD': 0,
-        'vitaminE': 0,
-        'vitaminK': 0,
-        'vitaminB6': 0,
-        'vitaminB12': 0,
-        'folate': 0,
-        'iron': 0,
-        'calcium': 0,
-        'magnesium': 0,
-        'potassium': 0,
-        'zinc': 0,
-        'phosphorus': 0,
-      };
+      print('  ⚠ USDA fetch failed for "$query": $e — skipping');
+      return null;
     }
   }
 
@@ -132,10 +132,21 @@ class SeedData {
     final db = FirebaseFirestore.instance;
     final batch = db.batch();
     int count = 0;
+    final failed = <String>[];
 
     for (final stub in _ingredientStubs) {
       print('Fetching: ${stub['name']}...');
       final nutrition = await _fetchNutrition(stub['name'] as String);
+
+      // Throttle to stay under the USDA rate limit across ~150 calls.
+      await Future.delayed(const Duration(milliseconds: 250));
+
+      // Skip rather than write a 0-kcal record — leaves any previously-good
+      // value untouched and surfaces the gap in the printed summary.
+      if (nutrition == null) {
+        failed.add(stub['name'] as String);
+        continue;
+      }
 
       final derived = _deriveAllergensAndCategory(stub['name'] as String);
 
@@ -158,6 +169,10 @@ class SeedData {
 
     await batch.commit();
     print('$count ingredients seeded with live USDA nutrition!');
+    if (failed.isNotEmpty) {
+      print('⚠ ${failed.length} skipped (no USDA data — re-run to retry): '
+          '${failed.join(', ')}');
+    }
   }
 
   /// Derives `allergens` (for exclusion restrictions like Lactose-intolerant /

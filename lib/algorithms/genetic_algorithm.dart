@@ -199,7 +199,7 @@ class GeneticAlgorithm {
     // the cuisine narrows the pool to empty we relax the cuisine only; if even
     // that is empty, nothing satisfies the restrictions, so we return an empty
     // plan (sentinel) and let the UI warn — we never serve violating food.
-    final pool = _buildPool(allIngredients, profile, cuisine);
+    final pool = buildPool(allIngredients, profile, cuisine);
     if (pool.isEmpty) return const [];
 
     // Breakfast-specific pools
@@ -582,14 +582,23 @@ class GeneticAlgorithm {
   /// the cuisine-filtered pool first, relaxes the cuisine only if empty, and
   /// returns an empty list (sentinel) when nothing satisfies the restrictions.
   /// Shared by [generatePlan] and [completeMeal].
-  List<MealIngredient> _buildPool(
+  /// Dietary-restriction/cuisine-filtered ingredient pool, fail-safe (never
+  /// drops restrictions — relaxes cuisine first; see [generatePlan]). Public
+  /// so callers outside this file (e.g. a manual ingredient picker) can reuse
+  /// the exact same filtered pool instead of re-implementing the rules.
+  List<MealIngredient> buildPool(
     List<MealIngredient> allIngredients,
     UserProfile profile,
     String cuisine,
   ) {
-    final filtered = _filterIngredients(allIngredients, profile, cuisine);
+    // Runtime guard: drop ingredients with no calorie data (a seed-time USDA
+    // fetch failure leaves an all-zero doc — see SeedData._fetchNutrition). This
+    // keeps such records out of generated meals AND the manual picker until a
+    // re-seed repairs them, so a meal never contains a 0-kcal item.
+    final usable = allIngredients.where((i) => i.calories > 0).toList();
+    final filtered = _filterIngredients(usable, profile, cuisine);
     if (filtered.isNotEmpty) return filtered;
-    return _filterIngredients(allIngredients, profile, 'any');
+    return _filterIngredients(usable, profile, 'any');
   }
 
   // ── Meal completion (budget-aware) ─────────────────────────────────────────
@@ -646,7 +655,7 @@ class GeneticAlgorithm {
     String cuisine = 'any',
   }) {
     if (calorieBudget <= 30) return Meal(mealType: mealType, items: const []);
-    final pool = _buildPool(allIngredients, profile, cuisine);
+    final pool = buildPool(allIngredients, profile, cuisine);
     if (pool.isEmpty) return Meal(mealType: mealType, items: const []);
 
     // Snack is a single complementary item from the snack-appropriate pool.

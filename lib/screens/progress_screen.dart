@@ -261,7 +261,11 @@ class _WeeklyReportCard extends StatelessWidget {
     final c = context.colors;
     return Material(
       color: c.surface,
-      borderRadius: BorderRadius.circular(16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: c.border),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () => Navigator.of(
