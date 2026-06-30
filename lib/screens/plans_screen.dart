@@ -3981,221 +3981,6 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     }
   }
 
-  /// Lets the user manually extend a generated meal with one more ingredient.
-  /// Draws from the same fail-safe, dietary-restriction/cuisine-filtered pool
-  /// as generation (`GeneticAlgorithm.buildPool`), so a hand-picked ingredient
-  /// can't violate the user's restrictions either.
-  void _showAddIngredientPicker(String mealType, Meal pendingMeal) {
-    final profile = _profile;
-    if (profile == null) return;
-    final pool = GeneticAlgorithm().buildPool(_allIngredients, profile, _cuisine)
-      ..sort((a, b) => a.name.compareTo(b.name));
-
-    final searchController = TextEditingController();
-    final c = context.colors;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: c.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        builder: (_, sc) => StatefulBuilder(
-          builder: (context, setSheetState) {
-            final query = searchController.text.trim().toLowerCase();
-            final filtered = query.isEmpty
-                ? pool
-                : pool.where((i) => i.name.toLowerCase().contains(query)).toList();
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-                  child: Text(
-                    'Add ingredient',
-                    style: GoogleFonts.spaceGrotesk(
-                      color: c.onBackground,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: TextField(
-                    controller: searchController,
-                    onChanged: (_) => setSheetState(() {}),
-                    style: GoogleFonts.inter(color: c.onBackground),
-                    cursorColor: AppColors.primary,
-                    decoration: InputDecoration(
-                      hintText: 'Search ingredients',
-                      hintStyle: GoogleFonts.inter(color: c.muted),
-                      prefixIcon: Icon(Icons.search, color: c.muted),
-                      suffixIcon: searchController.text.isEmpty
-                          ? null
-                          : IconButton(
-                              icon: Icon(Icons.close, color: c.muted),
-                              onPressed: () =>
-                                  setSheetState(() => searchController.clear()),
-                            ),
-                      filled: true,
-                      fillColor: c.background,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: AppColors.primary),
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: filtered.isEmpty
-                      ? Center(
-                          child: Text(
-                            'No matching ingredients found.',
-                            style: GoogleFonts.inter(color: c.muted),
-                          ),
-                        )
-                      : ListView.builder(
-                          controller: sc,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          itemCount: filtered.length,
-                          itemBuilder: (_, i) {
-                            final ing = filtered[i];
-                            return ListTile(
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              title: Text(
-                                ing.name,
-                                style: GoogleFonts.inter(
-                                  color: c.onBackground,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              subtitle: Text(
-                                '${ing.calories.round()} kcal / 100g',
-                                style: GoogleFonts.inter(
-                                  color: c.muted,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              trailing: Icon(
-                                Icons.add_circle_outline,
-                                color: AppColors.primary,
-                              ),
-                              onTap: () {
-                                Navigator.pop(ctx);
-                                _promptPortionAndAdd(mealType, pendingMeal, ing);
-                              },
-                            );
-                          },
-                        ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    ).whenComplete(searchController.dispose);
-  }
-
-  /// Asks for a gram portion, then appends the chosen ingredient to the
-  /// pending meal — mirrors `_generateMeal`'s save pattern exactly, so
-  /// "Log Food"/"Log Additions" persists it the same way as a generated item.
-  void _promptPortionAndAdd(
-    String mealType,
-    Meal pendingMeal,
-    MealIngredient ingredient,
-  ) {
-    final c = context.colors;
-    final gramsController = TextEditingController(text: '100');
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: c.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          ingredient.name,
-          style: GoogleFonts.spaceGrotesk(
-            color: c.onBackground,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        content: TextField(
-          controller: gramsController,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          style: GoogleFonts.inter(color: c.onBackground),
-          cursorColor: AppColors.primary,
-          decoration: InputDecoration(
-            labelText: 'Grams',
-            labelStyle: GoogleFonts.inter(color: c.muted),
-            suffixText: 'g',
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: c.border),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: AppColors.primary),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              'Cancel',
-              style: GoogleFonts.inter(color: c.muted, fontWeight: FontWeight.w600),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              final grams = double.tryParse(gramsController.text.trim());
-              Navigator.pop(ctx);
-              final updated = pendingMeal.copyWith(
-                items: [
-                  ...pendingMeal.items,
-                  MealItem(
-                    ingredient: ingredient,
-                    portionGrams: (grams != null && grams > 0) ? grams : 100,
-                  ),
-                ],
-              );
-              _setPending(mealType, updated);
-              context.read<PlanProvider>().setMeal(
-                mealType,
-                updated,
-                saveToFirestore: false,
-              );
-            },
-            child: Text(
-              'Add',
-              style: GoogleFonts.inter(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _clearAll(String mealType) async {
     _setPending(mealType, null);
     context.read<PlanProvider>().setMeal(mealType, null);
@@ -4668,7 +4453,17 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
           Padding(
             padding: const EdgeInsets.only(top: 2, bottom: 2),
             child: GestureDetector(
-              onTap: () => _showAddIngredientPicker(mealType, pendingMeal),
+              onTap: () async {
+                // Full USDA search, same as Log Food — the picked food is
+                // logged to this meal and shows alongside the generated items.
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => FoodLogScreen(mealType: mealType),
+                  ),
+                );
+                _loadTodayLogs();
+              },
               child: Row(
                 children: [
                   Icon(
@@ -4773,10 +4568,37 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
             ],
           )
         else if (hasManual)
-          // Logged-only meal: add more manually, or auto-complete it with
-          // complementary AI ingredients that fill the remaining budget.
+          // Logged-only meal: view a recipe for what's logged, or add more food.
           Row(
             children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          RecipeScreen(meal: mealForRecipe, mealLabel: label),
+                    ),
+                  ),
+                  icon: const Icon(Icons.menu_book_rounded, size: 15),
+                  label: Text(
+                    'Recipe',
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: BorderSide(color: AppColors.primary),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () async {
@@ -4790,7 +4612,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                   },
                   icon: const Icon(Icons.add_rounded, size: 15),
                   label: Text(
-                    'Log Food',
+                    'Add ingredient',
                     style: GoogleFonts.inter(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
@@ -4799,30 +4621,6 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.orange,
                     side: BorderSide(color: AppColors.orange),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _loadingMeals.contains(mealType)
-                      ? null
-                      : () => _generateMeal(mealType),
-                  icon: const Icon(Icons.auto_awesome_rounded, size: 15),
-                  label: Text(
-                    'Complete meal',
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: c.onBackground,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),

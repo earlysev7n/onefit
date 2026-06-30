@@ -25,6 +25,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
   _RecipeResult? _recipe;
   bool _isSaved = false;
   bool _isSaving = false;
+  bool _nutritionExpanded = false;
 
   final Set<int> _addedExtras = {};
   final Set<int> _addingExtras = {};
@@ -735,48 +736,106 @@ class _RecipeScreenState extends State<RecipeScreen> {
 
           const SizedBox(height: 20),
 
-          // Nutrition summary
-          Text(
-            'Nutrition Summary',
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: c.onBackground,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: c.surface,
-              borderRadius: BorderRadius.circular(14),
-            ),
+          // Nutrition summary — tap to expand into full macros + micros
+          GestureDetector(
+            onTap: () =>
+                setState(() => _nutritionExpanded = !_nutritionExpanded),
+            behavior: HitTestBehavior.opaque,
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _nutriRow(
-                  'Calories',
-                  '${widget.meal.totalCalories.round()} kcal',
-                  AppColors.orange,
+                Row(
+                  children: [
+                    Text(
+                      'Nutrition Summary',
+                      style: GoogleFonts.spaceGrotesk(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: c.onBackground,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      _nutritionExpanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      color: c.muted,
+                      size: 20,
+                    ),
+                  ],
                 ),
-                _nutriRow(
-                  'Protein',
-                  '${widget.meal.totalProtein.round()}g',
-                  AppColors.primary,
-                ),
-                _nutriRow(
-                  'Carbohydrates',
-                  '${widget.meal.totalCarbs.round()}g',
-                  AppColors.purple,
-                ),
-                _nutriRow(
-                  'Fat',
-                  '${widget.meal.totalFat.round()}g',
-                  AppColors.yellow,
-                ),
-                _nutriRow(
-                  'Fiber',
-                  '${widget.meal.totalFiber.round()}g',
-                  AppColors.cyan,
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: c.surface,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Column(
+                    children: [
+                      _nutriRow(
+                        'Calories',
+                        '${widget.meal.totalCalories.round()} kcal',
+                        AppColors.orange,
+                      ),
+                      _nutriRow(
+                        'Protein',
+                        '${widget.meal.totalProtein.round()}g',
+                        AppColors.primary,
+                      ),
+                      _nutriRow(
+                        'Carbohydrates',
+                        '${widget.meal.totalCarbs.round()}g',
+                        AppColors.purple,
+                      ),
+                      _nutriRow(
+                        'Fat',
+                        '${widget.meal.totalFat.round()}g',
+                        AppColors.yellow,
+                      ),
+                      _nutriRow(
+                        'Fiber',
+                        '${widget.meal.totalFiber.round()}g',
+                        AppColors.cyan,
+                      ),
+                      if (_nutritionExpanded) ...[
+                        _nutriRow('Sugar',
+                            '${widget.meal.totalSugar.round()}g', c.muted),
+                        _nutriRow('Sodium',
+                            '${widget.meal.totalSodium.round()} mg', c.muted),
+                        _nutriRow('Vitamin A',
+                            '${widget.meal.totalVitaminA.round()} mcg', c.muted),
+                        _nutriRow('Vitamin C',
+                            '${widget.meal.totalVitaminC.round()} mg', c.muted),
+                        _nutriRow('Vitamin D',
+                            '${widget.meal.totalVitaminD.round()} mcg', c.muted),
+                        _nutriRow('Vitamin E',
+                            '${widget.meal.totalVitaminE.round()} mg', c.muted),
+                        _nutriRow('Vitamin K',
+                            '${widget.meal.totalVitaminK.round()} mcg', c.muted),
+                        _nutriRow('Vitamin B6',
+                            '${widget.meal.totalVitaminB6.round()} mg', c.muted),
+                        _nutriRow('Vitamin B12',
+                            '${widget.meal.totalVitaminB12.round()} mcg',
+                            c.muted),
+                        _nutriRow('Folate',
+                            '${widget.meal.totalFolate.round()} mcg', c.muted),
+                        _nutriRow('Iron',
+                            '${widget.meal.totalIron.round()} mg', c.muted),
+                        _nutriRow('Calcium',
+                            '${widget.meal.totalCalcium.round()} mg', c.muted),
+                        _nutriRow('Magnesium',
+                            '${widget.meal.totalMagnesium.round()} mg', c.muted),
+                        _nutriRow('Potassium',
+                            '${widget.meal.totalPotassium.round()} mg', c.muted),
+                        _nutriRow('Zinc',
+                            '${widget.meal.totalZinc.round()} mg', c.muted),
+                        _nutriRow('Phosphorus',
+                            '${widget.meal.totalPhosphorus.round()} mg',
+                            c.muted),
+                      ],
+                    ],
+                  ),
                 ),
               ],
             ),

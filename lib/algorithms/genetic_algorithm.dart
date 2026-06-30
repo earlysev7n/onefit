@@ -583,9 +583,8 @@ class GeneticAlgorithm {
   /// returns an empty list (sentinel) when nothing satisfies the restrictions.
   /// Shared by [generatePlan] and [completeMeal].
   /// Dietary-restriction/cuisine-filtered ingredient pool, fail-safe (never
-  /// drops restrictions — relaxes cuisine first; see [generatePlan]). Public
-  /// so callers outside this file (e.g. a manual ingredient picker) can reuse
-  /// the exact same filtered pool instead of re-implementing the rules.
+  /// drops restrictions — relaxes cuisine first; see [generatePlan]). Shared by
+  /// [generatePlan] and [completeMeal].
   List<MealIngredient> buildPool(
     List<MealIngredient> allIngredients,
     UserProfile profile,
