@@ -115,7 +115,6 @@ void main() {
   // ── Difficulty / RPE branches (W1, W3) ────────────────────────────────────
   AdaptationResult diff({
     double completion = 0.7,
-    double avgHoursSlept = 7.0,
     double? rating,
     String level = 'Intermediate',
   }) =>
@@ -123,7 +122,6 @@ void main() {
         lastWeekCalorieAdherence: 100, // neutral
         lastWeekWorkoutCompletion: completion,
         currentExperienceLevel: level,
-        avgHoursSlept: avgHoursSlept,
         lastWeekAvgRating: rating,
       );
 
@@ -135,13 +133,6 @@ void main() {
     test('high completion + hard → held same (not down)', () {
       // 0.9 completion would step up; a hard rating holds it steady.
       expect(diff(completion: 0.9, rating: 4.0).difficultyBias, 'same');
-    });
-
-    test('sleep-deprived + hard → stays same (sleep hold, not down)', () {
-      expect(
-        diff(completion: 0.6, rating: 4.5, avgHoursSlept: 5.0).difficultyBias,
-        'same',
-      );
     });
 
     test('struggling + hard → stays down', () {

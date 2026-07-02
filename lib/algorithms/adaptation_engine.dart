@@ -38,7 +38,6 @@ class AdaptationEngine {
     required double lastWeekCalorieAdherence, // avgCalories / calorieGoal * 100
     required double lastWeekWorkoutCompletion, // completedWorkouts / plannedWorkouts (0–1)
     required String currentExperienceLevel, // 'Beginner'|'Intermediate'|'Advanced'
-    double avgHoursSlept = 7.0, // user's reported average nightly sleep
     double? lastWeekAvgRating, // avg perceived difficulty 1 (too easy) – 5 (too hard)
     double? weightChangeKg, // last week's net weight change (kg); + gain / − loss; null if <2 weigh-ins
     String fitnessGoal = 'General Fitness',
@@ -110,18 +109,10 @@ class AdaptationEngine {
       notes.add('Protein was low last week (~${lastWeekProteinAdherence.round()}% of target) even though calories were on track — prioritise protein-rich foods.');
     }
 
-    // ── Difficulty step — struggling wins, sleep only blocks the step-up ────
-    // Order matters: a low completion rate reduces volume regardless of sleep
-    // (lighter weeks aid both adherence and recovery). Poor sleep then blocks
-    // any step-up, but never prevents an easing-off when the user is behind.
-    final isSleepDeprived = avgHoursSlept < 6.5;
+    // ── Difficulty step ──────────────────────────────────────────────────────
     if (lastWeekWorkoutCompletion < 0.5) {
       difficultyBias = 'down';
       notes.add(noteVolumeDownSchedule);
-    } else if (isSleepDeprived) {
-      // Completing fine but under-rested — hold steady, never bump difficulty.
-      difficultyBias = 'same';
-      notes.add('Difficulty held steady — your reported sleep is under 6.5 h. Prioritise recovery.');
     } else if (lastWeekWorkoutCompletion >= 0.8 &&
         currentExperienceLevel != 'Advanced') {
       difficultyBias = 'up';
@@ -130,26 +121,22 @@ class AdaptationEngine {
 
     // ── RPE / rating autoregulation — a modifier, never a primary driver ────
     // A perceived-difficulty rating (1 too easy … 5 too hard) refines, but does
-    // not override, the completion/sleep logic above (Foster 2001 session-RPE;
+    // not override, the completion logic above (Foster 2001 session-RPE;
     // Helms 2016 RIR-based autoregulation).
     if (lastWeekAvgRating != null) {
       if (lastWeekAvgRating >= 4 && difficultyBias == 'up') {
         // Felt hard — don't pile on more load even if completion was high.
         difficultyBias = 'same';
         notes.add('Held difficulty steady — last week felt hard (high effort rating).');
-      } else if (lastWeekAvgRating >= 4 &&
-          difficultyBias == 'same' &&
-          !isSleepDeprived) {
+      } else if (lastWeekAvgRating >= 4 && difficultyBias == 'same') {
         // W1: completing fine but it felt hard — ease volume one step (NSCA
         // regression to avoid overtraining). The _getSets clamp keeps the
         // reduced count at/above the goal's NSCA minimum, so the stimulus stays
-        // adequate; it never drops below range. Sleep-held weeks are left to the
-        // sleep branch above so messaging stays consistent.
+        // adequate; it never drops below range.
         difficultyBias = 'down';
         notes.add(noteVolumeDownHard);
       } else if (lastWeekAvgRating <= 2 &&
           difficultyBias == 'same' &&
-          !isSleepDeprived &&
           currentExperienceLevel != 'Advanced' &&
           lastWeekWorkoutCompletion >= 0.7) {
         // W3: gate raised from 0.5 → 0.7 so a heavy partial-skipper (completion

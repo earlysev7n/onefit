@@ -32,8 +32,6 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   final _heightController = TextEditingController();
   String _gender = 'Male';
   String _unitSystem = 'metric';
-  double _avgSleep = 7.0;
-
   // Step 1 validation — inline per-field error messages (null = no error)
   String? _nameError;
   String? _dobError;
@@ -123,7 +121,6 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
       _nameController.text = p.name;
       _gender = p.gender;
       _unitSystem = p.unitSystem;
-      _avgSleep = p.avgHoursSlept;
       _fitnessGoal = p.fitnessGoal;
       _experienceLevel = p.experienceLevel;
       _workoutLocation = p.workoutLocation;
@@ -371,7 +368,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               workoutDaysPerWeek: _workoutDays,
               sessionMinutes: _sessionMinutes,
               workoutSplit: _workoutSplit,
-              avgHoursSlept: _avgSleep,
+
             )
           : UserProfile(
               uid: FirebaseAuth.instance.currentUser!.uid,
@@ -390,7 +387,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               workoutDaysPerWeek: _workoutDays,
               sessionMinutes: _sessionMinutes,
               workoutSplit: _workoutSplit,
-              avgHoursSlept: _avgSleep,
+
             );
       await profileProvider.save(profile);
       if (mounted) {
@@ -681,45 +678,6 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                   ),
                 )
                 .toList(),
-          ),
-          const SizedBox(height: 20),
-          _buildLabelWithHelp('Average Hours Slept', {
-            'Why we ask':
-                'Sleep drives recovery. If you sleep less, we trim training '
-                'volume so you don\'t overtrain.',
-          }),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    activeTrackColor: AppColors.primary,
-                    inactiveTrackColor: c.inputFill,
-                    thumbColor: AppColors.primary,
-                    overlayColor: AppColors.primary.withValues(alpha: 0.2),
-                  ),
-                  child: Slider(
-                    value: _avgSleep,
-                    min: 3,
-                    max: 12,
-                    divisions: 18,
-                    onChanged: (v) => setState(() => _avgSleep = v),
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: 56,
-                child: Text(
-                  '${_avgSleep.toStringAsFixed(1)} h',
-                  textAlign: TextAlign.end,
-                  style: GoogleFonts.inter(
-                    color: c.onBackground,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
           ),
         ],
       ),

@@ -19,7 +19,6 @@ class UserProfile {
   final int sessionMinutes; // 30 | 45 | 60 | 90
   final String
   workoutSplit; // weekly split style (see ProfileInputScreen split cards)
-  final double avgHoursSlept; // average nightly sleep, drives recovery
 
   /// Accumulated weekly calorie-goal adaptation (kcal). Added on top of the
   /// goal-derived base in [calorieGoal]; fed by [AdaptationEngine] each new
@@ -56,7 +55,6 @@ class UserProfile {
     this.workoutDaysPerWeek = 3,
     this.sessionMinutes = 45,
     this.workoutSplit = 'Full Body Training',
-    this.avgHoursSlept = 7.0,
     this.calorieAdjustment = 0,
     this.lastAdaptationWeekId = '',
     this.pinnedExercises = const {},
@@ -86,14 +84,6 @@ class UserProfile {
       default:
         return 1.55;
     }
-  }
-
-  /// Recovery factor (0–1) derived from average sleep. Lower sleep → less
-  /// recovery → the greedy algorithm trims volume. See greedy_algorithm.dart.
-  double get recoveryScore {
-    if (avgHoursSlept < 6) return 0.7;
-    if (avgHoursSlept < 7) return 0.85;
-    return 1.0;
   }
 
   int get tdee => (bmr * activityMultiplier).round();
@@ -206,7 +196,6 @@ class UserProfile {
       workoutDaysPerWeek: map['workoutDaysPerWeek'] ?? 3,
       sessionMinutes: map['sessionMinutes'] ?? 45,
       workoutSplit: map['workoutSplit'] ?? 'Full Body Training',
-      avgHoursSlept: (map['avgHoursSlept'] ?? 7.0).toDouble(),
       calorieAdjustment: map['calorieAdjustment'] ?? 0,
       lastAdaptationWeekId: map['lastAdaptationWeekId'] ?? '',
       pinnedExercises: (map['pinnedExercises'] as Map?)?.map(
@@ -234,7 +223,6 @@ class UserProfile {
       'workoutDaysPerWeek': workoutDaysPerWeek,
       'sessionMinutes': sessionMinutes,
       'workoutSplit': workoutSplit,
-      'avgHoursSlept': avgHoursSlept,
       'calorieAdjustment': calorieAdjustment,
       'lastAdaptationWeekId': lastAdaptationWeekId,
       'pinnedExercises': pinnedExercises,
@@ -258,7 +246,6 @@ class UserProfile {
     int? workoutDaysPerWeek,
     int? sessionMinutes,
     String? workoutSplit,
-    double? avgHoursSlept,
     int? calorieAdjustment,
     String? lastAdaptationWeekId,
     Map<String, List<String>>? pinnedExercises,
@@ -280,7 +267,6 @@ class UserProfile {
       workoutDaysPerWeek: workoutDaysPerWeek ?? this.workoutDaysPerWeek,
       sessionMinutes: sessionMinutes ?? this.sessionMinutes,
       workoutSplit: workoutSplit ?? this.workoutSplit,
-      avgHoursSlept: avgHoursSlept ?? this.avgHoursSlept,
       calorieAdjustment: calorieAdjustment ?? this.calorieAdjustment,
       lastAdaptationWeekId: lastAdaptationWeekId ?? this.lastAdaptationWeekId,
       pinnedExercises: pinnedExercises ?? this.pinnedExercises,

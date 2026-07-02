@@ -714,8 +714,6 @@ class GreedyAlgorithm {
       hi = 4; // general / maintenance
       sets = profile.experienceLevel == 'Advanced' ? 4 : 3;
     }
-    // Recovery shave
-    if (profile.recoveryScore < 0.8) sets--;
     // Adaptation: great week → +1 set, rough week → −1 set
     if (difficultyBias == 'up') sets++;
     if (difficultyBias == 'down') sets--;

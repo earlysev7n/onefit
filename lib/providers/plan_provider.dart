@@ -158,6 +158,11 @@ class PlanProvider extends ChangeNotifier {
   ) async {
     if (dayIdx >= _workoutPlan.length) return;
     final day = _workoutPlan[dayIdx];
+    // Never add the same exercise twice to a day. Duplicate ids collide on the
+    // edit-mode ReorderableListView's ValueKey('reorder_<id>'), which corrupts
+    // its element tree ('_dependents.isEmpty' assertion). This guards every
+    // caller (picker, gap-fill, volume-debt) so the model can't hold a dupe.
+    if (day.exercises.any((w) => w.exercise.id == exercise.exercise.id)) return;
     final updated = List<WorkoutExercise>.from(day.exercises)..add(exercise);
     _workoutPlan[dayIdx] = WorkoutDay(
       dayName: day.dayName,

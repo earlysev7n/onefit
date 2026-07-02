@@ -468,7 +468,6 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   ? lastWeekWorkouts / plannedDays
                   : 1.0,
               currentExperienceLevel: profile.experienceLevel,
-              avgHoursSlept: profile.avgHoursSlept,
               lastWeekAvgRating: lastWeekAvgRating,
               weightChangeKg: weightChangeKg,
               fitnessGoal: profile.fitnessGoal,
@@ -2451,6 +2450,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 height: 50,
                 child: ElevatedButton(
                   onPressed: () async {
+                    // Close the keyboard before popping (see picker onTap) so
+                    // the sheet unmount doesn't race the IME teardown.
+                    FocusManager.instance.primaryFocus?.unfocus();
                     Navigator.pop(ctx);
                     await context.read<PlanProvider>().updateExerciseParams(
                       uid,
@@ -2484,7 +2486,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
           ),
         ),
       ),
-    );
+    ).whenComplete(() {
+      // Defer to a post-frame callback so the sheet fully unmounts before the
+      // reps controller is disposed (same crash class as the exercise picker).
+      WidgetsBinding.instance.addPostFrameCallback((_) => repsCtrl.dispose());
+    });
   }
 
   Widget _paramBtn(IconData icon, VoidCallback onTap) => GestureDetector(
@@ -2526,11 +2532,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        builder: (_, sc) => StatefulBuilder(
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          builder: (_, sc) => StatefulBuilder(
           builder: (context, setSheetState) {
             final query = searchController.text.trim().toLowerCase();
             final filtered = query.isEmpty
@@ -2616,6 +2624,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
                           itemBuilder: (_, i) {
                             final ex = filtered[i];
                             final aboveTier = _isAboveUserTier(ex);
+                            // Already in this day → block re-adding (a duplicate
+                            // id crashes the reorderable list). Show it disabled
+                            // with an "Added" marker instead of the + affordance.
+                            final alreadyAdded = day.exercises
+                                .any((w) => w.exercise.id == ex.id);
                             final equipReasons =
                                 _profile == null
                                 ? const <String>[]
@@ -2624,6 +2637,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                                     _profile!,
                                   );
                             return ListTile(
+                              enabled: !alreadyAdded,
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 8,
                                 vertical: 4,
@@ -2631,7 +2645,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                               title: Text(
                                 ex.name,
                                 style: GoogleFonts.inter(
-                                  color: c.onBackground,
+                                  color: alreadyAdded ? c.muted : c.onBackground,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -2661,11 +2675,48 @@ class _WorkoutTabState extends State<_WorkoutTab>
                                   ],
                                 ],
                               ),
-                              trailing: Icon(
-                                Icons.add_circle_outline,
-                                color: AppColors.primary,
-                              ),
-                              onTap: () async {
+                              trailing: alreadyAdded
+                                  ? Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.check_circle,
+                                          size: 18,
+                                          color: c.muted,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Added',
+                                          style: GoogleFonts.inter(
+                                            color: c.muted,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : Icon(
+                                      Icons.add_circle_outline,
+                                      color: AppColors.primary,
+                                    ),
+                              onTap: alreadyAdded
+                                  ? null
+                                  : () async {
+                                // If the keyboard is open, dismiss it first and
+                                // wait for its close animation (~300 ms) before
+                                // popping the sheet. Running both animations
+                                // simultaneously thrashes viewInsets and causes
+                                // a RenderFlex overflow crash on real devices.
+                                // Read viewInsets BEFORE unfocus() — unfocus()
+                                // clears the value immediately.
+                                final keyboardVisible =
+                                    MediaQuery.of(ctx).viewInsets.bottom > 0;
+                                FocusManager.instance.primaryFocus?.unfocus();
+                                if (keyboardVisible) {
+                                  await Future.delayed(
+                                    const Duration(milliseconds: 300),
+                                  );
+                                }
+                                if (!ctx.mounted) return;
                                 Navigator.pop(ctx);
                                 final reasons = _restrictionsFor(ex);
                                 if (reasons.isNotEmpty) {
@@ -2699,7 +2750,17 @@ class _WorkoutTabState extends State<_WorkoutTab>
           },
         ),
       ),
-    ).whenComplete(searchController.dispose);
+      ),
+    ).whenComplete(() {
+      // Defer disposing the search controller by one frame. Disposing it
+      // synchronously as the sheet route completes races the focused
+      // TextField's own teardown ("used after disposed") and corrupts the
+      // Overlay unmount → framework '_dependents.isEmpty' crash on add. A
+      // post-frame callback lets the sheet fully unmount first.
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => searchController.dispose(),
+      );
+    });
   }
 
   /// Muscle targets for a focus string (used by exercise picker, gap-fill and

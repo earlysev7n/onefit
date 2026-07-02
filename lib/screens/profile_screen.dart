@@ -194,11 +194,6 @@ class ProfileScreen extends StatelessWidget {
                 'Units',
                 profile?.unitSystem == 'imperial' ? 'Imperial' : 'Metric',
               ),
-              _infoRow(
-                context,
-                'Avg Sleep',
-                '${profile?.avgHoursSlept.toStringAsFixed(1) ?? '-'} h',
-              ),
             ]),
             const SizedBox(height: 12),
 
