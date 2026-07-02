@@ -147,9 +147,7 @@ class _DebugDayChanger extends StatelessWidget {
                 color: c.surface,
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(color: AppColors.primary),
-                boxShadow: [
-                  BoxShadow(color: c.shadow, blurRadius: 8),
-                ],
+                boxShadow: [BoxShadow(color: c.shadow, blurRadius: 8)],
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,

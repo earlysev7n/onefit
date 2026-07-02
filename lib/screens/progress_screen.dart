@@ -738,25 +738,37 @@ class _WeightSection extends StatelessWidget {
               ),
             ),
           const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => _showLogWeightDialog(context),
-              icon: const Icon(Icons.monitor_weight_outlined, size: 16),
-              label: Text(
-                "Log Today's Weight",
-                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.purple,
-                side: const BorderSide(color: AppColors.purple),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          Builder(builder: (context) {
+            final loggedToday = prov.todayWeightLog != null;
+            return SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _showLogWeightDialog(context),
+                icon: Icon(
+                  loggedToday ? Icons.edit_outlined : Icons.monitor_weight_outlined,
+                  size: 16,
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                label: Text(
+                  loggedToday ? "Edit Today's Weight" : "Log Today's Weight",
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.purple,
+                  side: BorderSide(
+                    color: AppColors.purple,
+                    width: loggedToday ? 1.5 : 1.0,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  backgroundColor: loggedToday
+                      ? AppColors.purple.withValues(alpha: 0.08)
+                      : null,
+                ),
               ),
-            ),
-          ),
+            );
+          }),
         ],
       ),
     );
@@ -781,15 +793,35 @@ class _WeightSection extends StatelessWidget {
 
   void _showLogWeightDialog(BuildContext context) {
     final c = context.colors;
-    final useImperial =
-        context.read<ProgressProvider>().profile?.unitSystem == 'imperial';
-    final latest = context.read<ProgressProvider>().latestWeight;
+    final progressProv = context.read<ProgressProvider>();
+    final useImperial = progressProv.profile?.unitSystem == 'imperial';
+    final loggedToday = progressProv.todayWeightLog != null;
+    final latest = progressProv.latestWeight;
     final displayVal = latest != null
         ? (useImperial
               ? (latest * 2.20462).toStringAsFixed(1)
               : latest.toStringAsFixed(1))
         : '';
     final controller = TextEditingController(text: displayVal);
+
+    Future<void> save() async {
+      final val = double.tryParse(controller.text);
+      if (val == null) return;
+      final kg = useImperial ? val / 2.20462 : val;
+      // Capture providers before the async gap / pop.
+      final profileProvider = context.read<ProfileProvider>();
+      final progressProvider = context.read<ProgressProvider>();
+      Navigator.pop(context);
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        // Sync the body weight first so BMR/TDEE/calorieGoal/BMI
+        // recompute reactively on Home & Nutrition; then reload
+        // Progress, whose internal loadAll re-fetches the updated
+        // profile so its own BMI/TDEE card reflects the change too.
+        await profileProvider.updateWeight(kg);
+        await progressProvider.logWeight(uid, kg);
+      }
+    }
 
     showModalBottomSheet(
       context: context,
@@ -798,19 +830,19 @@ class _WeightSection extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) => Padding(
+      builder: (sheetCtx) => Padding(
         padding: EdgeInsets.only(
           left: 24,
           right: 24,
           top: 24,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 24,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              "Log Today's Weight",
+              loggedToday ? "Edit Today's Weight" : "Log Today's Weight",
               style: GoogleFonts.spaceGrotesk(
                 color: c.onBackground,
                 fontWeight: FontWeight.w700,
@@ -823,6 +855,8 @@ class _WeightSection extends StatelessWidget {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => save(),
               autofocus: true,
               style: TextStyle(color: c.onBackground, fontSize: 20),
               decoration: InputDecoration(
@@ -844,24 +878,7 @@ class _WeightSection extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () async {
-                  final val = double.tryParse(controller.text);
-                  if (val == null) return;
-                  final kg = useImperial ? val / 2.20462 : val;
-                  // Capture providers before the async gap / pop.
-                  final profileProvider = context.read<ProfileProvider>();
-                  final progressProvider = context.read<ProgressProvider>();
-                  Navigator.pop(context);
-                  final uid = FirebaseAuth.instance.currentUser?.uid;
-                  if (uid != null) {
-                    // Sync the body weight first so BMR/TDEE/calorieGoal/BMI
-                    // recompute reactively on Home & Nutrition; then reload
-                    // Progress, whose internal loadAll re-fetches the updated
-                    // profile so its own BMI/TDEE card reflects the change too.
-                    await profileProvider.updateWeight(kg);
-                    await progressProvider.logWeight(uid, kg);
-                  }
-                },
+                onPressed: save,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.purple,
                   foregroundColor: c.onBackground,

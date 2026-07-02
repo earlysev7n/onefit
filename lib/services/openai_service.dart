@@ -22,7 +22,7 @@ class OpenAIRecipe {
 /// instructions — the "Transformer" natural-language layer described in the
 /// capstone objective.
 class OpenAIService {
-  // ⚠️ TEST KEY — this was shared in plain text and should be treated as
+  // TEST KEY — this was shared in plain text and should be treated as
   // compromised. Revoke/rotate it after the demo and move secrets to
   // environment config / Firebase Remote Config for any real build.
   static final String _apiKey = dotenv.env['OPENAI_API_KEY'] ?? '';

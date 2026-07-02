@@ -89,6 +89,17 @@ class ProgressProvider extends ChangeNotifier {
   double? get latestWeight => _weightLogs.isEmpty ? null : _weightLogs.first.weight;
   double? get startWeight => _weightLogs.isEmpty ? null : _weightLogs.last.weight;
 
+  WeightLog? get todayWeightLog {
+    if (_weightLogs.isEmpty) return null;
+    final today = appToday();
+    final first = _weightLogs.first;
+    return (first.date.year == today.year &&
+            first.date.month == today.month &&
+            first.date.day == today.day)
+        ? first
+        : null;
+  }
+
   // ── Load ────────────────────────────────────────────────────────────────────
 
   /// Refreshes all weekly stats. Pass [profile] (from [ProfileProvider]) to use

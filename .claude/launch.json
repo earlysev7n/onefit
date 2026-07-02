@@ -16,7 +16,7 @@
     {
       "name": "Flutter Android (Pixel 6)",
       "runtimeExecutable": "flutter",
-      "runtimeArgs": ["run", "-d", "Pixel_6"],
+      "runtimeArgs": ["run", "-d", "emulator-5554"],
       "port": null
     }
   ]
