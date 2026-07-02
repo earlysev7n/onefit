@@ -4,6 +4,12 @@ import 'package:flutter/foundation.dart';
 /// MUST be `false` for any build intended for real use.
 const bool kDebugDayChanger = true;
 
+/// When true, shows an amber ⚡ "Auto-Complete" button on each training day
+/// card in the Workout tab so workouts can be logged without doing the full
+/// exercise flow. Use this to rapidly populate workout_logs for adaptation
+/// testing. MUST be `false` for any build intended for real use.
+const bool kDebugAutoFinishWorkout = true;
+
 /// Number of days to shift the app's notion of "today" by. 0 = real today.
 /// Wrapped in a [ValueNotifier] so the UI can rebuild live when it changes
 /// (see the `MaterialApp.builder` wiring in main.dart).

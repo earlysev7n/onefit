@@ -490,7 +490,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
       // real volume change — the "stepped" message would mislead. Detect it and
       // swap that sentence for an accurate ceiling/floor nudge (the clamp itself
       // is correct NSCA behaviour; only the wording is fixed).
-      final volumeChanged = adaptation.difficultyBias != 'same' &&
+      final volumeChanged =
+          adaptation.difficultyBias != 'same' &&
           greedy.setsForDifficulty(profile, adaptation.difficultyBias) !=
               greedy.setsForDifficulty(profile, 'same');
       var adaptationNotes = adaptation.notes;
@@ -546,7 +547,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
         // Persist a snapshot of this week's adaptation for the Weekly Review
         // screen (current week + history). Same guard as the calorie bias, so
         // exactly one snapshot per weekId — no stacking on force-regenerate.
-        final activeWeekStart = today.subtract(Duration(days: today.weekday - 1));
+        final activeWeekStart = today.subtract(
+          Duration(days: today.weekday - 1),
+        );
         final summary = WeeklySummary(
           weekId: weekId,
           generatedAt: appNow(),
@@ -775,10 +778,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             const SizedBox(height: 4),
             Text(
               "Tunes next week's difficulty.",
-              style: GoogleFonts.inter(
-                color: c.muted,
-                fontSize: 13,
-              ),
+              style: GoogleFonts.inter(color: c.muted, fontSize: 13),
             ),
             const SizedBox(height: 12),
             ...List.generate(
@@ -803,10 +803,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             Center(
               child: TextButton(
                 onPressed: () => Navigator.pop(ctx, null),
-                child: Text(
-                  'Skip',
-                  style: GoogleFonts.inter(color: c.muted),
-                ),
+                child: Text('Skip', style: GoogleFonts.inter(color: c.muted)),
               ),
             ),
           ],
@@ -844,10 +841,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         : 'Log your working weight to track progress';
     InputDecoration deco(String h) => InputDecoration(
       hintText: h,
-      hintStyle: GoogleFonts.inter(
-        color: c.disabled,
-        fontSize: 13,
-      ),
+      hintStyle: GoogleFonts.inter(color: c.disabled, fontSize: 13),
       filled: true,
       fillColor: c.inputFill,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -860,13 +854,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          hint,
-          style: GoogleFonts.inter(
-            color: c.muted,
-            fontSize: 12,
-          ),
-        ),
+        Text(hint, style: GoogleFonts.inter(color: c.muted, fontSize: 12)),
         if (target != null) ...[
           const SizedBox(height: 4),
           Row(
@@ -1031,11 +1019,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         children: [
           Row(
             children: [
-              Icon(
-                Icons.whatshot_rounded,
-                color: AppColors.amber,
-                size: 16,
-              ),
+              Icon(Icons.whatshot_rounded, color: AppColors.amber, size: 16),
               const SizedBox(width: 6),
               Text(
                 'Warm-up first',
@@ -1111,11 +1095,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         children: [
           Row(
             children: [
-              Icon(
-                Icons.whatshot_rounded,
-                color: AppColors.amber,
-                size: 16,
-              ),
+              Icon(Icons.whatshot_rounded, color: AppColors.amber, size: 16),
               const SizedBox(width: 6),
               Text(
                 'Warm-up ${_activeWarmupIndex + 1} of ${_warmupMoves.length}',
@@ -1284,10 +1264,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
               'Last: ${_fmtWeight(stat.lastWeightKg)}'
               '${stat.lastReps != null ? ' × ${stat.lastReps}' : ''}'
               '   ·   PR ${_fmtWeight(stat.bestWeightKg)}',
-              style: GoogleFonts.inter(
-                color: c.muted,
-                fontSize: 12,
-              ),
+              style: GoogleFonts.inter(color: c.muted, fontSize: 12),
             ),
           ),
         ],
@@ -1591,6 +1568,39 @@ class _WorkoutTabState extends State<_WorkoutTab>
     await _saveWorkoutLog(day, mins, rating: rating);
   }
 
+  Future<void> _debugAutoCompleteDay(WorkoutDay day) async {
+    final profile = context.read<ProfileProvider>().profile;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final now = appNow();
+    final log = WorkoutLog(
+      id: '',
+      userId: uid,
+      date: DateTime(now.year, now.month, now.day),
+      weekId: FirestoreService.weekIdFor(now),
+      dayName: day.dayName,
+      focus: day.focus,
+      durationMinutes: profile?.sessionMinutes ?? 45,
+      completedAt: now,
+      rating: 3,
+      exercises: day.exercises
+          .map(
+            (e) => WorkoutLogExercise(
+              name: e.exercise.name,
+              sets: e.sets,
+              reps: e.reps,
+              restSeconds: e.restSeconds,
+              primaryMuscles: e.exercise.primaryMuscles,
+              weightKg: null,
+              repsDone: null,
+            ),
+          )
+          .toList(),
+    );
+    await FirestoreService().saveWorkoutLog(log);
+    if (mounted) setState(() => _weekDone[day.dayName] = true);
+  }
+
   void _scrollToActive() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = _activeKey.currentContext;
@@ -1629,7 +1639,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    if (_isLoading) return _buildLoading('Generating workout plan...', ctx: context);
+    if (_isLoading)
+      return _buildLoading('Generating workout plan...', ctx: context);
     if (_error != null) return _buildError(_error!, _generate, ctx: context);
     return _buildPlan();
   }
@@ -1655,10 +1666,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
               ],
               const Spacer(),
               IconButton(
-                icon: Icon(
-                  Icons.refresh_rounded,
-                  color: AppColors.primary,
-                ),
+                icon: Icon(Icons.refresh_rounded, color: AppColors.primary),
                 onPressed: _forceRegenerate,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
@@ -1695,14 +1703,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       margin: const EdgeInsets.only(right: 8),
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? (isRest
-                                  ? c.subtle
-                                  : AppColors.primary)
+                            ? (isRest ? c.subtle : AppColors.primary)
                             : c.surface,
                         borderRadius: BorderRadius.circular(14),
-                        border: isSelected
-                            ? null
-                            : Border.all(color: c.border),
+                        border: isSelected ? null : Border.all(color: c.border),
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -1808,59 +1812,60 @@ class _WorkoutTabState extends State<_WorkoutTab>
         builder: (_) {
           final c = context.colors;
           return AlertDialog(
-          backgroundColor: c.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Text(
-            'Session is shorter',
-            style: GoogleFonts.spaceGrotesk(
-              color: c.onBackground,
-              fontWeight: FontWeight.w700,
+            backgroundColor: c.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-          ),
-          content: Text(
-            'You removed $removed exercise${removed == 1 ? '' : 's'}. '
-            'The algorithm can fill the gap with matching exercises, or you can '
-            'leave the session shorter — skipped volume will be added to your '
-            'next workout day${removed > 1 ? 's' : ''}.',
-            style: GoogleFonts.inter(
-              color: c.muted,
-              fontSize: 14,
-              height: 1.5,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _fillExerciseGap(day, removed);
-                setState(() => _editMode = false);
-              },
-              child: Text(
-                'Fill the gap',
-                style: GoogleFonts.inter(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w600,
-                ),
+            title: Text(
+              'Session is shorter',
+              style: GoogleFonts.spaceGrotesk(
+                color: c.onBackground,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _applyVolumeDebt(removed); // penalise upcoming days
-                setState(() => _editMode = false);
-              },
-              child: Text(
-                'Leave shorter',
-                style: GoogleFonts.inter(
-                  color: c.muted,
-                  fontWeight: FontWeight.w600,
-                ),
+            content: Text(
+              'You removed $removed exercise${removed == 1 ? '' : 's'}. '
+              'The algorithm can fill the gap with matching exercises, or you can '
+              'leave the session shorter — skipped volume will be added to your '
+              'next workout day${removed > 1 ? 's' : ''}.',
+              style: GoogleFonts.inter(
+                color: c.muted,
+                fontSize: 14,
+                height: 1.5,
               ),
             ),
-          ],
-        );},
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _fillExerciseGap(day, removed);
+                  setState(() => _editMode = false);
+                },
+                child: Text(
+                  'Fill the gap',
+                  style: GoogleFonts.inter(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _applyVolumeDebt(removed); // penalise upcoming days
+                  setState(() => _editMode = false);
+                },
+                child: Text(
+                  'Leave shorter',
+                  style: GoogleFonts.inter(
+                    color: c.muted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       );
       return; // wait for dialog result
     }
@@ -1987,10 +1992,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              'Cancel',
-              style: GoogleFonts.inter(color: c.muted),
-            ),
+            child: Text('Cancel', style: GoogleFonts.inter(color: c.muted)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -2256,7 +2258,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
               ReorderableDragStartListener(
                 index: idx,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 20),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 20,
+                  ),
                   child: Icon(Icons.drag_handle, color: context.colors.muted),
                 ),
               ),
@@ -2352,10 +2357,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Sets',
-                    style: GoogleFonts.inter(color: c.muted),
-                  ),
+                  Text('Sets', style: GoogleFonts.inter(color: c.muted)),
                   Row(
                     children: [
                       _paramBtn(
@@ -2415,10 +2417,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Rest (sec)',
-                    style: GoogleFonts.inter(color: c.muted),
-                  ),
+                  Text('Rest (sec)', style: GoogleFonts.inter(color: c.muted)),
                   Row(
                     children: [
                       _paramBtn(
@@ -2539,217 +2538,220 @@ class _WorkoutTabState extends State<_WorkoutTab>
           initialChildSize: 0.6,
           maxChildSize: 0.9,
           builder: (_, sc) => StatefulBuilder(
-          builder: (context, setSheetState) {
-            final query = searchController.text.trim().toLowerCase();
-            final filtered = query.isEmpty
-                ? relevant
-                : relevant.where((e) {
-                    if (e.name.toLowerCase().contains(query)) return true;
-                    return e.primaryMuscles.any(
-                      (m) => m.toLowerCase().contains(query),
-                    );
-                  }).toList();
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-                  child: Text(
-                    'Add exercise — ${day.focus}',
-                    style: GoogleFonts.spaceGrotesk(
-                      color: c.onBackground,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: TextField(
-                    controller: searchController,
-                    onChanged: (_) => setSheetState(() {}),
-                    style: GoogleFonts.inter(color: c.onBackground),
-                    cursorColor: AppColors.primary,
-                    decoration: InputDecoration(
-                      hintText: 'Search exercises',
-                      hintStyle: GoogleFonts.inter(
-                        color: c.muted,
-                      ),
-                      prefixIcon: Icon(
-                        Icons.search,
-                        color: c.muted,
-                      ),
-                      suffixIcon: searchController.text.isEmpty
-                          ? null
-                          : IconButton(
-                              icon: Icon(
-                                Icons.close,
-                                color: c.muted,
-                              ),
-                              onPressed: () =>
-                                  setSheetState(() => searchController.clear()),
-                            ),
-                      filled: true,
-                      fillColor: c.background,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: AppColors.primary),
+            builder: (context, setSheetState) {
+              final query = searchController.text.trim().toLowerCase();
+              final filtered = query.isEmpty
+                  ? relevant
+                  : relevant.where((e) {
+                      if (e.name.toLowerCase().contains(query)) return true;
+                      return e.primaryMuscles.any(
+                        (m) => m.toLowerCase().contains(query),
+                      );
+                    }).toList();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+                    child: Text(
+                      'Add exercise — ${day.focus}',
+                      style: GoogleFonts.spaceGrotesk(
+                        color: c.onBackground,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
                       ),
                     ),
                   ),
-                ),
-                Expanded(
-                  child: filtered.isEmpty
-                      ? Center(
-                          child: Text(
-                            'No matching exercises found.',
-                            style: GoogleFonts.inter(
-                              color: c.muted,
-                            ),
-                          ),
-                        )
-                      : ListView.builder(
-                          controller: sc,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          itemCount: filtered.length,
-                          itemBuilder: (_, i) {
-                            final ex = filtered[i];
-                            final aboveTier = _isAboveUserTier(ex);
-                            // Already in this day → block re-adding (a duplicate
-                            // id crashes the reorderable list). Show it disabled
-                            // with an "Added" marker instead of the + affordance.
-                            final alreadyAdded = day.exercises
-                                .any((w) => w.exercise.id == ex.id);
-                            final equipReasons =
-                                _profile == null
-                                ? const <String>[]
-                                : GreedyAlgorithm.equipmentRestrictions(
-                                    ex,
-                                    _profile!,
-                                  );
-                            return ListTile(
-                              enabled: !alreadyAdded,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              title: Text(
-                                ex.name,
-                                style: GoogleFonts.inter(
-                                  color: alreadyAdded ? c.muted : c.onBackground,
-                                  fontWeight: FontWeight.w500,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: TextField(
+                      controller: searchController,
+                      onChanged: (_) => setSheetState(() {}),
+                      style: GoogleFonts.inter(color: c.onBackground),
+                      cursorColor: AppColors.primary,
+                      decoration: InputDecoration(
+                        hintText: 'Search exercises',
+                        hintStyle: GoogleFonts.inter(color: c.muted),
+                        prefixIcon: Icon(Icons.search, color: c.muted),
+                        suffixIcon: searchController.text.isEmpty
+                            ? null
+                            : IconButton(
+                                icon: Icon(Icons.close, color: c.muted),
+                                onPressed: () => setSheetState(
+                                  () => searchController.clear(),
                                 ),
                               ),
-                              subtitle: Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      ex.primaryMuscles.join(', '),
-                                      overflow: TextOverflow.ellipsis,
-                                      style: GoogleFonts.inter(
-                                        color: c.muted,
-                                        fontSize: 12,
+                        filled: true,
+                        fillColor: c.background,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: AppColors.primary),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? Center(
+                            child: Text(
+                              'No matching exercises found.',
+                              style: GoogleFonts.inter(color: c.muted),
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: sc,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            itemCount: filtered.length,
+                            itemBuilder: (_, i) {
+                              final ex = filtered[i];
+                              final aboveTier = _isAboveUserTier(ex);
+                              // Already in this day → block re-adding (a duplicate
+                              // id crashes the reorderable list). Show it disabled
+                              // with an "Added" marker instead of the + affordance.
+                              final alreadyAdded = day.exercises.any(
+                                (w) => w.exercise.id == ex.id,
+                              );
+                              final equipReasons = _profile == null
+                                  ? const <String>[]
+                                  : GreedyAlgorithm.equipmentRestrictions(
+                                      ex,
+                                      _profile!,
+                                    );
+                              return ListTile(
+                                enabled: !alreadyAdded,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                title: Text(
+                                  ex.name,
+                                  style: GoogleFonts.inter(
+                                    color: alreadyAdded
+                                        ? c.muted
+                                        : c.onBackground,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                subtitle: Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        ex.primaryMuscles.join(', '),
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.inter(
+                                          color: c.muted,
+                                          fontSize: 12,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  if (ex.difficulty.isNotEmpty) ...[
-                                    const SizedBox(width: 8),
-                                    _difficultyBadge(ex.difficulty, aboveTier),
+                                    if (ex.difficulty.isNotEmpty) ...[
+                                      const SizedBox(width: 8),
+                                      _difficultyBadge(
+                                        ex.difficulty,
+                                        aboveTier,
+                                      ),
+                                    ],
+                                    if (equipReasons.isNotEmpty) ...[
+                                      const SizedBox(width: 6),
+                                      Icon(
+                                        Icons.warning_amber_rounded,
+                                        size: 16,
+                                        color: AppColors.amber,
+                                      ),
+                                    ],
                                   ],
-                                  if (equipReasons.isNotEmpty) ...[
-                                    const SizedBox(width: 6),
-                                    Icon(
-                                      Icons.warning_amber_rounded,
-                                      size: 16,
-                                      color: AppColors.amber,
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              trailing: alreadyAdded
-                                  ? Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.check_circle,
-                                          size: 18,
-                                          color: c.muted,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          'Added',
-                                          style: GoogleFonts.inter(
+                                ),
+                                trailing: alreadyAdded
+                                    ? Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.check_circle,
+                                            size: 18,
                                             color: c.muted,
-                                            fontSize: 12,
                                           ),
-                                        ),
-                                      ],
-                                    )
-                                  : Icon(
-                                      Icons.add_circle_outline,
-                                      color: AppColors.primary,
-                                    ),
-                              onTap: alreadyAdded
-                                  ? null
-                                  : () async {
-                                // If the keyboard is open, dismiss it first and
-                                // wait for its close animation (~300 ms) before
-                                // popping the sheet. Running both animations
-                                // simultaneously thrashes viewInsets and causes
-                                // a RenderFlex overflow crash on real devices.
-                                // Read viewInsets BEFORE unfocus() — unfocus()
-                                // clears the value immediately.
-                                final keyboardVisible =
-                                    MediaQuery.of(ctx).viewInsets.bottom > 0;
-                                FocusManager.instance.primaryFocus?.unfocus();
-                                if (keyboardVisible) {
-                                  await Future.delayed(
-                                    const Duration(milliseconds: 300),
-                                  );
-                                }
-                                if (!ctx.mounted) return;
-                                Navigator.pop(ctx);
-                                final reasons = _restrictionsFor(ex);
-                                if (reasons.isNotEmpty) {
-                                  final ok =
-                                      await _confirmRestrictions(ex, reasons);
-                                  if (ok != true) return;
-                                }
-                                final we = WorkoutExercise(
-                                  exercise: ex,
-                                  sets: 3,
-                                  reps: '10-12',
-                                  restSeconds: 60,
-                                );
-                                await planProvider.addExercise(
-                                  uid,
-                                  _currentWeekId,
-                                  _selectedDay,
-                                  we,
-                                );
-                                if (!mounted) return;
-                                setState(
-                                  () => _plan = planProvider.workoutPlan,
-                                );
-                              },
-                            );
-                          },
-                        ),
-                ),
-              ],
-            );
-          },
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Added',
+                                            style: GoogleFonts.inter(
+                                              color: c.muted,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    : Icon(
+                                        Icons.add_circle_outline,
+                                        color: AppColors.primary,
+                                      ),
+                                onTap: alreadyAdded
+                                    ? null
+                                    : () async {
+                                        // If the keyboard is open, dismiss it first and
+                                        // wait for its close animation (~300 ms) before
+                                        // popping the sheet. Running both animations
+                                        // simultaneously thrashes viewInsets and causes
+                                        // a RenderFlex overflow crash on real devices.
+                                        // Read viewInsets BEFORE unfocus() — unfocus()
+                                        // clears the value immediately.
+                                        final keyboardVisible =
+                                            MediaQuery.of(
+                                              ctx,
+                                            ).viewInsets.bottom >
+                                            0;
+                                        FocusManager.instance.primaryFocus
+                                            ?.unfocus();
+                                        if (keyboardVisible) {
+                                          await Future.delayed(
+                                            const Duration(milliseconds: 300),
+                                          );
+                                        }
+                                        if (!ctx.mounted) return;
+                                        Navigator.pop(ctx);
+                                        final reasons = _restrictionsFor(ex);
+                                        if (reasons.isNotEmpty) {
+                                          final ok = await _confirmRestrictions(
+                                            ex,
+                                            reasons,
+                                          );
+                                          if (ok != true) return;
+                                        }
+                                        final we = WorkoutExercise(
+                                          exercise: ex,
+                                          sets: 3,
+                                          reps: '10-12',
+                                          restSeconds: 60,
+                                        );
+                                        await planProvider.addExercise(
+                                          uid,
+                                          _currentWeekId,
+                                          _selectedDay,
+                                          we,
+                                        );
+                                        if (!mounted) return;
+                                        setState(
+                                          () =>
+                                              _plan = planProvider.workoutPlan,
+                                        );
+                                      },
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
-      ),
       ),
     ).whenComplete(() {
       // Defer disposing the search controller by one frame. Disposing it
@@ -2774,27 +2776,28 @@ class _WorkoutTabState extends State<_WorkoutTab>
   Widget _buildRestDay() {
     final c = context.colors;
     return Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.bedtime_rounded, size: 64, color: c.subtle),
-        const SizedBox(height: 16),
-        Text(
-          'Rest Day',
-          style: GoogleFonts.spaceGrotesk(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            color: c.onBackground,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.bedtime_rounded, size: 64, color: c.subtle),
+          const SizedBox(height: 16),
+          Text(
+            'Rest Day',
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              color: c.onBackground,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Recovery is part of the plan.',
-          style: GoogleFonts.inter(color: c.muted),
-        ),
-      ],
-    ),
-  );}
+          const SizedBox(height: 8),
+          Text(
+            'Recovery is part of the plan.',
+            style: GoogleFonts.inter(color: c.muted),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildWorkoutDay(WorkoutDay day) {
     final c = context.colors;
@@ -2912,10 +2915,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   ),
                   child: Text(
                     '${day.exercises.length} exercises',
-                    style: GoogleFonts.inter(
-                      color: c.muted,
-                      fontSize: 13,
-                    ),
+                    style: GoogleFonts.inter(color: c.muted, fontSize: 13),
                   ),
                 ),
             ],
@@ -2939,9 +2939,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                         : c.surface,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: _editMode
-                          ? AppColors.primary
-                          : c.borderLight,
+                      color: _editMode ? AppColors.primary : c.borderLight,
                     ),
                   ),
                   child: Row(
@@ -2950,9 +2948,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       Icon(
                         _editMode ? Icons.check_rounded : Icons.edit_rounded,
                         size: 14,
-                        color: _editMode
-                            ? AppColors.primary
-                            : c.muted,
+                        color: _editMode ? AppColors.primary : c.muted,
                       ),
                       const SizedBox(width: 4),
                       Text(
@@ -2960,9 +2956,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                         style: GoogleFonts.inter(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: _editMode
-                              ? AppColors.primary
-                              : c.muted,
+                          color: _editMode ? AppColors.primary : c.muted,
                         ),
                       ),
                     ],
@@ -2993,9 +2987,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                           ? 0
                           : _completedExercises.length / day.exercises.length,
                       backgroundColor: c.border,
-                      valueColor: AlwaysStoppedAnimation(
-                        AppColors.primary,
-                      ),
+                      valueColor: AlwaysStoppedAnimation(AppColors.primary),
                       minHeight: 6,
                     ),
                   ),
@@ -3035,6 +3027,31 @@ class _WorkoutTabState extends State<_WorkoutTab>
               ),
             ),
             const SizedBox(height: 16),
+          ],
+
+          // Debug: one-tap auto-complete (only when kDebugAutoFinishWorkout = true)
+          if (kDebugAutoFinishWorkout &&
+              !isCompleted &&
+              day.exercises.isNotEmpty) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => _debugAutoCompleteDay(day),
+                icon: const Icon(Icons.bolt, size: 16, color: Colors.amber),
+                label: Text(
+                  'Auto-Complete',
+                  style: GoogleFonts.inter(color: Colors.red, fontSize: 12),
+                ),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 2,
+                  ),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
           ],
 
           // General (cardio) warm-up — top of the active day, skippable.
@@ -3096,10 +3113,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
           ),
           Text(
             '${ex.primaryMuscles.join(', ')} · ${we.sets} sets · ${we.reps} reps · ${we.restSeconds}s rest · ${we.timePerSetSeconds}s/set',
-            style: GoogleFonts.inter(
-              color: c.muted,
-              fontSize: 13,
-            ),
+            style: GoogleFonts.inter(color: c.muted, fontSize: 13),
           ),
           const SizedBox(height: 12),
           GestureDetector(
@@ -3192,11 +3206,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
           }),
           child: Row(
             children: [
-              Icon(
-                Icons.menu_book_rounded,
-                color: c.muted,
-                size: 14,
-              ),
+              Icon(Icons.menu_book_rounded, color: c.muted, size: 14),
               const SizedBox(width: 6),
               Text(
                 'Steps',
@@ -3253,9 +3263,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
       width: 32,
       height: 32,
       decoration: BoxDecoration(
-        color: isDone
-            ? AppColors.primary
-            : AppColors.primary.withOpacity(0.15),
+        color: isDone ? AppColors.primary : AppColors.primary.withOpacity(0.15),
         shape: BoxShape.circle,
       ),
       child: Center(
@@ -3362,9 +3370,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
           color: c.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isActive
-                ? AppColors.primary.withOpacity(0.6)
-                : c.border,
+            color: isActive ? AppColors.primary.withOpacity(0.6) : c.border,
             width: isActive ? 1.5 : 1.0,
           ),
         ),
@@ -3390,10 +3396,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       ),
                       Text(
                         ex.primaryMuscles.join(', '),
-                        style: GoogleFonts.inter(
-                          color: c.muted,
-                          fontSize: 12,
-                        ),
+                        style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                       ),
                     ],
                   ),
@@ -3516,10 +3519,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   if (_loggedSetSummary().isNotEmpty)
                     Text(
                       _loggedSetSummary(),
-                      style: GoogleFonts.inter(
-                        color: c.muted,
-                        fontSize: 13,
-                      ),
+                      style: GoogleFonts.inter(color: c.muted, fontSize: 13),
                     ),
                   const SizedBox(height: 8),
                   Text(
@@ -3544,9 +3544,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                     child: LinearProgressIndicator(
                       value: _setTotal > 0 ? _setRemaining / _setTotal : 0,
                       backgroundColor: c.border,
-                      valueColor: AlwaysStoppedAnimation(
-                        AppColors.primary,
-                      ),
+                      valueColor: AlwaysStoppedAnimation(AppColors.primary),
                       minHeight: 6,
                     ),
                   ),
@@ -3584,11 +3582,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   const SizedBox(width: 8),
                   _statBox('Reps', we.reps, AppColors.purple),
                   const SizedBox(width: 8),
-                  _statBox(
-                    'Rest',
-                    '${we.restSeconds}s',
-                    AppColors.orange,
-                  ),
+                  _statBox('Rest', '${we.restSeconds}s', AppColors.orange),
                   const SizedBox(width: 8),
                   _statBox(
                     'Time/set',
@@ -3612,37 +3606,38 @@ class _WorkoutTabState extends State<_WorkoutTab>
   }
 
   Widget _gifPlaceholder({bool loading = false, double height = 160}) {
-      final c = context.colors;
-      return Container(
-        width: double.infinity,
-        height: height,
-        color: c.inputFill,
-        child: loading
-            ? Center(
-                child: CircularProgressIndicator(
-                  color: AppColors.primary,
-                  strokeWidth: 2,
-                ),
-              )
-            : Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.play_circle_outline_rounded,
-                    color: c.subtle,
-                    size: 48,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Exercise Demo',
-                    style: GoogleFonts.inter(
-                      color: c.subtle,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
+    final c = context.colors;
+    return Container(
+      width: double.infinity,
+      height: height,
+      color: c.inputFill,
+      child: loading
+          ? Center(
+              child: CircularProgressIndicator(
+                color: AppColors.primary,
+                strokeWidth: 2,
               ),
-      );}
+            )
+          : Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.play_circle_outline_rounded,
+                  color: c.subtle,
+                  size: 48,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Exercise Demo',
+                  style: GoogleFonts.inter(
+                    color: c.subtle,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
 
   void _showGifDialog(BuildContext context, String gifUrl, String name) {
     final c = context.colors;
@@ -3676,11 +3671,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   loadingBuilder: (_, child, p) => p == null
                       ? child
                       : _gifPlaceholder(loading: true, height: 200),
-                  errorBuilder: (_, __, ___) => Icon(
-                    Icons.broken_image,
-                    color: c.subtle,
-                    size: 60,
-                  ),
+                  errorBuilder: (_, __, ___) =>
+                      Icon(Icons.broken_image, color: c.subtle, size: 60),
                 ),
               ),
               const SizedBox(height: 12),
@@ -3984,12 +3976,16 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     if (_profile == null || !_guardIngredients()) return;
     setState(() => _loadingMeals.add(mealType));
     try {
-      final goal =
-          context.read<ProfileProvider>().dailyEffectiveGoal.toDouble();
+      final goal = context
+          .read<ProfileProvider>()
+          .dailyEffectiveGoal
+          .toDouble();
       // Fill this meal to its own natural slice, minus what's already logged in
       // it — so completing a logged meal tops it up rather than doubling it.
-      final budget = (_ratioFor(mealType) * goal - _loggedCals(mealType))
-          .clamp(0.0, double.infinity);
+      final budget = (_ratioFor(mealType) * goal - _loggedCals(mealType)).clamp(
+        0.0,
+        double.infinity,
+      );
       final hasLogged = (_loggedFoods[mealType] ?? []).isNotEmpty;
       if (budget <= 30) {
         _showInfo(
@@ -3999,14 +3995,23 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
         );
         return;
       }
-      final meal = GeneticAlgorithm().completeMeal(
-        allIngredients: _allIngredients,
-        profile: _profile!,
-        mealType: mealType,
-        calorieBudget: budget,
-        presentCategories: _presentCategories(mealType),
-        cuisine: _cuisine,
-      );
+      // On regenerate: penalise the ingredients already shown to the user so
+      // the GA explores alternatives rather than re-converging on the same pick.
+      final prior = _pending(mealType);
+      final avoidIds = prior != null
+          ? prior.items.map((i) => i.ingredient.id).toSet()
+          : const <String>{};
+      final meal = GeneticAlgorithm()
+          .evolveMeal(
+            allIngredients: _allIngredients,
+            profile: _profile!,
+            mealType: mealType,
+            calorieBudget: budget,
+            presentCategories: _presentCategories(mealType),
+            cuisine: _cuisine,
+            avoidIds: avoidIds,
+          )
+          .meal;
       if (meal.items.isEmpty) {
         _showNoMatchMessage();
         return;
@@ -4038,8 +4043,10 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
 
     setState(() => _loadingMeals.addAll(allMeals));
     try {
-      final goal =
-          context.read<ProfileProvider>().dailyEffectiveGoal.toDouble();
+      final goal = context
+          .read<ProfileProvider>()
+          .dailyEffectiveGoal
+          .toDouble();
       // Distribute the day's *remaining* budget across meals so logged +
       // generated ≈ goal. Logged meals get a proportionally smaller addition
       // (and are completed, not skipped).
@@ -4053,21 +4060,28 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
       }
 
       bool anyMatchFailure = false;
+      // Ingredients already used by earlier meals today — evolveMeal penalises
+      // (not excludes) repeats so the generated day stays varied.
+      final usedIds = <String>{};
       for (final mealType in allMeals) {
         final budget = budgets[mealType] ?? 0;
         if (budget <= 30) continue; // meal already at/over its share
-        final meal = GeneticAlgorithm().completeMeal(
-          allIngredients: _allIngredients,
-          profile: _profile!,
-          mealType: mealType,
-          calorieBudget: budget,
-          presentCategories: _presentCategories(mealType),
-          cuisine: _cuisine,
-        );
+        final meal = GeneticAlgorithm()
+            .evolveMeal(
+              allIngredients: _allIngredients,
+              profile: _profile!,
+              mealType: mealType,
+              calorieBudget: budget,
+              presentCategories: _presentCategories(mealType),
+              cuisine: _cuisine,
+              avoidIds: usedIds,
+            )
+            .meal;
         if (meal.items.isEmpty) {
           anyMatchFailure = true;
           continue;
         }
+        usedIds.addAll(meal.items.map((i) => i.ingredient.id));
         _setPending(mealType, meal);
         context.read<PlanProvider>().setMeal(
           mealType,
@@ -4094,6 +4108,10 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
       );
       _setPending(mealType, null);
       await _loadTodayLogs();
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null && mounted) {
+        context.read<ProfileProvider>().recomputeGoal(uid).ignore();
+      }
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -4369,11 +4387,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: () => _clearAll(mealType),
-                  child: Icon(
-                    Icons.close_rounded,
-                    color: c.inactive,
-                    size: 18,
-                  ),
+                  child: Icon(Icons.close_rounded, color: c.inactive, size: 18),
                 ),
               ],
             ],
@@ -4502,7 +4516,8 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
         ],
       );
     } else {
-      mealForRecipe = pendingMeal ?? _mealFromLoggedFoods(mealType, loggedFoods);
+      mealForRecipe =
+          pendingMeal ?? _mealFromLoggedFoods(mealType, loggedFoods);
     }
 
     final c = context.colors;
@@ -4534,18 +4549,12 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                 ),
                 Text(
                   '${food.quantity.toStringAsFixed(1)}× ${food.servingSize.round()}${food.servingSizeUnit}',
-                  style: GoogleFonts.inter(
-                    color: c.muted,
-                    fontSize: 12,
-                  ),
+                  style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   '${food.totalCalories.round()} kcal',
-                  style: GoogleFonts.inter(
-                    color: c.subtle,
-                    fontSize: 12,
-                  ),
+                  style: GoogleFonts.inter(color: c.subtle, fontSize: 12),
                 ),
               ],
             ),
@@ -4579,18 +4588,12 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                   ),
                   Text(
                     '${item.portionGrams.round()}g',
-                    style: GoogleFonts.inter(
-                      color: c.muted,
-                      fontSize: 12,
-                    ),
+                    style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                   ),
                   const SizedBox(width: 8),
                   Text(
                     '${item.calories.round()} kcal',
-                    style: GoogleFonts.inter(
-                      color: c.subtle,
-                      fontSize: 12,
-                    ),
+                    style: GoogleFonts.inter(color: c.subtle, fontSize: 12),
                   ),
                 ],
               ),
@@ -4927,37 +4930,85 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
         'kcal',
       ),
       _nutrientDetailRow(
-        'Sugar', sum((f) => f.totalSugar, (m) => m.totalSugar), 'g'),
+        'Sugar',
+        sum((f) => f.totalSugar, (m) => m.totalSugar),
+        'g',
+      ),
       _nutrientDetailRow(
-        'Sodium', sum((f) => f.totalSodium, (m) => m.totalSodium), 'mg'),
-      _nutrientDetailRow('Vitamin A',
-          sum((f) => f.totalVitaminA, (m) => m.totalVitaminA), 'mcg'),
-      _nutrientDetailRow('Vitamin C',
-          sum((f) => f.totalVitaminC, (m) => m.totalVitaminC), 'mg'),
-      _nutrientDetailRow('Vitamin D',
-          sum((f) => f.totalVitaminD, (m) => m.totalVitaminD), 'mcg'),
-      _nutrientDetailRow('Vitamin E',
-          sum((f) => f.totalVitaminE, (m) => m.totalVitaminE), 'mg'),
-      _nutrientDetailRow('Vitamin K',
-          sum((f) => f.totalVitaminK, (m) => m.totalVitaminK), 'mcg'),
-      _nutrientDetailRow('Vitamin B6',
-          sum((f) => f.totalVitaminB6, (m) => m.totalVitaminB6), 'mg'),
-      _nutrientDetailRow('Vitamin B12',
-          sum((f) => f.totalVitaminB12, (m) => m.totalVitaminB12), 'mcg'),
+        'Sodium',
+        sum((f) => f.totalSodium, (m) => m.totalSodium),
+        'mg',
+      ),
       _nutrientDetailRow(
-        'Folate', sum((f) => f.totalFolate, (m) => m.totalFolate), 'mcg'),
+        'Vitamin A',
+        sum((f) => f.totalVitaminA, (m) => m.totalVitaminA),
+        'mcg',
+      ),
       _nutrientDetailRow(
-        'Iron', sum((f) => f.totalIron, (m) => m.totalIron), 'mg'),
+        'Vitamin C',
+        sum((f) => f.totalVitaminC, (m) => m.totalVitaminC),
+        'mg',
+      ),
       _nutrientDetailRow(
-        'Calcium', sum((f) => f.totalCalcium, (m) => m.totalCalcium), 'mg'),
-      _nutrientDetailRow('Magnesium',
-          sum((f) => f.totalMagnesium, (m) => m.totalMagnesium), 'mg'),
-      _nutrientDetailRow('Potassium',
-          sum((f) => f.totalPotassium, (m) => m.totalPotassium), 'mg'),
+        'Vitamin D',
+        sum((f) => f.totalVitaminD, (m) => m.totalVitaminD),
+        'mcg',
+      ),
       _nutrientDetailRow(
-        'Zinc', sum((f) => f.totalZinc, (m) => m.totalZinc), 'mg'),
-      _nutrientDetailRow('Phosphorus',
-          sum((f) => f.totalPhosphorus, (m) => m.totalPhosphorus), 'mg'),
+        'Vitamin E',
+        sum((f) => f.totalVitaminE, (m) => m.totalVitaminE),
+        'mg',
+      ),
+      _nutrientDetailRow(
+        'Vitamin K',
+        sum((f) => f.totalVitaminK, (m) => m.totalVitaminK),
+        'mcg',
+      ),
+      _nutrientDetailRow(
+        'Vitamin B6',
+        sum((f) => f.totalVitaminB6, (m) => m.totalVitaminB6),
+        'mg',
+      ),
+      _nutrientDetailRow(
+        'Vitamin B12',
+        sum((f) => f.totalVitaminB12, (m) => m.totalVitaminB12),
+        'mcg',
+      ),
+      _nutrientDetailRow(
+        'Folate',
+        sum((f) => f.totalFolate, (m) => m.totalFolate),
+        'mcg',
+      ),
+      _nutrientDetailRow(
+        'Iron',
+        sum((f) => f.totalIron, (m) => m.totalIron),
+        'mg',
+      ),
+      _nutrientDetailRow(
+        'Calcium',
+        sum((f) => f.totalCalcium, (m) => m.totalCalcium),
+        'mg',
+      ),
+      _nutrientDetailRow(
+        'Magnesium',
+        sum((f) => f.totalMagnesium, (m) => m.totalMagnesium),
+        'mg',
+      ),
+      _nutrientDetailRow(
+        'Potassium',
+        sum((f) => f.totalPotassium, (m) => m.totalPotassium),
+        'mg',
+      ),
+      _nutrientDetailRow(
+        'Zinc',
+        sum((f) => f.totalZinc, (m) => m.totalZinc),
+        'mg',
+      ),
+      _nutrientDetailRow(
+        'Phosphorus',
+        sum((f) => f.totalPhosphorus, (m) => m.totalPhosphorus),
+        'mg',
+      ),
     ];
 
     return Container(
@@ -5004,7 +5055,9 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     child: Text(
       label,
       style: GoogleFonts.inter(
-        color: _cuisine == value ? AppColors.primary : context.colors.onBackground,
+        color: _cuisine == value
+            ? AppColors.primary
+            : context.colors.onBackground,
         fontWeight: _cuisine == value ? FontWeight.w700 : FontWeight.normal,
       ),
     ),
@@ -5040,51 +5093,56 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
 Widget _buildLoading(String message, {BuildContext? ctx}) {
   final c = ctx?.colors;
   return Center(
-  child: Column(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      CircularProgressIndicator(color: AppColors.primary),
-      const SizedBox(height: 16),
-      Text(
-        message,
-        style: GoogleFonts.inter(color: c?.muted ?? const Color(0xFF888888), height: 1.6),
-        textAlign: TextAlign.center,
-      ),
-    ],
-  ),
-);}
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        CircularProgressIndicator(color: AppColors.primary),
+        const SizedBox(height: 16),
+        Text(
+          message,
+          style: GoogleFonts.inter(
+            color: c?.muted ?? const Color(0xFF888888),
+            height: 1.6,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    ),
+  );
+}
 
 Widget _buildError(String error, VoidCallback onRetry, {BuildContext? ctx}) {
   final c = ctx?.colors;
   return Center(
-  child: Padding(
-    padding: const EdgeInsets.all(24),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
-        const SizedBox(height: 16),
-        Text(
-          error,
-          style: GoogleFonts.inter(color: c?.onBackground ?? Colors.white),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 24),
-        ElevatedButton(
-          onPressed: onRetry,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            foregroundColor: c?.onPrimary ?? Colors.black,
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
+          const SizedBox(height: 16),
+          Text(
+            error,
+            style: GoogleFonts.inter(color: c?.onBackground ?? Colors.white),
+            textAlign: TextAlign.center,
           ),
-          child: Text(
-            'Retry',
-            style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: onRetry,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: c?.onPrimary ?? Colors.black,
+            ),
+            child: Text(
+              'Retry',
+              style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     ),
-  ),
-);}
+  );
+}
 
 Widget _chip(String label, Color color) => Container(
   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),

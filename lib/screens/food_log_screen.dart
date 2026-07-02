@@ -101,6 +101,9 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
         mealType: widget.mealType,
       );
       await _firestore.logFoodItem(relogged);
+      if (mounted) {
+        context.read<ProfileProvider>().recomputeGoal(uid).ignore();
+      }
       _showSuccessSnackbar(original.name);
     } catch (_) {
     } finally {
@@ -149,6 +152,10 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
       if (confirmed == true) {
         _showSuccessSnackbar(foodItem.name);
         _loadHistory();
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid != null && mounted) {
+          context.read<ProfileProvider>().recomputeGoal(uid).ignore();
+        }
       }
     } catch (e) {
       setState(() {
@@ -440,6 +447,9 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
       quantity: ratio,
     );
     await _firestore.logFoodItem(foodItem);
+    if (mounted) {
+      context.read<ProfileProvider>().recomputeGoal(uid).ignore();
+    }
     _showSuccessSnackbar(food.name);
     _loadHistory();
   }

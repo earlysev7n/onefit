@@ -18,6 +18,7 @@ import 'profile_screen.dart';
 import 'nutrition_screen.dart';
 import 'food_log_screen.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final plansScreenKey = GlobalKey<PlansScreenState>();
 
@@ -37,8 +38,85 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     final uid = AuthService().currentUser?.uid;
     if (uid != null) {
-      context.read<ProfileProvider>().load(uid);
+      final pp = context.read<ProfileProvider>();
+      if (pp.profile != null) {
+        // Profile already cached — recompute daily goal in case the day/week changed
+        pp.recomputeGoal(uid).then((_) {
+          if (mounted) _maybeShowGoalDialog();
+        });
+      } else {
+        pp.load(uid).then((_) {
+          if (mounted) _maybeShowGoalDialog();
+        });
+      }
     }
+  }
+
+  Future<void> _maybeShowGoalDialog() async {
+    final pp = context.read<ProfileProvider>();
+    final profile = pp.profile;
+    if (profile == null) return;
+
+    final adjusted = pp.dailyEffectiveGoal;
+    final base = profile.calorieGoal;
+    if (adjusted == base) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('hideGoalAdjustmentPopup') ?? false) return;
+
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    if (prefs.getString('goalAdjustmentLastShown') == today) return;
+    await prefs.setString('goalAdjustmentLastShown', today);
+
+    if (!mounted) return;
+    final increased = adjusted > base;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Daily Goal Updated',
+          style: GoogleFonts.spaceGrotesk(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
+          '${increased ? "You under-ate" : "You over-ate"} earlier this week, '
+          'so your calorie goal has been '
+          '${increased ? "increased to" : "reduced to"} $adjusted kcal today '
+          'to keep you on track for your weekly target.',
+          style: GoogleFonts.inter(color: const Color(0xFF888888)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              final p = await SharedPreferences.getInstance();
+              await p.setBool('hideGoalAdjustmentPopup', true);
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: Text(
+              "Don't show again",
+              style: GoogleFonts.inter(color: const Color(0xFF888888)),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00C97B),
+            ),
+            child: Text(
+              'OK',
+              style: GoogleFonts.inter(
+                color: Colors.black,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showMealTypeSelector({bool autoScan = false}) {

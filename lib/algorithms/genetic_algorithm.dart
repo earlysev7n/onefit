@@ -3,10 +3,18 @@ import '../models/meal_ingredient.dart';
 import '../models/user_profile.dart';
 
 class GeneticAlgorithm {
-  final Random _random = Random();
+  final Random _random;
+
+  /// [random] is injectable for reproducible tests; defaults to a fresh RNG.
+  GeneticAlgorithm({Random? random}) : _random = random ?? Random();
 
   static const int populationSize = 20;
   static const int generations = 100;
+
+  /// Generations for the per-meal evolutionary path ([evolveMeal]). A single
+  /// meal is a much smaller search space than a 7-day plan, so it converges
+  /// well before the full [generations].
+  static const int mealGenerations = 60;
   static const double mutationRate = 0.15;
   static const int tournamentSize = 4;
 
@@ -581,10 +589,7 @@ class GeneticAlgorithm {
   /// Fail-safe ingredient pool: dietary restrictions are never dropped. Tries
   /// the cuisine-filtered pool first, relaxes the cuisine only if empty, and
   /// returns an empty list (sentinel) when nothing satisfies the restrictions.
-  /// Shared by [generatePlan] and [completeMeal].
-  /// Dietary-restriction/cuisine-filtered ingredient pool, fail-safe (never
-  /// drops restrictions — relaxes cuisine first; see [generatePlan]). Shared by
-  /// [generatePlan] and [completeMeal].
+  /// Shared by [generatePlan], [completeMeal], and [evolveMeal].
   List<MealIngredient> buildPool(
     List<MealIngredient> allIngredients,
     UserProfile profile,
@@ -717,6 +722,249 @@ class GeneticAlgorithm {
         .closeResidual(calorieBudget);
   }
 
+  // ── Evolutionary meal completion ────────────────────────────────────────────
+
+  /// Evolves the complementary *additions* for [mealType] instead of drawing
+  /// one random item per slot ([completeMeal]). Same contract: same fail-safe
+  /// pool, same [presentCategories] complement rule (a hard constraint on the
+  /// chromosome, never a fitness trade-off), additions-only result, and the
+  /// winner passes through the same `scaleToCalories().closeResidual()`
+  /// calorie enforcement — so calorie accuracy is unchanged while macro fit
+  /// becomes the best of ~populationSize×mealGenerations evaluated candidates
+  /// rather than a single draw.
+  ///
+  /// Chromosome = one ingredient per open slot. Population is seeded with one
+  /// greedy density-based pick (faster convergence); evolution uses the GA's
+  /// standard operators: tournament selection (size [tournamentSize]),
+  /// single-point crossover across slots, and [mutationRate] same-category
+  /// swap mutation, with top-2 elitism.
+  ///
+  /// [avoidIds] applies a small fitness penalty per ingredient already used in
+  /// another meal today (variety across a generated day); it never excludes
+  /// anything outright. The returned [MealEvolutionResult.fitnessTrace] is the
+  /// best fitness per generation — evidence of convergence for tests/thesis.
+  MealEvolutionResult evolveMeal({
+    required List<MealIngredient> allIngredients,
+    required UserProfile profile,
+    required String mealType,
+    required double calorieBudget,
+    Set<String> presentCategories = const {},
+    String cuisine = 'any',
+    Set<String> avoidIds = const {},
+  }) {
+    final empty = MealEvolutionResult(
+      Meal(mealType: mealType, items: const []),
+      const [],
+    );
+    if (calorieBudget <= 30) return empty;
+    final pool = buildPool(allIngredients, profile, cuisine);
+    if (pool.isEmpty) return empty;
+
+    // Slot plan — identical to completeMeal's, with the complement rule
+    // applied as a hard constraint before evolution begins.
+    List<_Slot> slots;
+    List<List<MealIngredient>> candidates;
+    if (mealType == 'snack') {
+      var snackPool = pool.where(_isSnackAppropriate).toList();
+      if (snackPool.isEmpty) snackPool = pool;
+      final fresh = snackPool
+          .where((i) => !presentCategories.contains(_slotCategoryOf(i)))
+          .toList();
+      slots = const [_Slot('snack', 1.0)];
+      candidates = [fresh.isNotEmpty ? fresh : snackPool];
+    } else {
+      final defs = mealType == 'breakfast'
+          ? [
+              const _Slot('protein', 0.50),
+              const _Slot('grain', 0.35),
+              const _Slot('fruit', 0.15),
+            ]
+          : [
+              const _Slot('protein', 0.45),
+              const _Slot('grain', 0.30),
+              const _Slot('vegetable', 0.15),
+              const _Slot('fat', 0.10),
+            ];
+      var active =
+          defs.where((s) => !presentCategories.contains(s.category)).toList();
+      if (active.isEmpty) active = [const _Slot('vegetable', 1.0)];
+      slots = active;
+      candidates = [
+        for (final s in slots) _poolForCategory(pool, s.category),
+      ];
+      // A slot with no candidates at all (bare pool) is dropped, same as
+      // completeMeal's `continue`.
+      final kept = <_Slot>[];
+      final keptCands = <List<MealIngredient>>[];
+      for (int i = 0; i < slots.length; i++) {
+        if (candidates[i].isNotEmpty) {
+          kept.add(slots[i]);
+          keptCands.add(candidates[i]);
+        }
+      }
+      if (kept.isEmpty) return empty;
+      slots = kept;
+      candidates = keptCands;
+    }
+
+    final totalW = slots.fold(0.0, (s, x) => s + x.weight);
+
+    // Meal-level macro gram targets: the day's diet-style-aware targets scaled
+    // to this meal's calorie share, so the ratios hold regardless of which
+    // goal (base or carry-adjusted) produced the budget.
+    final daily = _macroTargetsFor(profile);
+    final macroCals =
+        daily['protein']! * 4 + daily['carbs']! * 4 + daily['fat']! * 9;
+    final share = macroCals > 0 ? calorieBudget / macroCals : 0.0;
+    final targets = {
+      'protein': daily['protein']! * share,
+      'carbs': daily['carbs']! * share,
+      'fat': daily['fat']! * share,
+    };
+
+    Meal build(List<MealIngredient> genes) {
+      final items = <MealItem>[];
+      for (int i = 0; i < slots.length; i++) {
+        items.add(
+          MealItem(
+            ingredient: genes[i],
+            portionGrams: _portionFor(
+              genes[i],
+              calorieBudget * slots[i].weight / totalW,
+            ),
+          ),
+        );
+      }
+      return Meal(mealType: mealType, items: items)
+          .scaleToCalories(calorieBudget);
+    }
+
+    double fitness(List<MealIngredient> genes) =>
+        _mealFitness(build(genes), targets, calorieBudget, avoidIds);
+
+    List<MealIngredient> randomGenes() => [
+      for (final c in candidates) c[_random.nextInt(c.length)],
+    ];
+
+    // Seed: greedy per-slot pick by the slot's dominant-macro density — a good
+    // starting individual that speeds convergence without constraining it.
+    final seed = <MealIngredient>[
+      for (int i = 0; i < slots.length; i++)
+        _densestForSlot(candidates[i], slots[i].category),
+    ];
+
+    var population = <List<MealIngredient>>[
+      seed,
+      for (int i = 1; i < populationSize; i++) randomGenes(),
+    ];
+    final trace = <double>[];
+
+    for (int gen = 0; gen < mealGenerations; gen++) {
+      final scored =
+          population.map((g) => MapEntry(g, fitness(g))).toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
+      trace.add(scored.first.value);
+
+      final nextGen = <List<MealIngredient>>[scored[0].key, scored[1].key];
+      while (nextGen.length < populationSize) {
+        final p1 = _tournamentGenes(scored);
+        final p2 = _tournamentGenes(scored);
+        var child = _crossoverGenes(p1, p2);
+        if (_random.nextDouble() < mutationRate) {
+          final slot = _random.nextInt(child.length);
+          child = List<MealIngredient>.from(child)
+            ..[slot] =
+                candidates[slot][_random.nextInt(candidates[slot].length)];
+        }
+        nextGen.add(child);
+      }
+      population = nextGen;
+    }
+
+    final best =
+        population.map((g) => MapEntry(g, fitness(g))).toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+    final meal = build(best.first.key).closeResidual(calorieBudget);
+    return MealEvolutionResult(meal, trace);
+  }
+
+  /// Meal-level fitness — mirrors [_fitness]'s 40/35/15/15 weighting at meal
+  /// granularity, plus a small variety penalty for [avoidIds] repeats.
+  double _mealFitness(
+    Meal meal,
+    Map<String, double> targets,
+    double budget,
+    Set<String> avoidIds,
+  ) {
+    double score = 0;
+    final calErr = (meal.totalCalories - budget) / budget;
+    score += max(0.0, 40.0 - (calErr * calErr) * 400);
+    final p = targets['protein']!;
+    if (p > 0) {
+      final e = (meal.totalProtein - p) / p;
+      score += max(0.0, 35.0 - (e * e) * 350);
+    }
+    final c = targets['carbs']!;
+    if (c > 0) {
+      final e = (meal.totalCarbs - c) / c;
+      score += max(0.0, 15.0 - (e * e) * 150);
+    }
+    final f = targets['fat']!;
+    if (f > 0) {
+      final e = (meal.totalFat - f) / f;
+      score += max(0.0, 15.0 - (e * e) * 150);
+    }
+    score -=
+        meal.items.where((i) => avoidIds.contains(i.ingredient.id)).length * 6;
+    return score;
+  }
+
+  /// Greedy seed pick: the candidate densest in the slot's dominant macro
+  /// (per kcal), or lowest-calorie for vegetable slots.
+  MealIngredient _densestForSlot(
+    List<MealIngredient> candidates,
+    String category,
+  ) {
+    double density(MealIngredient i) {
+      if (i.calories <= 0) return 0;
+      switch (category) {
+        case 'protein':
+        case 'snack':
+          return i.protein / i.calories;
+        case 'grain':
+        case 'fruit':
+          return i.carbs / i.calories;
+        case 'fat':
+          return i.fat / i.calories;
+        case 'vegetable':
+          return 1 / i.calories; // lowest-density wins
+      }
+      return 0;
+    }
+
+    return candidates.reduce((a, b) => density(a) >= density(b) ? a : b);
+  }
+
+  List<MealIngredient> _tournamentGenes(
+    List<MapEntry<List<MealIngredient>, double>> scored,
+  ) {
+    final t = List.generate(
+      tournamentSize,
+      (_) => scored[_random.nextInt(scored.length)],
+    );
+    t.sort((a, b) => b.value.compareTo(a.value));
+    return t.first.key;
+  }
+
+  List<MealIngredient> _crossoverGenes(
+    List<MealIngredient> p1,
+    List<MealIngredient> p2,
+  ) {
+    if (p1.length <= 1) return List<MealIngredient>.from(p1);
+    final point = _random.nextInt(p1.length);
+    return [...p1.sublist(0, point), ...p2.sublist(point)];
+  }
+
   /// Coarse slot group for an ingredient: protein/grain/vegetable/fruit/fat.
   /// Uses `category` first (robust), falling back to the GA's macro thresholds.
   String _slotCategoryOf(MealIngredient i) {
@@ -765,4 +1013,13 @@ class _Slot {
   final String category;
   final double weight;
   const _Slot(this.category, this.weight);
+}
+
+/// Result of an [GeneticAlgorithm.evolveMeal] run: the winning meal plus the
+/// best-fitness-per-generation trace (evidence that evolution occurred; used
+/// by tests and the thesis evaluation).
+class MealEvolutionResult {
+  final Meal meal;
+  final List<double> fitnessTrace;
+  const MealEvolutionResult(this.meal, this.fitnessTrace);
 }

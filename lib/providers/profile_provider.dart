@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../algorithms/daily_carry.dart';
+import '../algorithms/weekly_adaptive_goal.dart';
 import '../app_clock.dart';
 import '../models/user_profile.dart';
 import '../services/firestore_service.dart';
@@ -11,16 +11,19 @@ import '../services/firestore_service.dart';
 /// [updateWeight], [applyCalorieAdjustment]) persist to Firestore and notify
 /// listeners so every consumer recomputes its calorie/macro targets reactively.
 ///
-/// [dailyEffectiveGoal] / [effectiveMacroGoals] layer the rule-based daily
-/// calorie carry-forward on top of the profile's weekly-adapted [calorieGoal].
-/// They are **provider-level, transient state** — never persisted, never visible
-/// to the weekly [AdaptationEngine], recomputed on [load]/[refresh].
+/// [dailyEffectiveGoal] / [effectiveMacroGoals] expose today's weekly-adaptive
+/// targets — `(weekly_goal − week_consumed) / days_left`, clamped ±10%. They
+/// are **provider-level, transient state** — never persisted, never visible to
+/// the weekly [AdaptationEngine], recomputed on [load]/[refresh].
 class ProfileProvider extends ChangeNotifier {
   final _fs = FirestoreService();
 
   UserProfile? _profile;
   bool _isLoading = false;
   double? _dailyEffectiveGoal;
+  double? _weeklyEffectiveProtein;
+  double? _weeklyEffectiveCarbs;
+  double? _weeklyEffectiveFat;
 
   UserProfile? get profile => _profile;
   bool get isLoading => _isLoading;
@@ -31,19 +34,17 @@ class ProfileProvider extends ChangeNotifier {
   int get dailyEffectiveGoal =>
       (_dailyEffectiveGoal ?? _profile?.calorieGoal ?? 2000).round();
 
-  /// Macro targets scaled to [dailyEffectiveGoal]. Same ratios as
-  /// [UserProfile.macroGoals] but applied to the daily-adjusted calorie number.
+  /// Per-macro weekly-adaptive targets. Each nutrient is redistributed
+  /// independently from its own weekly remaining budget, so protein, carbs and
+  /// fat adjust at their own rates regardless of calorie adherence.
   Map<String, int> get effectiveMacroGoals {
     final p = _profile;
     if (p == null) return {};
-    final base = p.calorieGoal;
-    if (base <= 0) return p.macroGoals;
-    final scale = dailyEffectiveGoal / base;
     final m = p.macroGoals;
     return {
-      'protein': (m['protein']! * scale).round(),
-      'carbs': (m['carbs']! * scale).round(),
-      'fat': (m['fat']! * scale).round(),
+      'protein': (_weeklyEffectiveProtein ?? m['protein']!.toDouble()).round(),
+      'carbs': (_weeklyEffectiveCarbs ?? m['carbs']!.toDouble()).round(),
+      'fat': (_weeklyEffectiveFat ?? m['fat']!.toDouble()).round(),
       'fiber': m['fiber']!,
       'sugar': m['sugar']!,
       'sodium': m['sodium']!,
@@ -70,27 +71,65 @@ class ProfileProvider extends ChangeNotifier {
     }
   }
 
-  /// Computes today's daily-carry-adjusted goal from yesterday's food logs.
-  /// Fail-safe: falls back to the profile's base goal on any error.
+  /// Computes today's weekly-adaptive targets for calories and each macro.
+  ///
+  /// Loads all food logs from Monday of the current ISO week to today, then
+  /// applies [WeeklyAdaptiveGoal.adjust] independently per nutrient so the
+  /// user can still hit their **weekly** goals even after over/under days.
+  /// Fail-safe: all effective goals fall back to base profile values on error.
   Future<void> _computeDailyGoal(String uid) async {
     final p = _profile;
     if (p == null) return;
     try {
-      final yesterday = appToday().subtract(const Duration(days: 1));
-      final logs = await _fs.getFoodLogsForDate(uid, yesterday);
-      if (logs.isEmpty) {
-        _dailyEffectiveGoal = null; // no data → use base goal
-        return;
+      final today = appToday();
+      final monday = today.subtract(Duration(days: today.weekday - 1));
+      final weekEnd = today; // exclude today's logs — goal is fixed for the current day
+      final logs = await _fs.getFoodLogsForDateRange(uid, monday, weekEnd);
+
+      final daysLeft = 8 - today.weekday; // Mon→7, Sun→1
+
+      double sumCals = 0, sumProt = 0, sumCarbs = 0, sumFat = 0;
+      for (final f in logs) {
+        sumCals += f.totalCalories;
+        sumProt += f.totalProtein;
+        sumCarbs += f.totalCarbs;
+        sumFat += f.totalFat;
       }
-      final yesterdayLogged =
-          logs.fold<double>(0, (s, f) => s + f.totalCalories);
-      _dailyEffectiveGoal = DailyCarry.dailyAdjustedGoal(
-        baseGoal: p.calorieGoal.toDouble(),
-        yesterdayLogged: yesterdayLogged,
+
+      _dailyEffectiveGoal = WeeklyAdaptiveGoal.adjust(
+        base: p.calorieGoal.toDouble(),
+        weekConsumed: sumCals,
+        daysLeft: daysLeft,
+      );
+      _weeklyEffectiveProtein = WeeklyAdaptiveGoal.adjust(
+        base: p.macroGoals['protein']!.toDouble(),
+        weekConsumed: sumProt,
+        daysLeft: daysLeft,
+      );
+      _weeklyEffectiveCarbs = WeeklyAdaptiveGoal.adjust(
+        base: p.macroGoals['carbs']!.toDouble(),
+        weekConsumed: sumCarbs,
+        daysLeft: daysLeft,
+      );
+      _weeklyEffectiveFat = WeeklyAdaptiveGoal.adjust(
+        base: p.macroGoals['fat']!.toDouble(),
+        weekConsumed: sumFat,
+        daysLeft: daysLeft,
       );
     } catch (_) {
-      _dailyEffectiveGoal = null; // error → use base goal
+      _dailyEffectiveGoal = null;
+      _weeklyEffectiveProtein = null;
+      _weeklyEffectiveCarbs = null;
+      _weeklyEffectiveFat = null;
     }
+  }
+
+  /// Re-runs the weekly-adaptive goal computation without re-fetching the profile.
+  /// Call this after any food-logging operation so screens see up-to-date effective
+  /// goals in the same session.
+  Future<void> recomputeGoal(String uid) async {
+    await _computeDailyGoal(uid);
+    notifyListeners();
   }
 
   /// Persists [p] and updates the cache. Used by onboarding and the edit screen.

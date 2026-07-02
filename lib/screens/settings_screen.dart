@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart';
 import '../providers/profile_provider.dart';
 import '../providers/theme_provider.dart';
@@ -17,6 +18,20 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  bool _showGoalPopup = true;
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((p) {
+      if (mounted) {
+        setState(() {
+          _showGoalPopup = !(p.getBool('hideGoalAdjustmentPopup') ?? false);
+        });
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
@@ -94,6 +109,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           profile.copyWith(unitSystem: newUnit),
                         );
                       },
+                    ),
+                    Divider(height: 1, color: c.border, indent: 64),
+                    _settingsTile(
+                      context,
+                      icon: Icons.notifications_outlined,
+                      iconColor: AppColors.amber,
+                      title: 'Goal Adjustment Notification',
+                      subtitle: 'Remind me when today\'s calorie goal is adjusted',
+                      trailing: Switch(
+                        value: _showGoalPopup,
+                        onChanged: (val) async {
+                          final p = await SharedPreferences.getInstance();
+                          await p.setBool('hideGoalAdjustmentPopup', !val);
+                          if (val) {
+                            await p.remove('goalAdjustmentLastShown');
+                          }
+                          if (mounted) setState(() => _showGoalPopup = val);
+                        },
+                        activeTrackColor: AppColors.primary,
+                        activeThumbColor: Colors.white,
+                      ),
                     ),
                   ],
                 ),

@@ -17,7 +17,7 @@ class ProfileScreen extends StatelessWidget {
     final c = context.colors;
     final profileProvider = context.watch<ProfileProvider>();
     final profile = profileProvider.profile;
-    final macros = profileProvider.effectiveMacroGoals;
+    final macros = profile?.macroGoals ?? {};
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -115,7 +115,7 @@ class ProfileScreen extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Daily Targets',
+                        'Base Daily Targets',
                         style: GoogleFonts.spaceGrotesk(
                           color: AppColors.primary,
                           fontWeight: FontWeight.w600,
@@ -128,7 +128,7 @@ class ProfileScreen extends StatelessWidget {
                     child: Column(
                       children: [
                         Text(
-                          '${profileProvider.dailyEffectiveGoal}',
+                          '${profile?.calorieGoal ?? 2000}',
                           style: GoogleFonts.spaceGrotesk(
                             fontSize: 36,
                             fontWeight: FontWeight.w700,
