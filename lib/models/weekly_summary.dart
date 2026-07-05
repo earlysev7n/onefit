@@ -18,7 +18,8 @@ class WeeklySummary {
 
   // ── Reviewed-week performance (drove the decision) ────────────────────────
   final double calorieAdherence; // % of calorie goal (avg over logged days)
-  final double? proteinAdherence; // % of protein goal; null if too little logging
+  final double?
+  proteinAdherence; // % of protein goal; null if too little logging
   final int workoutsCompleted;
   final int workoutsPlanned;
   final double? avgRating; // avg perceived difficulty 1–5; null if unrated
@@ -35,7 +36,8 @@ class WeeklySummary {
   final int oldFat;
   final int newFat;
   final String difficultyBias; // 'up' | 'down' | 'same'
-  final bool volumeChanged; // whether the difficulty step actually moved sets (W2)
+  final bool
+  volumeChanged; // whether the difficulty step actually moved sets (W2)
   final String notes; // the "Why these changes?" reasoning
 
   const WeeklySummary({
@@ -109,12 +111,12 @@ class WeeklySummary {
   };
 
   factory WeeklySummary.fromMap(Map<String, dynamic> m, String id) {
-    DateTime _ts(dynamic v) => v is Timestamp ? v.toDate() : DateTime.now();
+    DateTime ts(dynamic v) => v is Timestamp ? v.toDate() : DateTime.now();
     return WeeklySummary(
       weekId: m['weekId'] ?? id,
-      generatedAt: _ts(m['generatedAt']),
-      weekStart: _ts(m['weekStart']),
-      weekEnd: _ts(m['weekEnd']),
+      generatedAt: ts(m['generatedAt']),
+      weekStart: ts(m['weekStart']),
+      weekEnd: ts(m['weekEnd']),
       calorieAdherence: (m['calorieAdherence'] as num?)?.toDouble() ?? 0,
       proteinAdherence: (m['proteinAdherence'] as num?)?.toDouble(),
       workoutsCompleted: (m['workoutsCompleted'] as num?)?.toInt() ?? 0,

@@ -136,7 +136,11 @@ class _TodaySnapshot extends StatelessWidget {
                   width: 72,
                   height: 72,
                   child: CustomPaint(
-                    painter: _RingPainter(calProgress, AppColors.primary, c.border),
+                    painter: _RingPainter(
+                      calProgress,
+                      AppColors.primary,
+                      c.border,
+                    ),
                     child: Center(
                       child: Text(
                         '${prov.todayCalories.round()}',
@@ -152,17 +156,11 @@ class _TodaySnapshot extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   'Calories',
-                  style: GoogleFonts.inter(
-                    color: c.muted,
-                    fontSize: 11,
-                  ),
+                  style: GoogleFonts.inter(color: c.muted, fontSize: 11),
                 ),
                 Text(
                   '/ ${prov.calorieGoal} kcal',
-                  style: GoogleFonts.inter(
-                    color: c.inactive,
-                    fontSize: 10,
-                  ),
+                  style: GoogleFonts.inter(color: c.inactive, fontSize: 10),
                 ),
               ],
             ),
@@ -174,10 +172,7 @@ class _TodaySnapshot extends StatelessWidget {
               children: [
                 Text(
                   'Protein',
-                  style: GoogleFonts.inter(
-                    color: c.muted,
-                    fontSize: 11,
-                  ),
+                  style: GoogleFonts.inter(color: c.muted, fontSize: 11),
                 ),
                 const SizedBox(height: 4),
                 ClipRRect(
@@ -238,10 +233,7 @@ class _TodaySnapshot extends StatelessWidget {
                 if (prov.todayWorkoutLog != null)
                   Text(
                     '${prov.todayWorkoutLog!.durationMinutes} min',
-                    style: GoogleFonts.inter(
-                      color: c.inactive,
-                      fontSize: 10,
-                    ),
+                    style: GoogleFonts.inter(color: c.inactive, fontSize: 10),
                   ),
               ],
             ),
@@ -308,19 +300,12 @@ class _WeeklyReportCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       'View your performance review, adjustments and reasoning',
-                      style: GoogleFonts.inter(
-                        color: c.muted,
-                        fontSize: 11,
-                      ),
+                      style: GoogleFonts.inter(color: c.muted, fontSize: 11),
                     ),
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: c.muted,
-                size: 22,
-              ),
+              Icon(Icons.chevron_right_rounded, color: c.muted, size: 22),
             ],
           ),
         ),
@@ -397,9 +382,7 @@ class _CalorieTrendChart extends StatelessWidget {
 
     final bars = days.asMap().entries.map((e) {
       final cal = prov.weeklyCalories[e.value] ?? 0.0;
-      final color = cal > goal * 1.05
-          ? AppColors.orange
-          : AppColors.primary;
+      final color = cal > goal * 1.05 ? AppColors.orange : AppColors.primary;
       return BarChartGroupData(
         x: e.key,
         barRods: [
@@ -444,10 +427,7 @@ class _CalorieTrendChart extends StatelessWidget {
                   showTitles: true,
                   getTitlesWidget: (v, _) => Text(
                     days[v.toInt()],
-                    style: GoogleFonts.inter(
-                      color: c.inactive,
-                      fontSize: 10,
-                    ),
+                    style: GoogleFonts.inter(color: c.inactive, fontSize: 10),
                   ),
                 ),
               ),
@@ -465,7 +445,7 @@ class _CalorieTrendChart extends StatelessWidget {
             barGroups: bars,
             barTouchData: BarTouchData(
               touchTooltipData: BarTouchTooltipData(
-                getTooltipItem: (group, _, rod, __) => BarTooltipItem(
+                getTooltipItem: (group, _, rod, _) => BarTooltipItem(
                   '${rod.toY.round()} kcal',
                   GoogleFonts.inter(
                     color: c.onBackground,
@@ -492,7 +472,7 @@ class _MacroTrendChart extends StatelessWidget {
     final c = context.colors;
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-    List<FlSpot> _spots(String macro) => days
+    List<FlSpot> spots(String macro) => days
         .asMap()
         .entries
         .map(
@@ -556,8 +536,9 @@ class _MacroTrendChart extends StatelessWidget {
                       showTitles: true,
                       getTitlesWidget: (v, _) {
                         final i = v.toInt();
-                        if (i < 0 || i >= days.length)
+                        if (i < 0 || i >= days.length) {
                           return const SizedBox.shrink();
+                        }
                         return Text(
                           days[i],
                           style: GoogleFonts.inter(
@@ -570,9 +551,9 @@ class _MacroTrendChart extends StatelessWidget {
                   ),
                 ),
                 lineBarsData: [
-                  _line(_spots('protein'), AppColors.primary),
-                  _line(_spots('carbs'), AppColors.purple),
-                  _line(_spots('fat'), AppColors.orange),
+                  _line(spots('protein'), AppColors.primary),
+                  _line(spots('carbs'), AppColors.purple),
+                  _line(spots('fat'), AppColors.orange),
                 ],
               ),
             ),
@@ -588,7 +569,7 @@ class _MacroTrendChart extends StatelessWidget {
     color: color,
     barWidth: 2,
     dotData: FlDotData(
-      getDotPainter: (_, __, ___, ____) =>
+      getDotPainter: (_, _, _, _) =>
           FlDotCirclePainter(radius: 3, color: color, strokeWidth: 0),
     ),
     belowBarData: BarAreaData(show: true, color: color.withOpacity(0.08)),
@@ -602,10 +583,7 @@ class _MacroTrendChart extends StatelessWidget {
         decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       ),
       const SizedBox(width: 4),
-      Text(
-        label,
-        style: GoogleFonts.inter(color: c.muted, fontSize: 11),
-      ),
+      Text(label, style: GoogleFonts.inter(color: c.muted, fontSize: 11)),
     ],
   );
 }
@@ -621,8 +599,8 @@ class _WeightSection extends StatelessWidget {
     final logs = prov.weightLogs;
     final useImperial = prov.profile?.unitSystem == 'imperial';
 
-    double _kg(double kg) => useImperial ? kg * 2.20462 : kg;
-    String _unit() => useImperial ? 'lbs' : 'kg';
+    double kg(double kg) => useImperial ? kg * 2.20462 : kg;
+    String unit() => useImperial ? 'lbs' : 'kg';
 
     return _SectionCard(
       title: 'Weight',
@@ -634,8 +612,8 @@ class _WeightSection extends StatelessWidget {
               height: 130,
               child: LineChart(
                 LineChartData(
-                  minY: logs.map((l) => _kg(l.weight)).reduce(math.min) - 2,
-                  maxY: logs.map((l) => _kg(l.weight)).reduce(math.max) + 2,
+                  minY: logs.map((l) => kg(l.weight)).reduce(math.min) - 2,
+                  maxY: logs.map((l) => kg(l.weight)).reduce(math.max) + 2,
                   gridData: FlGridData(
                     show: true,
                     drawVerticalLine: false,
@@ -674,15 +652,14 @@ class _WeightSection extends StatelessWidget {
                           .asMap()
                           .entries
                           .map(
-                            (e) =>
-                                FlSpot(e.key.toDouble(), _kg(e.value.weight)),
+                            (e) => FlSpot(e.key.toDouble(), kg(e.value.weight)),
                           )
                           .toList(),
                       isCurved: true,
                       color: AppColors.purple,
                       barWidth: 2,
                       dotData: FlDotData(
-                        getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(
+                        getDotPainter: (_, _, _, _) => FlDotCirclePainter(
                           radius: 3,
                           color: AppColors.purple,
                           strokeWidth: 0,
@@ -703,20 +680,20 @@ class _WeightSection extends StatelessWidget {
               children: [
                 _weightStat(
                   'Start',
-                  '${_kg(prov.startWeight!).toStringAsFixed(1)} ${_unit()}',
+                  '${kg(prov.startWeight!).toStringAsFixed(1)} ${unit()}',
                   c.muted,
                   c,
                 ),
                 _weightStat(
                   'Current',
-                  '${_kg(prov.latestWeight!).toStringAsFixed(1)} ${_unit()}',
+                  '${kg(prov.latestWeight!).toStringAsFixed(1)} ${unit()}',
                   AppColors.purple,
                   c,
                 ),
                 _weightStat(
                   'Change',
-                  '${(_kg(prov.latestWeight!) - _kg(prov.startWeight!)) >= 0 ? '+' : ''}${(_kg(prov.latestWeight!) - _kg(prov.startWeight!)).toStringAsFixed(1)} ${_unit()}',
-                  (_kg(prov.latestWeight!) - _kg(prov.startWeight!)).abs() < 0.1
+                  '${(kg(prov.latestWeight!) - kg(prov.startWeight!)) >= 0 ? '+' : ''}${(kg(prov.latestWeight!) - kg(prov.startWeight!)).toStringAsFixed(1)} ${unit()}',
+                  (kg(prov.latestWeight!) - kg(prov.startWeight!)).abs() < 0.1
                       ? c.muted
                       : AppColors.primary,
                   c,
@@ -730,66 +707,65 @@ class _WeightSection extends StatelessWidget {
                 logs.isEmpty
                     ? 'Log your weight to start tracking your trend'
                     : 'Log weight for 2+ days to see your trend',
-                style: GoogleFonts.inter(
-                  color: c.inactive,
-                  fontSize: 13,
-                ),
+                style: GoogleFonts.inter(color: c.inactive, fontSize: 13),
                 textAlign: TextAlign.center,
               ),
             ),
           const SizedBox(height: 14),
-          Builder(builder: (context) {
-            final loggedToday = prov.todayWeightLog != null;
-            return SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => _showLogWeightDialog(context),
-                icon: Icon(
-                  loggedToday ? Icons.edit_outlined : Icons.monitor_weight_outlined,
-                  size: 16,
-                ),
-                label: Text(
-                  loggedToday ? "Edit Today's Weight" : "Log Today's Weight",
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.purple,
-                  side: BorderSide(
-                    color: AppColors.purple,
-                    width: loggedToday ? 1.5 : 1.0,
+          Builder(
+            builder: (context) {
+              final loggedToday = prov.todayWeightLog != null;
+              return SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showLogWeightDialog(context),
+                  icon: Icon(
+                    loggedToday
+                        ? Icons.edit_outlined
+                        : Icons.monitor_weight_outlined,
+                    size: 16,
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                  label: Text(
+                    loggedToday ? "Edit Today's Weight" : "Log Today's Weight",
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
                   ),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  backgroundColor: loggedToday
-                      ? AppColors.purple.withValues(alpha: 0.08)
-                      : null,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.purple,
+                    side: BorderSide(
+                      color: AppColors.purple,
+                      width: loggedToday ? 1.5 : 1.0,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    backgroundColor: loggedToday
+                        ? AppColors.purple.withValues(alpha: 0.08)
+                        : null,
+                  ),
                 ),
-              ),
-            );
-          }),
+              );
+            },
+          ),
         ],
       ),
     );
   }
 
-  Widget _weightStat(String label, String value, Color color, AppColors c) => Column(
-    children: [
-      Text(
-        value,
-        style: GoogleFonts.spaceGrotesk(
-          color: color,
-          fontWeight: FontWeight.w700,
-          fontSize: 14,
-        ),
-      ),
-      Text(
-        label,
-        style: GoogleFonts.inter(color: c.muted, fontSize: 11),
-      ),
-    ],
-  );
+  Widget _weightStat(String label, String value, Color color, AppColors c) =>
+      Column(
+        children: [
+          Text(
+            value,
+            style: GoogleFonts.spaceGrotesk(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
+          ),
+          Text(label, style: GoogleFonts.inter(color: c.muted, fontSize: 11)),
+        ],
+      );
 
   void _showLogWeightDialog(BuildContext context) {
     final c = context.colors;
@@ -966,7 +942,7 @@ class _MilestonesSection extends StatelessWidget {
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: badges.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 10),
+          separatorBuilder: (_, _) => const SizedBox(width: 10),
           itemBuilder: (_, i) => _BadgeChip(badge: badges[i]),
         ),
       ),
@@ -993,14 +969,10 @@ class _BadgeChip extends StatelessWidget {
       width: 80,
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
-        color: badge.unlocked
-            ? badge.color.withOpacity(0.12)
-            : c.surface,
+        color: badge.unlocked ? badge.color.withOpacity(0.12) : c.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: badge.unlocked
-              ? badge.color.withOpacity(0.4)
-              : c.border,
+          color: badge.unlocked ? badge.color.withOpacity(0.4) : c.border,
         ),
       ),
       child: Column(
@@ -1062,10 +1034,7 @@ class _SectionCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   subtitle!,
-                  style: GoogleFonts.inter(
-                    color: c.inactive,
-                    fontSize: 11,
-                  ),
+                  style: GoogleFonts.inter(color: c.inactive, fontSize: 11),
                 ),
               ],
             ],
@@ -1119,10 +1088,7 @@ class _StatTile extends StatelessWidget {
                 ),
                 Text(
                   label,
-                  style: GoogleFonts.inter(
-                    color: c.muted,
-                    fontSize: 10,
-                  ),
+                  style: GoogleFonts.inter(color: c.muted, fontSize: 10),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

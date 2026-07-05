@@ -36,7 +36,7 @@ class DietaryFilter {
   ];
 
   // Dairy. Hidden for Lactose-intolerant and Vegan. `milk`/plant-milk guarded
-  // separately in [_matchesDairy].
+  // separately in [matchesDairy].
   static const List<String> _dairyPlain = [
     'cheese', 'yogurt', 'yoghurt', 'whey', 'cream', 'butter', 'custard',
     'ghee', 'casein',
@@ -58,13 +58,19 @@ class DietaryFilter {
       keywords.any(name.contains);
 
   /// Dairy match with the `milkfish`/plant-milk guards from seed derivation.
-  static bool _matchesDairy(String name) {
+  /// Public so [IngredientConverter.deriveAllergens] shares the same
+  /// intelligence. Expects a lowercased name.
+  static bool matchesDairy(String name) {
     if (_matchesAny(name, _dairyPlain)) return true;
     final isPlantMilk = _matchesAny(name, _plantMilks);
     return name.contains('milk') &&
         !name.contains('milkfish') &&
         !isPlantMilk;
   }
+
+  /// Tree-nut/peanut match (same list the Nut-free rule uses). Expects a
+  /// lowercased name.
+  static bool matchesNuts(String name) => _matchesAny(name, _nuts);
 
   /// Egg match, guarded against `eggplant`.
   static bool _matchesEgg(String name) =>
@@ -84,7 +90,7 @@ class DietaryFilter {
           break;
         case 'vegan':
           if (_matchesAny(name, _meat) ||
-              _matchesDairy(name) ||
+              matchesDairy(name) ||
               _matchesEgg(name) ||
               name.contains('honey')) {
             return true;
@@ -95,7 +101,7 @@ class DietaryFilter {
           break;
         case 'lactose-intolerant':
         case 'dairy-free':
-          if (_matchesDairy(name)) return true;
+          if (matchesDairy(name)) return true;
           break;
         case 'nut-free':
           if (_matchesAny(name, _nuts)) return true;

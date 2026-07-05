@@ -167,9 +167,9 @@ class UserProfile {
   String get bmiDisplay {
     final bmi = weight / ((height / 100) * (height / 100));
     String category;
-    if (bmi < 18.5)
+    if (bmi < 18.5) {
       category = 'Underweight';
-    else if (bmi < 25)
+    } else if (bmi < 25)
       category = 'Normal';
     else if (bmi < 30)
       category = 'Overweight';
@@ -198,7 +198,8 @@ class UserProfile {
       workoutSplit: map['workoutSplit'] ?? 'Full Body Training',
       calorieAdjustment: map['calorieAdjustment'] ?? 0,
       lastAdaptationWeekId: map['lastAdaptationWeekId'] ?? '',
-      pinnedExercises: (map['pinnedExercises'] as Map?)?.map(
+      pinnedExercises:
+          (map['pinnedExercises'] as Map?)?.map(
             (k, v) => MapEntry(k as String, List<String>.from(v ?? const [])),
           ) ??
           const {},

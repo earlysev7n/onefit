@@ -112,41 +112,65 @@ void main() {
     });
   });
 
-  // ── Difficulty / RPE branches (W1, W3) ────────────────────────────────────
+  // ── Difficulty / RPE vote aggregation ─────────────────────────────────────
   AdaptationResult diff({
     double completion = 0.7,
-    double? rating,
+    List<int> ratings = const [],
     String level = 'Intermediate',
   }) =>
       engine.compute(
         lastWeekCalorieAdherence: 100, // neutral
         lastWeekWorkoutCompletion: completion,
         currentExperienceLevel: level,
-        lastWeekAvgRating: rating,
+        lastWeekRatings: ratings,
       );
 
+  group('vote aggregation — worked combos (completion 0.7)', () {
+    test('[3,4,2,3] → hold', () {
+      expect(diff(ratings: [3, 4, 2, 3]).difficultyBias, 'same');
+    });
+    test('[2,2,3,2] → up', () {
+      expect(diff(ratings: [2, 2, 3, 2]).difficultyBias, 'up');
+    });
+    test('[3,4,4,5] → down', () {
+      expect(diff(ratings: [3, 4, 4, 5]).difficultyBias, 'down');
+    });
+    test('[2,2,5,2] → hold (a single too-hard caps the step-up)', () {
+      expect(diff(ratings: [2, 2, 5, 2]).difficultyBias, 'same');
+    });
+  });
+
   group('W1 too-hard feedback eases volume', () {
-    test('completing fine but rated hard → down', () {
-      expect(diff(completion: 0.6, rating: 4.5).difficultyBias, 'down');
+    test('completing fine but week felt hard → down', () {
+      expect(diff(completion: 0.6, ratings: [4, 5]).difficultyBias, 'down');
     });
 
-    test('high completion + hard → held same (not down)', () {
-      // 0.9 completion would step up; a hard rating holds it steady.
-      expect(diff(completion: 0.9, rating: 4.0).difficultyBias, 'same');
+    test('high completion but all-hard → eased down', () {
+      // 0.9 completion would step up; a strongly hard week (sum ≤ −2) eases.
+      expect(diff(completion: 0.9, ratings: [4, 4, 4]).difficultyBias, 'down');
     });
 
-    test('struggling + hard → stays down', () {
-      expect(diff(completion: 0.3, rating: 5.0).difficultyBias, 'down');
+    test('high completion + one too-hard session → step-up cancelled to same', () {
+      // [1,5] nets 0 but the "too hard" (5) safety-blocks the completion step-up.
+      expect(diff(completion: 0.9, ratings: [1, 5]).difficultyBias, 'same');
+    });
+
+    test('struggling + too hard → stays down', () {
+      expect(diff(completion: 0.3, ratings: [5, 5]).difficultyBias, 'down');
     });
   });
 
   group('W3 easy-rating up-gate tightened to 0.7', () {
     test('partial-skipper (0.6) rated easy → NOT bumped up', () {
-      expect(diff(completion: 0.6, rating: 1.5).difficultyBias, 'same');
+      expect(diff(completion: 0.6, ratings: [1, 1]).difficultyBias, 'same');
     });
 
     test('adhered (0.75) rated easy → bumped up', () {
-      expect(diff(completion: 0.75, rating: 1.5).difficultyBias, 'up');
+      expect(diff(completion: 0.75, ratings: [2, 2]).difficultyBias, 'up');
+    });
+
+    test('struggling but rated easy → still down (safety wins)', () {
+      expect(diff(completion: 0.3, ratings: [1, 1]).difficultyBias, 'down');
     });
   });
 

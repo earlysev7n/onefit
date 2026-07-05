@@ -288,18 +288,22 @@ Toggle the "Edit session" button (visible before a workout starts). While editin
 
 ### Meal Tab (inside PlansScreen)
 
-Shows meal cards for Breakfast, Lunch, Dinner, Snack. Each card can be:
-- **Generated / completed** via `_generateMeal(mealType)` or **all at once** via `_generateAll()` — both run `GeneticAlgorithm.completeMeal` to fill the meal's *remaining* calorie budget with complementary ingredients.
-- **Logged** via `_logPendingMeal(mealType)` → `PlanProvider.setMeal(saveToFirestore: true)` → `_saveMealToFirestore` writes each ingredient as its own `FoodItem` (`barcode: 'ai_generated'`).
-- **Viewed** in `RecipeScreen`.
+Shows meal cards for Breakfast, Lunch, Dinner, Snack. The tab is split into two modules (thesis architecture):
 
-Meal generation flow — **budget-aware completion** (`_generateMeal` / `_generateAll`):
-1. `_allIngredients` is loaded once via `FirestoreService.getIngredients()` (reads the `ingredients` collection; seed it with the Profile → "Seed Ingredients" button, gated by `kShowSeedTools`, which also calls `clearIngredientCache()`). An empty pool surfaces a "not seeded" SnackBar.
-2. **Logged food is accounted for, not skipped.** Both generators first call `_effectiveGoalForToday()` → today's goal nudged by yesterday's over/under-eating (`DailyCarry`, see CLAUDE.md), shown via a one-off snackbar; this `goal` is used **only for sizing**, never as the displayed goal. `_generateAll()` uses `GeneticAlgorithm.mealBudgets(goal, loggedCalsByMeal)` to split the day's *remaining* budget across meals (so logged + generated ≈ goal); `_generateMeal(mealType)` fills one meal to `ratio·goal − loggedCals(meal)`. Each calls `GeneticAlgorithm().completeMeal(...)` with `presentCategories` (from `_inferCategory` over the meal's logged `FoodItem`s) so additions **complement** what's already logged (logged protein → carb + fruit, not more protein). The result (`scaleToCalories` + `closeResidual`, landing within ~±75 kcal of budget) is the *additions only* and becomes the pending meal.
-3. A card with both logged items (orange) and pending additions (green) renders them together; **"Log Additions"** persists only the new items (logged food is already saved → no double-save). A logged-only card shows **"Complete meal"** (auto-fill) alongside "Log Food" (manual). The macro summary and Recipe both include logged + pending.
-4. **Fail-safe:** an empty pool / no-match → `_showNoMatchMessage()`; a meal/day already at-or-over its calorie share → an info SnackBar and no additions (never overloads). There is **no day selector** — meals are always generated and logged for *today*. The 7-day `generatePlan` is retained for tests but no longer driven by the Meal tab.
+**Module 1 — Meal Planning (Generate Meal, before eating):**
+1. A card's **Generate** button → `_startGenerateFlow(mealType, label)` → option bottom sheet (`_chooseGenerateOption`): **Use Available Ingredients** (Option A) or **Generate Automatically** (Option B).
+2. **Option A** pushes `FoodLogScreen(pickerMode: true)` — the user multi-selects available foods (USDA search / barcode / history, *no grams asked*); picks come back as per-100g `MealIngredient`s (`IngredientConverter`). After a `DietaryFilter.violates` pre-screen, `GeneticAlgorithm.optimizeMealPortions` evolves the **gram vector** over the fixed picked set. **Option B** runs `evolveMeal` over the seeded `ingredients` pool (loaded once via `FirestoreService.getIngredients()`; empty pool surfaces a "not seeded" SnackBar) with `presentCategories` + cuisine + `avoidIds`.
+3. Both options size to the meal's *remaining* budget: `ratio·dailyEffectiveGoal − loggedCals(meal)` (≤ 30 kcal → info SnackBar, no generation).
+4. The result opens the **accept-mode `RecipeScreen`** (`_reviewAndAccept` loop): fresh OpenAI recipe + ingredients with GA grams + expandable macro/micro nutrition summary + **Accept / Regenerate**. Accept → `PlanProvider.setMeal(saveToFirestore: true)` → `_saveMealToFirestore` writes each ingredient as its own `FoodItem` (`barcode: 'ai_generated'`) → `_loadTodayLogs()` + `recomputeGoal`. Regenerate re-runs the same option (A keeps the picked pool; B avoids the shown ingredient ids). Back = discard.
+5. The top-bar **All** button (`_generateAll`) still uses the **pending staging**: `GeneticAlgorithm.mealBudgets(goal, loggedCalsByMeal)` splits the day's remaining budget across meals; results become green *pending* rows and **"Log Additions"** persists only the new items (no double-save).
 
-Calorie split: Breakfast 25%, Lunch 35%, Dinner 30%, Snack 10% of `profile.calorieGoal`.
+**Module 2 — Nutrition Tracking (what was actually eaten):**
+- **Log Food / Add food** buttons open the regular `FoodLogScreen` (USDA search, barcode, history) — logging never triggers generation; daily totals/remaining update reactively through the providers.
+- **Tap any logged row** → `_showEditLoggedFood` bottom sheet: edit grams (gram-based items, incl. accepted `ai_generated` ones) or servings, or delete — writes only the `quantity` multiplier via `FirestoreService.updateFoodLog`.
+
+**Fail-safe:** empty pool / no match / restriction-emptied pool → `_showNoMatchMessage()` ("No ingredients match your dietary restrictions"); a meal/day at-or-over its calorie share → info SnackBar (never overloads). No day selector — meals are always for *today*. `completeMeal` and the 7-day `generatePlan` are retained for tests but no longer driven by the Meal tab.
+
+Calorie split: Breakfast 25%, Lunch 35%, Dinner 30%, Snack 10% of the daily effective goal.
 
 ---
 
@@ -420,7 +424,9 @@ Calorie split: Breakfast 25%, Lunch 35%, Dinner 30%, Snack 10% of `profile.calor
 
 **Save flow:** selecting any food item → "Add" button → `FirestoreService.logFoodItem(FoodItem)` → `users/{uid}/food_logs/{logId}`.
 
-**State:** `_results` (USDA search), `_history`, `_isLoading`, `_hasSearched`, `_loggingIds` (tracks in-flight logs to disable buttons).
+**Picker mode (`pickerMode: true`)** — the Meal-Planning ingredient picker (Module 1, Option A). Same three paths, but nothing is logged and **no grams are asked** (the GA decides portions): each selection is converted to a per-100g `MealIngredient` (`IngredientConverter`) and collected in a bottom chip basket; the AppBar "Done (N)" pops the `List<MealIngredient>` back to `_startGenerateFlow`. Dietary restrictions are **blocking** here: search results are filtered (as always), history is filtered too, a conflicting barcode scan is rejected with a message, and `_addPicked` re-checks `DietaryFilter.violates`. History swipe-to-delete is disabled in picker mode.
+
+**State:** `_results` (USDA search), `_history`, `_isLoading`, `_hasSearched`, `_loggingIds` (tracks in-flight logs to disable buttons), `_picked` (picker-mode basket).
 
 **Connections:**
 - `FirestoreService.logFoodItem`, `getFoodLogsForDateRange`.
@@ -447,19 +453,23 @@ Calorie split: Breakfast 25%, Lunch 35%, Dinner 30%, Snack 10% of `profile.calor
 ### RecipeScreen
 **File:** `lib/screens/recipe_screen.dart`
 
-**Purpose:** Shows step-by-step cooking instructions for a generated meal, plus the meal's ingredient list and nutritional summary. The GA meal's ingredients (with gram portions) are sent to **OpenAI** (`OpenAIService.generateRecipe`) which writes the recipe — the "Transformer" natural-language layer from the capstone objective.
+**Purpose:** Shows step-by-step cooking instructions for a generated meal, plus the meal's ingredient list and expandable macro/micro nutritional summary. The GA meal's ingredients (with gram portions) are sent to **OpenAI** (`OpenAIService.generateRecipe`) which writes the recipe — OpenAI never changes quantities; the GA is the nutrition source of truth.
+
+Two modes:
+- **View mode** (default) — the Recipe button on a meal card. Loads the cached `saved_recipes/{mealType}` doc first; bookmark toggles save/unsave; refresh regenerates wording.
+- **Accept mode** (`acceptMode: true`) — the Module-1 review step pushed by `_reviewAndAccept`. Always fetches a fresh recipe (a cached one wouldn't match the just-optimized grams), hides bookmark/refresh, and shows **Regenerate** / **Accept Meal** buttons (plus a "Rewrite recipe" text button — same grams, new wording). Pops `'accept'` (after best-effort `_saveRecipeDoc()`), `'regenerate'`, or null (back = discard). An OpenAI failure still offers **Accept Without Recipe** and **Regenerate Meal** so the user is never trapped.
 
 **State:** `_recipe`, `_isLoading`, `_error`, `_isSaved`, `_addedExtras`.
 
 **Key functions:**
-- `_loadSavedOrFetch()` — checks Firestore for a previously saved recipe for this meal type before generating, to avoid redundant API calls.
-- `_fetchRecipe()` — sends the meal's ingredients to `OpenAIService.generateRecipe`, maps the returned steps into the existing `_RecipeResult` (no image/missing-ingredients). The refresh button regenerates (OpenAI temperature gives variety).
-- Save button → saves the recipe's ingredients as `FoodItem` entries to `food_logs` via `FirestoreService`.
+- `_loadSavedOrFetch()` — checks Firestore for a previously saved recipe for this meal type before generating (skipped in accept mode).
+- `_fetchRecipe()` — sends the meal's ingredients (`'${grams}g ${name}'`) to `OpenAIService.generateRecipe`, maps the returned steps into `_RecipeResult`.
+- `_saveRecipeDoc()` — persists the recipe to `users/{uid}/saved_recipes/{mealType}` (shared by the bookmark toggle and Accept).
 
 **Connections:**
 - `OpenAIService` (`lib/services/openai_service.dart`) — generates the recipe text (hardcoded key constant; needs OpenAI account credits).
-- `FirestoreService.logFoodItem` — saves individual ingredients.
-- Launched from: `PlansScreen` Meal tab → recipe card tap.
+- `FirestoreService.logFoodItem` — saves individual "You'll also need" extras.
+- Launched from: `PlansScreen` Meal tab → Recipe button (view mode) or `_reviewAndAccept` (accept mode).
 
 ---
 

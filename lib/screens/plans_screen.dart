@@ -9,6 +9,8 @@ import '../algorithms/greedy_algorithm.dart';
 import '../algorithms/genetic_algorithm.dart';
 import '../services/firestore_service.dart';
 import '../services/exercise_db_service.dart';
+import '../services/dietary_filter.dart';
+import '../services/ingredient_converter.dart';
 import '../models/workout_log.dart';
 import '../models/exercise_stat.dart';
 import '../models/weight_log.dart';
@@ -198,10 +200,12 @@ class _WorkoutTabState extends State<_WorkoutTab>
   final GlobalKey _activeKey = GlobalKey();
 
   // ── Load tracking (progressive overload) ────────────────────────────────────
-  // Top-set weight (kg) / reps the user entered this session, keyed by exercise
-  // index. Folded into the workout log + exercise_stats on completion.
-  final Map<int, double> _topSetKg = {};
-  final Map<int, int> _topSetReps = {};
+  // Every set the user logged this session, keyed by exercise index — the
+  // source of truth folded into the workout log + exercise_stats on completion.
+  final Map<int, List<SetEntry>> _loggedSets = {};
+  // Exercises the user explicitly skipped this session (index) — logged as
+  // skipped, not counted as completed volume, and not progressed.
+  final Set<int> _skippedExercises = {};
   // Per-exercise last/PR summary (keyed by exercise id) for the inline target.
   Map<String, ExerciseStat> _exerciseStats = {};
   // Persistent controllers for the active-card inputs (survive the 1 Hz rebuild).
@@ -468,7 +472,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   ? lastWeekWorkouts / plannedDays
                   : 1.0,
               currentExperienceLevel: profile.experienceLevel,
-              lastWeekAvgRating: lastWeekAvgRating,
+              lastWeekRatings: lastWeekRatings,
               weightChangeKg: weightChangeKg,
               fitnessGoal: profile.fitnessGoal,
               lastWeekProteinAdherence: proteinAdherence,
@@ -668,14 +672,20 @@ class _WorkoutTabState extends State<_WorkoutTab>
     return '${v.toStringAsFixed(v % 1 == 0 ? 0 : 1)} $_weightUnit';
   }
 
-  /// Stores whatever weight/reps are currently typed for the active exercise.
-  /// Called on every "Done Set" so the latest entry becomes the logged top set.
+  /// Appends the currently-typed weight/reps as one logged set for the active
+  /// exercise. Called on every "Done Set", so each set is recorded as performed
+  /// (a missed rep = a lower logged number; no separate prompt needed). Weight
+  /// is omitted for bodyweight moves.
   void _captureActiveInput() {
     if (_activeExerciseIndex < 0) return;
     final w = double.tryParse(_weightController.text.trim());
-    if (w != null && w > 0) _topSetKg[_activeExerciseIndex] = _toKg(w);
     final r = int.tryParse(_repsController.text.trim());
-    if (r != null && r > 0) _topSetReps[_activeExerciseIndex] = r;
+    final entry = SetEntry(
+      weightKg: (w != null && w > 0) ? _toKg(w) : null,
+      reps: (r != null && r > 0) ? r : null,
+    );
+    if (entry.weightKg == null && entry.reps == null) return;
+    (_loggedSets[_activeExerciseIndex] ??= []).add(entry);
   }
 
   static const _lowerBodyMuscles = {'quads', 'glutes', 'hamstrings', 'calves'};
@@ -704,16 +714,46 @@ class _WorkoutTabState extends State<_WorkoutTab>
     if (_selectedDay < 0 || _selectedDay >= _plan.length) return;
     final day = _plan[_selectedDay];
     if (exIdx < 0 || exIdx >= day.exercises.length) return;
-    final target = _targetFor(day.exercises[exIdx]);
+    final we = day.exercises[exIdx];
+    final stat = _exerciseStats[we.exercise.id];
+
+    void setWeight(double? kg) {
+      if (kg == null) {
+        _weightController.clear();
+      } else {
+        final w = _fromKg(kg);
+        _weightController.text = w % 1 == 0
+            ? w.toStringAsFixed(0)
+            : w.toStringAsFixed(1);
+      }
+    }
+
+    // Week 2+: pre-fill the first set from the full last session run through the
+    // per-set suggester (later sets inherit whatever the user logs for set 1).
+    if (stat != null && stat.lastSets.isNotEmpty) {
+      final isLowerOrCompound =
+          GreedyAlgorithm.isStapleCompound(we.exercise) ||
+          we.exercise.primaryMuscles.any(_lowerBodyMuscles.contains);
+      final targets = nextSetTargets(
+        lastSets: stat.lastSets,
+        repRange: we.reps,
+        isLowerOrCompound: isLowerOrCompound,
+      );
+      if (targets.isNotEmpty) {
+        setWeight(targets.first.weightKg);
+        _repsController.text = targets.first.reps?.toString() ?? '';
+        return;
+      }
+    }
+
+    // Fallback: single-target double progression from the legacy top set.
+    final target = _targetFor(we);
     if (target == null) {
       _weightController.clear();
       _repsController.clear();
       return;
     }
-    final w = _fromKg(target.weightKg);
-    _weightController.text = w % 1 == 0
-        ? w.toStringAsFixed(0)
-        : w.toStringAsFixed(1);
+    setWeight(target.weightKg);
     _repsController.text = target.reps.toString();
   }
 
@@ -1280,6 +1320,18 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     final now = appNow();
+    final logExercises = [
+      for (int i = 0; i < day.exercises.length; i++)
+        WorkoutLogExercise(
+          name: day.exercises[i].exercise.name,
+          sets: day.exercises[i].sets,
+          reps: day.exercises[i].reps,
+          restSeconds: day.exercises[i].restSeconds,
+          primaryMuscles: day.exercises[i].exercise.primaryMuscles,
+          loggedSets: _loggedSets[i] ?? const [],
+          skipped: _skippedExercises.contains(i),
+        ),
+    ];
     final log = WorkoutLog(
       id: '',
       userId: uid,
@@ -1290,27 +1342,20 @@ class _WorkoutTabState extends State<_WorkoutTab>
       durationMinutes: durationMinutes,
       completedAt: now,
       rating: rating,
-      exercises: [
-        for (int i = 0; i < day.exercises.length; i++)
-          WorkoutLogExercise(
-            name: day.exercises[i].exercise.name,
-            sets: day.exercises[i].sets,
-            reps: day.exercises[i].reps,
-            restSeconds: day.exercises[i].restSeconds,
-            primaryMuscles: day.exercises[i].exercise.primaryMuscles,
-            weightKg: _topSetKg[i],
-            repsDone: _topSetReps[i],
-          ),
-      ],
+      exercises: logExercises,
     );
     final fs = FirestoreService();
     await fs.saveWorkoutLog(log);
 
-    // Persist per-exercise top sets and detect PRs against the cached bests.
+    // Persist per-exercise sets + top-set PR (skipped exercises don't progress).
     final prs = <String>[];
     for (int i = 0; i < day.exercises.length; i++) {
-      final kg = _topSetKg[i];
-      if (kg == null) continue;
+      if (_skippedExercises.contains(i)) continue;
+      final logged = _loggedSets[i] ?? const [];
+      if (logged.isEmpty) continue;
+      final top = logExercises[i].topSet;
+      final kg = top?.weightKg;
+      if (kg == null || kg <= 0) continue; // bodyweight/timed → no weight PR
       final ex = day.exercises[i].exercise;
       final prevBest = _exerciseStats[ex.id]?.bestWeightKg ?? 0;
       if (kg > prevBest) prs.add(ex.name);
@@ -1319,7 +1364,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
         exerciseId: ex.id,
         name: ex.name,
         weightKg: kg,
-        reps: _topSetReps[i],
+        reps: top?.reps,
+        lastSets: logged,
       );
     }
     _loadExerciseStats(); // refresh last/PR cache for the cards
@@ -1364,8 +1410,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
     _workoutStartedAt = null;
     _elapsedSeconds = 0;
     _completedExercises.clear();
-    _topSetKg.clear();
-    _topSetReps.clear();
+    _loggedSets.clear();
+    _skippedExercises.clear();
     _sessionStarted = false;
     _warmupComplete = false;
     _warmupRunning = false;
@@ -1405,8 +1451,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
       _sessionStarted = true;
       _workoutStartedAt = DateTime.now();
       _elapsedSeconds = 0;
-      _topSetKg.clear();
-      _topSetReps.clear();
+      _loggedSets.clear();
+      _skippedExercises.clear();
       _weightController.clear();
       _repsController.clear();
       _warmupMoves = warmups;
@@ -1458,6 +1504,35 @@ class _WorkoutTabState extends State<_WorkoutTab>
     _setTimer?.cancel();
     if (mounted) setState(() => _setRunning = false);
     _doneSet(we);
+  }
+
+  /// Skips the active exercise: flags it, discards any partial sets, and
+  /// advances (no rest) to the next exercise — or ends the session if it was
+  /// the last. Skipped exercises are logged as skipped and never progressed.
+  void _skipExercise(WorkoutExercise we) {
+    final idx = _activeExerciseIndex;
+    if (idx < 0) return;
+    _setTimer?.cancel();
+    _restTimer?.cancel();
+    final day = _plan[_selectedDay];
+    _loggedSets.remove(idx);
+    _skippedExercises.add(idx);
+    if (idx + 1 < day.exercises.length) {
+      setState(() {
+        _completedExercises.add(idx);
+        _inRest = false;
+        _setRunning = false;
+        _waitingForReady = true;
+      });
+      _scrollToActive();
+    } else {
+      setState(() {
+        _completedExercises.add(idx);
+        _inRest = false;
+        _setRunning = false;
+      });
+      _autoComplete(day);
+    }
   }
 
   void _doneSet(WorkoutExercise we) {
@@ -1591,8 +1666,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
               reps: e.reps,
               restSeconds: e.restSeconds,
               primaryMuscles: e.exercise.primaryMuscles,
-              weightKg: null,
-              repsDone: null,
+              loggedSets: const [],
+              skipped: false,
             ),
           )
           .toList(),
@@ -3514,6 +3589,18 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       ),
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: TextButton.icon(
+                      onPressed: () => _skipExercise(we),
+                      icon: const Icon(Icons.skip_next_rounded, size: 18),
+                      label: Text(
+                        'Skip exercise',
+                        style: GoogleFonts.inter(fontSize: 13),
+                      ),
+                      style: TextButton.styleFrom(foregroundColor: c.muted),
+                    ),
+                  ),
                 ] else ...[
                   // Working sub-phase: per-set work timer counting down.
                   if (_loggedSetSummary().isNotEmpty)
@@ -3914,25 +4001,16 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
       (_loggedFoods[mealType] ?? []).map(_inferCategory).toSet();
 
   /// Coarse food group of a logged [FoodItem]: protein/grain/vegetable/fruit/fat.
-  /// FoodItems carry no category, so infer it from name hints + macro thresholds
-  /// (same cuts the GA uses to build its sub-pools).
-  String _inferCategory(FoodItem f) {
-    final n = f.name.toLowerCase();
-    if (RegExp(
-      r'\b(banana|apple|mango|papaya|strawberry|blueberry|orange|saba|grape|pineapple|watermelon|pear|berry|kiwi)\b',
-    ).hasMatch(n)) {
-      return 'fruit';
-    }
-    if (RegExp(r'\b(milk|yogurt|yoghurt|cheese|cottage|whey)\b').hasMatch(n) &&
-        !n.contains('milkfish')) {
-      return 'protein';
-    }
-    if (f.protein >= 8) return 'protein';
-    if (f.fat >= 8 && f.carbs < 10) return 'fat';
-    if (f.carbs >= 15 && f.protein < 8) return 'grain';
-    if (f.calories <= 60 && f.carbs < 15) return 'vegetable';
-    return 'other'; // unknown → blocks no slot
-  }
+  /// FoodItems carry no category, so infer it from name hints + macro
+  /// thresholds via the shared [IngredientConverter] heuristic (per-serving
+  /// values are passed directly — same absolute cuts as always).
+  String _inferCategory(FoodItem f) => IngredientConverter.inferCategory(
+    name: f.name,
+    caloriesPer100: f.calories,
+    proteinPer100: f.protein,
+    carbsPer100: f.carbs,
+    fatPer100: f.fat,
+  );
 
   void _showNoMatchMessage() {
     if (!mounted) return;
@@ -3972,68 +4050,235 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     return false;
   }
 
-  Future<void> _generateMeal(String mealType) async {
-    if (_profile == null || !_guardIngredients()) return;
-    setState(() => _loadingMeals.add(mealType));
-    try {
-      final goal = context
-          .read<ProfileProvider>()
-          .dailyEffectiveGoal
-          .toDouble();
-      // Fill this meal to its own natural slice, minus what's already logged in
-      // it — so completing a logged meal tops it up rather than doubling it.
-      final budget = (_ratioFor(mealType) * goal - _loggedCals(mealType)).clamp(
-        0.0,
-        double.infinity,
+  // ── Meal Planning (Module 1): Generate Meal → GA → review → accept ────────
+
+  /// Entry point for the meal-card **Generate** button. The user picks how to
+  /// plan (Option A: their available ingredients; Option B: automatic from the
+  /// seeded pool), the GA optimizes all grams against the meal's remaining
+  /// calorie budget, and the result is reviewed on the accept-mode
+  /// RecipeScreen before anything is logged.
+  Future<void> _startGenerateFlow(String mealType, String label) async {
+    if (_profile == null) return;
+    final goal = context.read<ProfileProvider>().dailyEffectiveGoal.toDouble();
+    final budget = (_ratioFor(mealType) * goal - _loggedCals(mealType)).clamp(
+      0.0,
+      double.infinity,
+    );
+    final hasLogged = (_loggedFoods[mealType] ?? []).isNotEmpty;
+    if (budget <= 30) {
+      _showInfo(
+        hasLogged
+            ? 'This meal already meets its calorie share.'
+            : 'No calories left for this meal today.',
       );
-      final hasLogged = (_loggedFoods[mealType] ?? []).isNotEmpty;
-      if (budget <= 30) {
-        _showInfo(
-          hasLogged
-              ? 'This meal already meets its calorie share.'
-              : 'No calories left for this meal today.',
-        );
-        return;
-      }
-      // On regenerate: penalise the ingredients already shown to the user so
-      // the GA explores alternatives rather than re-converging on the same pick.
-      final prior = _pending(mealType);
-      final avoidIds = prior != null
-          ? prior.items.map((i) => i.ingredient.id).toSet()
-          : const <String>{};
-      final meal = GeneticAlgorithm()
-          .evolveMeal(
-            allIngredients: _allIngredients,
-            profile: _profile!,
-            mealType: mealType,
-            calorieBudget: budget,
-            presentCategories: _presentCategories(mealType),
-            cuisine: _cuisine,
-            avoidIds: avoidIds,
-          )
-          .meal;
-      if (meal.items.isEmpty) {
+      return;
+    }
+
+    final option = await _chooseGenerateOption();
+    if (option == null || !mounted) return;
+
+    List<MealIngredient>? pickedPool;
+    if (option == 'available') {
+      pickedPool = await Navigator.push<List<MealIngredient>>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => FoodLogScreen(mealType: mealType, pickerMode: true),
+        ),
+      );
+      if (pickedPool == null || pickedPool.isEmpty || !mounted) return;
+      // Defense in depth: the picker already blocks restricted foods, but the
+      // pool must never reach the GA with a violating name.
+      final restrictions = _profile!.dietaryRestrictions;
+      pickedPool = pickedPool
+          .where((i) => !DietaryFilter.violates(i.name, restrictions))
+          .toList();
+      if (pickedPool.isEmpty) {
         _showNoMatchMessage();
         return;
       }
-      _setPending(mealType, meal);
-      context.read<PlanProvider>().setMeal(
-        mealType,
-        meal,
-        saveToFirestore: false,
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not generate $mealType: $e'),
-            backgroundColor: Colors.redAccent,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+    } else if (!_guardIngredients()) {
+      return;
+    }
+
+    // One closure serves both first generation and every Regenerate, keeping
+    // the chosen option (and Option A's picked pool) fixed for the session.
+    // Option A ignores avoidIds — all picked ingredients must stay; a fresh
+    // RNG explores different gram vectors instead.
+    Meal? run({Set<String> avoidIds = const {}}) {
+      final result = option == 'available'
+          ? GeneticAlgorithm().optimizeMealPortions(
+              ingredients: pickedPool!,
+              profile: _profile!,
+              mealType: mealType,
+              calorieBudget: budget,
+            )
+          : GeneticAlgorithm().evolveMeal(
+              allIngredients: _allIngredients,
+              profile: _profile!,
+              mealType: mealType,
+              calorieBudget: budget,
+              presentCategories: _presentCategories(mealType),
+              cuisine: _cuisine,
+              avoidIds: avoidIds,
+            );
+      return result.meal.items.isEmpty ? null : result.meal;
+    }
+
+    setState(() => _loadingMeals.add(mealType));
+    Meal? meal;
+    try {
+      meal = run();
     } finally {
       if (mounted) setState(() => _loadingMeals.remove(mealType));
+    }
+    if (!mounted) return;
+    if (meal == null) {
+      _showNoMatchMessage();
+      return;
+    }
+    await _reviewAndAccept(mealType, label, meal, run);
+  }
+
+  /// Option chooser: 'available' (Option A) | 'auto' (Option B) | null.
+  Future<String?> _chooseGenerateOption() {
+    final c = context.colors;
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
+              child: Text(
+                'Generate Meal',
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: c.onBackground,
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.kitchen_rounded,
+                color: AppColors.primary,
+              ),
+              title: Text(
+                'Use My Ingredients',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w600,
+                  color: c.onBackground,
+                ),
+              ),
+              subtitle: Text(
+                'Pick the ingredients you have and AI decides the amounts',
+                style: GoogleFonts.inter(fontSize: 12, color: c.muted),
+              ),
+              onTap: () => Navigator.pop(sheetCtx, 'available'),
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.auto_awesome_rounded,
+                color: AppColors.purple,
+              ),
+              title: Text(
+                'Generate Automatically',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w600,
+                  color: c.onBackground,
+                ),
+              ),
+              subtitle: Text(
+                'AI picks foods and amounts from the ingredient database',
+                style: GoogleFonts.inter(fontSize: 12, color: c.muted),
+              ),
+              onTap: () => Navigator.pop(sheetCtx, 'auto'),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Accept/Regenerate loop over the accept-mode [RecipeScreen]. Accept logs
+  /// the meal through the standard `ai_generated` FoodItem path, after which
+  /// it behaves like any logged meal (editable, deletable). Back = discard.
+  Future<void> _reviewAndAccept(
+    String mealType,
+    String label,
+    Meal meal,
+    Meal? Function({Set<String> avoidIds}) regenerate,
+  ) async {
+    var current = meal;
+    while (mounted) {
+      final result = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              RecipeScreen(meal: current, mealLabel: label, acceptMode: true),
+        ),
+      );
+      if (!mounted) return;
+      if (result == 'accept') {
+        try {
+          // Same persistence path as staged meals: one 'ai_generated'
+          // FoodItem per ingredient — accepted food IS logged food.
+          await context.read<PlanProvider>().setMeal(
+            mealType,
+            current,
+            saveToFirestore: true,
+          );
+          await _loadTodayLogs();
+          final uid = FirebaseAuth.instance.currentUser?.uid;
+          if (uid != null && mounted) {
+            context.read<ProfileProvider>().recomputeGoal(uid).ignore();
+          }
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('$label added to your day!'),
+                backgroundColor: AppColors.primary,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error: $e'),
+                backgroundColor: Colors.redAccent,
+              ),
+            );
+          }
+        }
+        return;
+      }
+      if (result == 'regenerate') {
+        final avoid = current.items.map((i) => i.ingredient.id).toSet();
+        setState(() => _loadingMeals.add(mealType));
+        Meal? next;
+        try {
+          next = regenerate(avoidIds: avoid);
+        } finally {
+          if (mounted) setState(() => _loadingMeals.remove(mealType));
+        }
+        if (!mounted) return;
+        if (next == null) {
+          _showNoMatchMessage();
+          return;
+        }
+        current = next;
+        continue;
+      }
+      return; // back button — discard silently
     }
   }
 
@@ -4143,40 +4388,19 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     }
   }
 
+  /// Nutrition Tracking (Module 2): edit the consumed amount of a logged item
+  /// (grams for gram-based items — covers ai_generated and USDA logs — or a
+  /// servings multiplier otherwise), or delete it. Editing writes only the
+  /// `quantity` multiplier, so nutrition rescales without recomputation.
   Meal _mealFromLoggedFoods(String mealType, List<FoodItem> foods) {
-    final items = foods.map((f) {
-      final ing = MealIngredient(
-        id: f.id,
-        name: f.name,
-        calories: f.calories,
-        protein: f.protein,
-        carbs: f.carbs,
-        fat: f.fat,
-        fiber: f.fiber,
-        sugar: f.sugar,
-        sodium: f.sodium,
-        vitaminA: f.vitaminA,
-        vitaminC: f.vitaminC,
-        vitaminD: f.vitaminD,
-        vitaminE: f.vitaminE,
-        vitaminK: f.vitaminK,
-        vitaminB6: f.vitaminB6,
-        vitaminB12: f.vitaminB12,
-        folate: f.folate,
-        iron: f.iron,
-        calcium: f.calcium,
-        magnesium: f.magnesium,
-        potassium: f.potassium,
-        zinc: f.zinc,
-        phosphorus: f.phosphorus,
-        cuisine: 'universal',
-        dietaryTags: const [],
-      );
-      return MealItem(
-        ingredient: ing,
-        portionGrams: f.servingSize * f.quantity,
-      );
-    }).toList();
+    final items = foods
+        .map(
+          (f) => MealItem(
+            ingredient: IngredientConverter.fromFoodItem(f),
+            portionGrams: f.servingSize * f.quantity,
+          ),
+        )
+        .toList();
     return Meal(mealType: mealType, items: items);
   }
 
@@ -4443,7 +4667,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
           children: [
             Expanded(
               child: ElevatedButton.icon(
-                onPressed: () => _generateMeal(mealType),
+                onPressed: () => _startGenerateFlow(mealType, label),
                 icon: const Icon(Icons.auto_awesome_rounded, size: 15),
                 label: Text(
                   'Generate',
@@ -4525,46 +4749,20 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ...loggedFoods.map(
-          (food) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: AppColors.orange,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    food.name,
-                    style: GoogleFonts.inter(
-                      color: c.onBackground,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-                Text(
-                  '${food.quantity.toStringAsFixed(1)}× ${food.servingSize.round()}${food.servingSizeUnit}',
-                  style: GoogleFonts.inter(color: c.muted, fontSize: 12),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${food.totalCalories.round()} kcal',
-                  style: GoogleFonts.inter(color: c.subtle, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (pendingMeal != null) ...[
-          // Generated additions (green) — shown alongside any logged items
-          // (orange) above when completing a partially-logged meal.
-          ...pendingMeal.items.map(
-            (item) => Padding(
+          (food) => Dismissible(
+            key: ValueKey(food.id),
+            direction: DismissDirection.endToStart,
+            background: _deleteBg(),
+            onDismissed: (_) async {
+              final uid = FirebaseAuth.instance.currentUser?.uid;
+              if (uid == null) return;
+              await FirestoreService().deleteFoodLog(uid, food.id);
+              await _loadTodayLogs();
+              if (mounted) {
+                context.read<ProfileProvider>().recomputeGoal(uid).ignore();
+              }
+            },
+            child: Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 children: [
@@ -4572,14 +4770,14 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                     width: 6,
                     height: 6,
                     decoration: BoxDecoration(
-                      color: AppColors.primary,
+                      color: AppColors.orange,
                       shape: BoxShape.circle,
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      item.ingredient.name,
+                      food.name,
                       style: GoogleFonts.inter(
                         color: c.onBackground,
                         fontWeight: FontWeight.w500,
@@ -4587,15 +4785,73 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                     ),
                   ),
                   Text(
-                    '${item.portionGrams.round()}g',
+                    food.servingSizeUnit == 'g'
+                        ? '${(food.servingSize * food.quantity).round()}g'
+                        : '${food.quantity.toStringAsFixed(1)}× ${food.servingSize.round()}${food.servingSizeUnit}',
                     style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '${item.calories.round()} kcal',
+                    '${food.totalCalories.round()} kcal',
                     style: GoogleFonts.inter(color: c.subtle, fontSize: 12),
                   ),
                 ],
+              ),
+            ),
+          ),
+        ),
+        if (pendingMeal != null) ...[
+          // Generated additions (green) — shown alongside any logged items
+          // (orange) above when completing a partially-logged meal.
+          ...pendingMeal.items.map(
+            (item) => Dismissible(
+              key: ValueKey(item.ingredient.id),
+              direction: DismissDirection.endToStart,
+              background: _deleteBg(),
+              onDismissed: (_) {
+                final remaining = pendingMeal.items
+                    .where((i) => i != item)
+                    .toList();
+                _setPending(
+                  mealType,
+                  remaining.isEmpty
+                      ? null
+                      : Meal(mealType: mealType, items: remaining),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        item.ingredient.name,
+                        style: GoogleFonts.inter(
+                          color: c.onBackground,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${item.portionGrams.round()}g',
+                      style: GoogleFonts.inter(color: c.muted, fontSize: 12),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${item.calories.round()} kcal',
+                      style: GoogleFonts.inter(color: c.subtle, fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -4697,27 +4953,9 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              OutlinedButton(
-                onPressed: () => _generateMeal(mealType),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.purple,
-                  side: BorderSide(color: AppColors.purple),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 10,
-                    horizontal: 12,
-                  ),
-                  minimumSize: Size.zero,
-                ),
-                child: const Icon(Icons.refresh_rounded, size: 16),
-              ),
             ],
           )
         else if (hasManual)
-          // Logged-only meal: view a recipe for what's logged, or add more food.
           Row(
             children: [
               Expanded(
@@ -4761,7 +4999,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                   },
                   icon: const Icon(Icons.add_rounded, size: 15),
                   label: Text(
-                    'Add ingredient',
+                    'Add food',
                     style: GoogleFonts.inter(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
@@ -4834,28 +5072,25 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              OutlinedButton(
-                onPressed: () => _generateMeal(mealType),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.purple,
-                  side: BorderSide(color: AppColors.purple),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 10,
-                    horizontal: 12,
-                  ),
-                  minimumSize: Size.zero,
-                ),
-                child: const Icon(Icons.refresh_rounded, size: 16),
-              ),
             ],
           ),
       ],
     );
   }
+
+  Widget _deleteBg() => Container(
+    alignment: Alignment.centerRight,
+    padding: const EdgeInsets.only(right: 16),
+    decoration: BoxDecoration(
+      color: Colors.red.shade800,
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: const Icon(
+      Icons.delete_outline_rounded,
+      color: Colors.white,
+      size: 18,
+    ),
+  );
 
   Widget _macroSummaryRow(
     String mealType,

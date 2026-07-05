@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'workout_log.dart';
+
 /// Denormalized per-exercise performance summary, stored at
 /// `users/{uid}/exercise_stats/{exerciseId}`. Powers the "Last: 60 kg × 8"
 /// target and the PR badge shown on exercise cards without having to scan the
@@ -15,6 +17,9 @@ class ExerciseStat {
   final DateTime lastDate;
   final double bestWeightKg;
   final DateTime bestDate;
+  // Full set list from the last session (empty for legacy stats) so the next
+  // session can pre-fill every set, not just the top set.
+  final List<SetEntry> lastSets;
 
   const ExerciseStat({
     required this.exerciseId,
@@ -24,6 +29,7 @@ class ExerciseStat {
     required this.lastDate,
     required this.bestWeightKg,
     required this.bestDate,
+    this.lastSets = const [],
   });
 
   Map<String, dynamic> toMap() => {
@@ -34,6 +40,7 @@ class ExerciseStat {
     'lastDate': Timestamp.fromDate(lastDate),
     'bestWeightKg': bestWeightKg,
     'bestDate': Timestamp.fromDate(bestDate),
+    'lastSets': lastSets.map((s) => s.toMap()).toList(),
   };
 
   factory ExerciseStat.fromMap(Map<String, dynamic> m) {
@@ -46,6 +53,12 @@ class ExerciseStat {
       lastDate: ts(m['lastDate']),
       bestWeightKg: (m['bestWeightKg'] as num?)?.toDouble() ?? 0,
       bestDate: ts(m['bestDate']),
+      lastSets:
+          (m['lastSets'] as List?)
+              ?.cast<Map<String, dynamic>>()
+              .map(SetEntry.fromMap)
+              .toList() ??
+          const [],
     );
   }
 }

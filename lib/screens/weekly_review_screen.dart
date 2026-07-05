@@ -85,7 +85,9 @@ class _WeeklyReviewScreenState extends State<WeeklyReviewScreen>
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            )
           : TabBarView(
               controller: _tabs,
               children: [
@@ -141,7 +143,7 @@ class _HistoryTab extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
       itemCount: history.length + 1,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, i) {
         if (i == history.length) {
           return Padding(
@@ -272,11 +274,16 @@ class _SummaryDetailView extends StatelessWidget {
             ),
             if (isCurrent)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+                  border: Border.all(
+                    color: AppColors.primary.withValues(alpha: 0.4),
+                  ),
                 ),
                 child: Text(
                   'Current Week',
@@ -331,15 +338,21 @@ class _SummaryDetailView extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.info_outline_rounded,
-                          color: c.muted, size: 14),
+                      Icon(
+                        Icons.info_outline_rounded,
+                        color: c.muted,
+                        size: 14,
+                      ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           'Only ${s.daysLogged} day${s.daysLogged == 1 ? '' : 's'} '
                           'logged last week — adherence needs ≥4 days to count.',
                           style: GoogleFonts.inter(
-                              color: c.muted, fontSize: 11, height: 1.35),
+                            color: c.muted,
+                            fontSize: 11,
+                            height: 1.35,
+                          ),
                         ),
                       ),
                     ],
@@ -420,8 +433,11 @@ class _SummaryDetailView extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.psychology_rounded,
-                        color: AppColors.primary, size: 18),
+                    const Icon(
+                      Icons.psychology_rounded,
+                      color: AppColors.primary,
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       'Why These Changes?',
@@ -482,7 +498,13 @@ class _SummaryDetailView extends StatelessWidget {
     );
   }
 
-  Widget _adjustRow(BuildContext context, String label, String value, String subtitle, _Arrow arrow) {
+  Widget _adjustRow(
+    BuildContext context,
+    String label,
+    String value,
+    String subtitle,
+    _Arrow arrow,
+  ) {
     final c = context.colors;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 9),
@@ -629,7 +651,11 @@ class _EmptyState extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(color: c.muted, fontSize: 13, height: 1.4),
+              style: GoogleFonts.inter(
+                color: c.muted,
+                fontSize: 13,
+                height: 1.4,
+              ),
             ),
           ],
         ),
@@ -659,7 +685,8 @@ _Tag _adherenceTag(double? pct) {
 }
 
 _Tag _workoutTag(int done, int planned) {
-  if (planned > 0 && done >= planned) return const _Tag('Completed', AppColors.primary);
+  if (planned > 0 && done >= planned)
+    return const _Tag('Completed', AppColors.primary);
   if (done == 0) return const _Tag('Missed', Colors.redAccent);
   return const _Tag('Partial', AppColors.orange);
 }
@@ -686,7 +713,8 @@ String _delta(int v, String unit) {
 
 _Arrow _arrowFor(int v) {
   if (v > 0) return const _Arrow(Icons.arrow_upward_rounded, AppColors.primary);
-  if (v < 0) return const _Arrow(Icons.arrow_downward_rounded, AppColors.orange);
+  if (v < 0)
+    return const _Arrow(Icons.arrow_downward_rounded, AppColors.orange);
   return _Arrow(Icons.remove_rounded, AppColors.dark.muted);
 }
 
@@ -705,7 +733,8 @@ String _intensitySubtitle(WeeklySummary s) {
 }
 
 _Arrow _intensityArrow(WeeklySummary s) {
-  if (!s.volumeChanged) return _Arrow(Icons.remove_rounded, AppColors.dark.muted);
+  if (!s.volumeChanged)
+    return _Arrow(Icons.remove_rounded, AppColors.dark.muted);
   if (s.difficultyBias == 'up') {
     return const _Arrow(Icons.arrow_upward_rounded, AppColors.primary);
   }
@@ -729,8 +758,18 @@ Color _badgeColor(String badge) {
 }
 
 const _months = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 
 String _date(DateTime d) => '${_months[d.month - 1]} ${d.day}';

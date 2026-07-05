@@ -365,11 +365,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             color: AppColors.primary,
                             borderRadius: BorderRadius.circular(16),
                           ),
-                          child: Icon(
-                            Icons.add,
-                            color: c.onPrimary,
-                            size: 28,
-                          ),
+                          child: Icon(Icons.add, color: c.onPrimary, size: 28),
                         ),
                       ),
                     ),
@@ -478,16 +474,16 @@ class _HomeDashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    if (isLoading)
-      return Center(
-        child: CircularProgressIndicator(color: AppColors.primary),
-      );
+    if (isLoading) {
+      return Center(child: CircularProgressIndicator(color: AppColors.primary));
+    }
 
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null)
+    if (user == null) {
       return Center(
         child: Text('Not logged in', style: TextStyle(color: c.onBackground)),
       );
+    }
 
     final planProvider = context.watch<PlanProvider>();
     final profileProvider = context.watch<ProfileProvider>();
@@ -518,8 +514,9 @@ class _HomeDashboard extends StatelessWidget {
               caloriesEaten += food.totalCalories;
               proteinEaten += food.totalProtein;
               final mt = food.mealType.toLowerCase();
-              if (mealsMap.containsKey(mt))
+              if (mealsMap.containsKey(mt)) {
                 mealsMap[mt] = mealsMap[mt]! + food.totalCalories;
+              }
             }
 
             final caloriesRemaining = (calorieGoal - caloriesEaten.round())
@@ -555,10 +552,7 @@ class _HomeDashboard extends StatelessWidget {
                     ),
                     Text(
                       _getDate(),
-                      style: GoogleFonts.inter(
-                        color: c.muted,
-                        fontSize: 12,
-                      ),
+                      style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                     ),
                   ],
                 ),
@@ -645,10 +639,7 @@ class _HomeDashboard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Icon(
-                          Icons.chevron_right,
-                          color: c.subtle,
-                        ),
+                        Icon(Icons.chevron_right, color: c.subtle),
                       ],
                     ),
                   ),
@@ -754,114 +745,35 @@ class _HomeDashboard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 StreamBuilder<WorkoutLog?>(
-                  stream: FirestoreService().streamWorkoutLogForDate(user.uid, appNow()),
+                  stream: FirestoreService().streamWorkoutLogForDate(
+                    user.uid,
+                    appNow(),
+                  ),
                   builder: (context, workoutSnap) {
                     final workoutLog = workoutSnap.data;
                     return GestureDetector(
-                  onTap: onGoToPlans,
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: c.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: workoutLog != null
-                          ? Border.all(color: AppColors.primary.withOpacity(0.4))
-                          : null,
-                    ),
-                    child: todayWorkout == null
-                        ? Row(
-                            children: [
-                              Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Icon(
-                                  Icons.fitness_center_rounded,
-                                  color: AppColors.primary,
-                                  size: 22,
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'No workout generated yet',
-                                      style: GoogleFonts.spaceGrotesk(
-                                        color: c.onBackground,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Go to Plans to generate',
-                                      style: GoogleFonts.inter(
-                                        color: c.muted,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Icon(
-                                Icons.chevron_right,
-                                color: c.subtle,
-                              ),
-                            ],
-                          )
-                        : todayWorkout.isRest
-                        ? Row(
-                            children: [
-                              Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: c.subtle.withOpacity(0.3),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Icon(
-                                  Icons.bedtime_rounded,
-                                  color: c.muted,
-                                  size: 22,
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Rest Day',
-                                      style: GoogleFonts.spaceGrotesk(
-                                        color: c.onBackground,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Recovery is part of the plan',
-                                      style: GoogleFonts.inter(
-                                        color: c.muted,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          )
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                      onTap: onGoToPlans,
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: c.surface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: workoutLog != null
+                              ? Border.all(
+                                  color: AppColors.primary.withOpacity(0.4),
+                                )
+                              : null,
+                        ),
+                        child: todayWorkout == null
+                            ? Row(
                                 children: [
                                   Container(
                                     width: 44,
                                     height: 44,
                                     decoration: BoxDecoration(
-                                      color: AppColors.primary.withOpacity(0.15),
+                                      color: AppColors.primary.withOpacity(
+                                        0.15,
+                                      ),
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: const Icon(
@@ -877,14 +789,14 @@ class _HomeDashboard extends StatelessWidget {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          '$todayName — ${todayWorkout.focus}',
+                                          'No workout generated yet',
                                           style: GoogleFonts.spaceGrotesk(
                                             color: c.onBackground,
                                             fontWeight: FontWeight.w600,
                                           ),
                                         ),
                                         Text(
-                                          '${todayWorkout.exercises.length} exercises',
+                                          'Go to Plans to generate',
                                           style: GoogleFonts.inter(
                                             color: c.muted,
                                             fontSize: 12,
@@ -893,65 +805,87 @@ class _HomeDashboard extends StatelessWidget {
                                       ],
                                     ),
                                   ),
-                                  workoutLog != null
-                                      ? const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 22)
-                                      : Icon(Icons.chevron_right, color: c.subtle),
+                                  Icon(Icons.chevron_right, color: c.subtle),
                                 ],
-                              ),
-                              if (workoutLog != null) ...[
-                                const SizedBox(height: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withOpacity(0.12),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    'Completed · ${workoutLog.durationMinutes} min · ${workoutLog.focus}',
-                                    style: GoogleFonts.inter(
-                                      color: AppColors.primary,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
+                              )
+                            : todayWorkout.isRest
+                            ? Row(
+                                children: [
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: c.subtle.withOpacity(0.3),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Icon(
+                                      Icons.bedtime_rounded,
+                                      color: c.muted,
+                                      size: 22,
                                     ),
                                   ),
-                                ),
-                              ] else if (todayWorkout.exercises.isNotEmpty) ...[
-                                const SizedBox(height: 12),
-                                Divider(
-                                  color: c.border,
-                                  height: 1,
-                                ),
-                                const SizedBox(height: 10),
-                                ...todayWorkout.exercises
-                                    .take(2)
-                                    .map(
-                                      (we) => Padding(
-                                        padding: const EdgeInsets.only(
-                                          bottom: 6,
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Rest Day',
+                                          style: GoogleFonts.spaceGrotesk(
+                                            color: c.onBackground,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
-                                        child: Row(
+                                        Text(
+                                          'Recovery is part of the plan',
+                                          style: GoogleFonts.inter(
+                                            color: c.muted,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withOpacity(
+                                            0.15,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          Icons.fitness_center_rounded,
+                                          color: AppColors.primary,
+                                          size: 22,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 14),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
-                                            Container(
-                                              width: 6,
-                                              height: 6,
-                                              decoration: const BoxDecoration(
-                                                color: AppColors.primary,
-                                                shape: BoxShape.circle,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 10),
-                                            Expanded(
-                                              child: Text(
-                                                we.exercise.name,
-                                                style: GoogleFonts.inter(
-                                                  color: c.onBackground,
-                                                  fontWeight: FontWeight.w500,
-                                                  fontSize: 13,
-                                                ),
+                                            Text(
+                                              '$todayName — ${todayWorkout.focus}',
+                                              style: GoogleFonts.spaceGrotesk(
+                                                color: c.onBackground,
+                                                fontWeight: FontWeight.w600,
                                               ),
                                             ),
                                             Text(
-                                              '${we.sets}×${we.reps}',
+                                              '${todayWorkout.exercises.length} exercises',
                                               style: GoogleFonts.inter(
                                                 color: c.muted,
                                                 fontSize: 12,
@@ -960,19 +894,100 @@ class _HomeDashboard extends StatelessWidget {
                                           ],
                                         ),
                                       ),
-                                    ),
-                                if (todayWorkout.exercises.length > 2)
-                                  Text(
-                                    '+${todayWorkout.exercises.length - 2} more exercises',
-                                    style: GoogleFonts.inter(
-                                      color: c.inactive,
-                                      fontSize: 12,
-                                    ),
+                                      workoutLog != null
+                                          ? const Icon(
+                                              Icons.check_circle_rounded,
+                                              color: AppColors.primary,
+                                              size: 22,
+                                            )
+                                          : Icon(
+                                              Icons.chevron_right,
+                                              color: c.subtle,
+                                            ),
+                                    ],
                                   ),
-                              ],
-                            ],
-                          ),
-                  ),
+                                  if (workoutLog != null) ...[
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 5,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary.withOpacity(
+                                          0.12,
+                                        ),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        'Completed · ${workoutLog.durationMinutes} min · ${workoutLog.focus}',
+                                        style: GoogleFonts.inter(
+                                          color: AppColors.primary,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ] else if (todayWorkout
+                                      .exercises
+                                      .isNotEmpty) ...[
+                                    const SizedBox(height: 12),
+                                    Divider(color: c.border, height: 1),
+                                    const SizedBox(height: 10),
+                                    ...todayWorkout.exercises
+                                        .take(2)
+                                        .map(
+                                          (we) => Padding(
+                                            padding: const EdgeInsets.only(
+                                              bottom: 6,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Container(
+                                                  width: 6,
+                                                  height: 6,
+                                                  decoration:
+                                                      const BoxDecoration(
+                                                        color:
+                                                            AppColors.primary,
+                                                        shape: BoxShape.circle,
+                                                      ),
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Text(
+                                                    we.exercise.name,
+                                                    style: GoogleFonts.inter(
+                                                      color: c.onBackground,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
+                                                ),
+                                                Text(
+                                                  '${we.sets}×${we.reps}',
+                                                  style: GoogleFonts.inter(
+                                                    color: c.muted,
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                    if (todayWorkout.exercises.length > 2)
+                                      Text(
+                                        '+${todayWorkout.exercises.length - 2} more exercises',
+                                        style: GoogleFonts.inter(
+                                          color: c.inactive,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                  ],
+                                ],
+                              ),
+                      ),
                     );
                   },
                 ),
@@ -984,7 +999,12 @@ class _HomeDashboard extends StatelessWidget {
     );
   }
 
-  Widget _buildMacroRow(String label, String value, Color color, {required AppColors colors}) {
+  Widget _buildMacroRow(
+    String label,
+    String value,
+    Color color, {
+    required AppColors colors,
+  }) {
     final c = colors;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -997,13 +1017,7 @@ class _HomeDashboard extends StatelessWidget {
               decoration: BoxDecoration(color: color, shape: BoxShape.circle),
             ),
             const SizedBox(width: 8),
-            Text(
-              label,
-              style: GoogleFonts.inter(
-                color: c.muted,
-                fontSize: 13,
-              ),
-            ),
+            Text(label, style: GoogleFonts.inter(color: c.muted, fontSize: 13)),
           ],
         ),
         Text(
@@ -1072,10 +1086,7 @@ class _HomeDashboard extends StatelessWidget {
                           (foodLogs.length > 2
                               ? ' +${foodLogs.length - 2} more'
                               : ''),
-                      style: GoogleFonts.inter(
-                        color: c.muted,
-                        fontSize: 11,
-                      ),
+                      style: GoogleFonts.inter(color: c.muted, fontSize: 11),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),

@@ -7,8 +7,10 @@ import 'dart:convert';
 import '../services/openfoodfacts_service.dart';
 import '../services/firestore_service.dart';
 import '../services/dietary_filter.dart';
+import '../services/ingredient_converter.dart';
 import '../providers/profile_provider.dart';
 import '../models/food_item.dart';
+import '../models/meal_ingredient.dart';
 import '../app_clock.dart';
 import 'barcode_scan_screen.dart';
 import '../theme/app_colors.dart';
@@ -16,10 +18,19 @@ import '../theme/app_colors.dart';
 class FoodLogScreen extends StatefulWidget {
   final String mealType;
   final bool autoScan;
+
+  /// Meal-planning ingredient picker (Module 1, Option A): multi-select of
+  /// *available* ingredients — no grams asked (the GA decides portions), no
+  /// Firestore writes. Pops with the picked `List<MealIngredient>` (null/empty
+  /// = cancelled). With the default `false`, this screen is the unchanged
+  /// Module 2 food logger.
+  final bool pickerMode;
+
   const FoodLogScreen({
     super.key,
     required this.mealType,
     this.autoScan = false,
+    this.pickerMode = false,
   });
 
   @override
@@ -40,6 +51,9 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   String? _error;
 
   final Set<String> _loggingIds = {};
+
+  /// Picker-mode basket of available ingredients (per-100g, GA-ready).
+  final List<MealIngredient> _picked = [];
 
   static const String _apiKey = 'Fte86dAfeHdSgs4PI68EdVN3LevdLEebYFiDM6fZ';
   static const String _baseUrl = 'https://api.nal.usda.gov/fdc/v1';
@@ -89,7 +103,53 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
     }
   }
 
+  // ── Picker mode ──────────────────────────────────────────────────────────────
+
+  /// Final gate for every picker path: dietary-restriction check (blocking —
+  /// restricted foods are never pickable), dedupe by id, then add to the
+  /// basket.
+  void _addPicked(MealIngredient ing) {
+    final restrictions =
+        context.read<ProfileProvider>().profile?.dietaryRestrictions ??
+        const <String>[];
+    if (DietaryFilter.violates(ing.name, restrictions)) {
+      _showPickerBlockedSnackbar(ing.name);
+      return;
+    }
+    if (_picked.any((p) => p.id == ing.id)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${ing.name} is already in your ingredients',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: AppColors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    setState(() => _picked.add(ing));
+  }
+
+  void _showPickerBlockedSnackbar(String name) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '$name conflicts with your dietary restrictions',
+          style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+        ),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   Future<void> _quickAddHistory(FoodItem original) async {
+    if (widget.pickerMode) {
+      _addPicked(IngredientConverter.fromFoodItem(original));
+      return;
+    }
     final key = original.id;
     setState(() => _loggingIds.add(key));
     try {
@@ -114,6 +174,10 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   // ── Barcode ──────────────────────────────────────────────────────────────────
 
   Future<void> _scanBarcode() async {
+    // Capture before the async gaps — don't touch context after an await.
+    final restrictions =
+        context.read<ProfileProvider>().profile?.dietaryRestrictions ??
+        const <String>[];
     final barcode = await Navigator.push<String>(
       context,
       MaterialPageRoute(builder: (_) => const BarcodeScanScreen()),
@@ -148,6 +212,19 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
         return;
       }
       setState(() => _isLoading = false);
+      if (widget.pickerMode) {
+        // Picker: restriction check up front (blocking), then confirm without
+        // a quantity slider — the GA decides grams, not the user.
+        if (DietaryFilter.violates(foodItem.name, restrictions)) {
+          _showPickerBlockedSnackbar(foodItem.name);
+          return;
+        }
+        final confirmed = await _showBarcodeConfirmation(foodItem, product);
+        if (confirmed == true && mounted) {
+          _addPicked(IngredientConverter.fromFoodItem(foodItem));
+        }
+        return;
+      }
       final confirmed = await _showBarcodeConfirmation(foodItem, product);
       if (confirmed == true) {
         _showSuccessSnackbar(foodItem.name);
@@ -230,25 +307,27 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                 foodItem.fat * quantity,
               ),
               const SizedBox(height: 12),
-              Text(
-                'Servings: ${quantity.toStringAsFixed(1)}',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: c.onBackground,
+              if (!widget.pickerMode) ...[
+                Text(
+                  'Servings: ${quantity.toStringAsFixed(1)}',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: c.onBackground,
+                  ),
                 ),
-              ),
-              Slider(
-                value: quantity,
-                min: 0.5,
-                max: 5.0,
-                divisions: 18,
-                activeColor: AppColors.primary,
-                inactiveColor: c.borderLight,
-                label: quantity.toStringAsFixed(1),
-                onChanged: (v) => setModalState(() => quantity = v),
-              ),
-              const SizedBox(height: 12),
+                Slider(
+                  value: quantity,
+                  min: 0.5,
+                  max: 5.0,
+                  divisions: 18,
+                  activeColor: AppColors.primary,
+                  inactiveColor: c.borderLight,
+                  label: quantity.toStringAsFixed(1),
+                  onChanged: (v) => setModalState(() => quantity = v),
+                ),
+                const SizedBox(height: 12),
+              ],
               Row(
                 children: [
                   Expanded(
@@ -273,6 +352,11 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () async {
+                        if (widget.pickerMode) {
+                          // Picker: no write — the caller adds to the basket.
+                          Navigator.pop(context, true);
+                          return;
+                        }
                         await _firestore.logFoodItem(
                           foodItem.copyWith(quantity: quantity),
                         );
@@ -287,7 +371,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                         ),
                       ),
                       child: Text(
-                        'Log Food',
+                        widget.pickerMode ? 'Add to Meal' : 'Log Food',
                         style: GoogleFonts.spaceGrotesk(
                           fontWeight: FontWeight.w700,
                         ),
@@ -408,6 +492,40 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   }
 
   Future<void> _quickAddUSDA(_USDAFoodItem food) async {
+    if (widget.pickerMode) {
+      // Picker: no portion dialog — the user only says what's available,
+      // the GA determines all grams.
+      _addPicked(
+        IngredientConverter.fromPerServing(
+          id: 'usda_${food.fdcId}',
+          name: food.name,
+          servingSize: food.servingSize,
+          servingUnit: food.servingUnit,
+          calories: food.calories,
+          protein: food.protein,
+          carbs: food.carbs,
+          fat: food.fat,
+          fiber: food.fiber,
+          sugar: food.sugar,
+          sodium: food.sodium,
+          vitaminA: food.vitaminA,
+          vitaminC: food.vitaminC,
+          vitaminD: food.vitaminD,
+          vitaminE: food.vitaminE,
+          vitaminK: food.vitaminK,
+          vitaminB6: food.vitaminB6,
+          vitaminB12: food.vitaminB12,
+          folate: food.folate,
+          iron: food.iron,
+          calcium: food.calcium,
+          magnesium: food.magnesium,
+          potassium: food.potassium,
+          zinc: food.zinc,
+          phosphorus: food.phosphorus,
+        ),
+      );
+      return;
+    }
     await _showPortionDialog(food);
   }
 
@@ -479,7 +597,9 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
         backgroundColor: c.background,
         foregroundColor: c.onBackground,
         title: Text(
-          'Log ${_capitalize(widget.mealType)}',
+          widget.pickerMode
+              ? 'Pick Ingredients'
+              : 'Log ${_capitalize(widget.mealType)}',
           style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
         ),
         actions: [
@@ -488,6 +608,22 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
             onPressed: _scanBarcode,
             tooltip: 'Scan Barcode',
           ),
+          if (widget.pickerMode)
+            TextButton(
+              onPressed: _picked.isEmpty
+                  ? null
+                  : () => Navigator.pop(
+                      context,
+                      List<MealIngredient>.from(_picked),
+                    ),
+              child: Text(
+                'Done (${_picked.length})',
+                style: GoogleFonts.spaceGrotesk(
+                  fontWeight: FontWeight.w700,
+                  color: _picked.isEmpty ? c.inactive : AppColors.primary,
+                ),
+              ),
+            ),
         ],
       ),
       body: Column(
@@ -561,6 +697,64 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                 ? _buildSearchResults()
                 : _buildDefaultView(),
           ),
+          if (widget.pickerMode && _picked.isNotEmpty) _buildPickedBar(),
+        ],
+      ),
+    );
+  }
+
+  /// Bottom basket of picked ingredients (picker mode only).
+  Widget _buildPickedBar() {
+    final c = context.colors;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      decoration: BoxDecoration(
+        color: c.surface,
+        border: Border(top: BorderSide(color: c.border)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Available ingredients (${_picked.length})',
+            style: GoogleFonts.inter(
+              color: c.muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final ing in _picked)
+                Chip(
+                  label: Text(
+                    ing.name,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: c.onBackground,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  backgroundColor: AppColors.primary.withOpacity(0.12),
+                  side: BorderSide(
+                    color: AppColors.primary.withOpacity(0.35),
+                  ),
+                  deleteIcon: const Icon(Icons.close, size: 15),
+                  deleteIconColor: c.muted,
+                  onDeleted: () => setState(
+                    () => _picked.removeWhere((p) => p.id == ing.id),
+                  ),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -597,6 +791,16 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
 
   Widget _buildDefaultView() {
     final c = context.colors;
+    // In picker mode restricted past foods are hidden outright — the picker
+    // must never offer a food that conflicts with the profile's restrictions.
+    final visibleHistory = widget.pickerMode
+        ? DietaryFilter.filter(
+            _history,
+            context.read<ProfileProvider>().profile?.dietaryRestrictions ??
+                const <String>[],
+            (f) => f.name,
+          )
+        : _history;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
@@ -640,7 +844,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
               ),
             ),
           )
-        else if (_history.isEmpty)
+        else if (visibleHistory.isEmpty)
           Center(
             child: Padding(
               padding: const EdgeInsets.all(32),
@@ -665,7 +869,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
             ),
           )
         else
-          ..._history.map((food) => _buildHistoryCard(food)),
+          ...visibleHistory.map((food) => _buildHistoryCard(food)),
       ],
     );
   }
@@ -676,7 +880,10 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     return Dismissible(
       key: Key('hist_${food.id}'),
-      direction: DismissDirection.endToStart,
+      // Picking ingredients must not delete real food logs.
+      direction: widget.pickerMode
+          ? DismissDirection.none
+          : DismissDirection.endToStart,
       background: Container(
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(

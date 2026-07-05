@@ -50,7 +50,9 @@ class FirestoreService {
   Future<List<MealIngredient>> getIngredients() async {
     if (_ingredientCache != null) return _ingredientCache!;
     final snap = await _db.collection('ingredients').get();
-    final list = snap.docs.map((d) => MealIngredient.fromMap(d.data())).toList();
+    final list = snap.docs
+        .map((d) => MealIngredient.fromMap(d.data()))
+        .toList();
     if (list.isNotEmpty) _ingredientCache = list;
     return list;
   }
@@ -371,7 +373,10 @@ class FirestoreService {
         .doc(userId)
         .collection('workout_plans')
         .doc(weekId)
-        .set({'days': plan.map((d) => d.toMap()).toList(), 'savedAt': FieldValue.serverTimestamp()});
+        .set({
+          'days': plan.map((d) => d.toMap()).toList(),
+          'savedAt': FieldValue.serverTimestamp(),
+        });
   }
 
   /// Delete the persisted workout plan for a given ISO week.
@@ -401,7 +406,9 @@ class FirestoreService {
     if (data == null) return null;
     final days = data['days'] as List?;
     if (days == null) return null;
-    return days.map((d) => WorkoutDay.fromMap(d as Map<String, dynamic>)).toList();
+    return days
+        .map((d) => WorkoutDay.fromMap(d as Map<String, dynamic>))
+        .toList();
   }
 
   /// Legacy generic save (kept for compatibility).
@@ -472,9 +479,7 @@ class FirestoreService {
         .orderBy('generatedAt', descending: true)
         .limit(limit)
         .get();
-    return snap.docs
-        .map((d) => WeeklySummary.fromMap(d.data(), d.id))
-        .toList();
+    return snap.docs.map((d) => WeeklySummary.fromMap(d.data(), d.id)).toList();
   }
 
   // ========================================
@@ -508,9 +513,11 @@ class FirestoreService {
         .where('date', isLessThan: Timestamp.fromDate(end))
         .limit(1)
         .snapshots()
-        .map((snap) => snap.docs.isEmpty
-            ? null
-            : WorkoutLog.fromMap(snap.docs.first.data(), snap.docs.first.id));
+        .map(
+          (snap) => snap.docs.isEmpty
+              ? null
+              : WorkoutLog.fromMap(snap.docs.first.data(), snap.docs.first.id),
+        );
   }
 
   Future<List<WorkoutLog>> getWorkoutLogsForDateRange(
@@ -526,12 +533,13 @@ class FirestoreService {
         .where('date', isLessThan: Timestamp.fromDate(end))
         .orderBy('date')
         .get();
-    return snap.docs
-        .map((d) => WorkoutLog.fromMap(d.data(), d.id))
-        .toList();
+    return snap.docs.map((d) => WorkoutLog.fromMap(d.data(), d.id)).toList();
   }
 
-  Future<int> getWorkoutsCompletedCount(String userId, DateTime weekStart) async {
+  Future<int> getWorkoutsCompletedCount(
+    String userId,
+    DateTime weekStart,
+  ) async {
     final end = weekStart.add(const Duration(days: 7));
     final logs = await getWorkoutLogsForDateRange(userId, weekStart, end);
     return logs.length;
@@ -543,18 +551,19 @@ class FirestoreService {
 
   Future<void> saveWeightLog(String userId, double weightKg) async {
     final now = appNow();
-    final dateKey = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final dateKey =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     await _db
         .collection('users')
         .doc(userId)
         .collection('weight_logs')
         .doc(dateKey)
         .set({
-      'userId': userId,
-      'date': Timestamp.fromDate(DateTime(now.year, now.month, now.day)),
-      'weight': weightKg,
-      'loggedAt': FieldValue.serverTimestamp(),
-    });
+          'userId': userId,
+          'date': Timestamp.fromDate(DateTime(now.year, now.month, now.day)),
+          'weight': weightKg,
+          'loggedAt': FieldValue.serverTimestamp(),
+        });
   }
 
   Future<List<Map<String, dynamic>>> getWeightLogs(
@@ -587,6 +596,7 @@ class FirestoreService {
     required String name,
     required double weightKg,
     int? reps,
+    List<SetEntry> lastSets = const [],
   }) async {
     final now = appNow();
     final date = DateTime(now.year, now.month, now.day);
@@ -614,6 +624,7 @@ class FirestoreService {
       'lastDate': Timestamp.fromDate(date),
       'bestWeightKg': bestWeight,
       'bestDate': Timestamp.fromDate(bestDate),
+      'lastSets': lastSets.map((s) => s.toMap()).toList(),
     }, SetOptions(merge: true));
   }
 
@@ -625,13 +636,14 @@ class FirestoreService {
   ) async {
     final result = <String, ExerciseStat>{};
     final docIds = exerciseIds.map(_statDocId).toSet().toList();
-    final col =
-        _db.collection('users').doc(userId).collection('exercise_stats');
+    final col = _db
+        .collection('users')
+        .doc(userId)
+        .collection('exercise_stats');
     for (int i = 0; i < docIds.length; i += 10) {
       final chunk = docIds.sublist(i, (i + 10).clamp(0, docIds.length));
       if (chunk.isEmpty) continue;
-      final snap =
-          await col.where(FieldPath.documentId, whereIn: chunk).get();
+      final snap = await col.where(FieldPath.documentId, whereIn: chunk).get();
       for (final d in snap.docs) {
         final stat = ExerciseStat.fromMap(d.data());
         result[stat.exerciseId] = stat;

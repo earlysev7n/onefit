@@ -110,7 +110,11 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     'Lactose-intolerant',
     'Nut-free',
   ];
-  final List<String> _dietStyleOptions = ['High-protein', 'Low-carb', 'Balanced'];
+  final List<String> _dietStyleOptions = [
+    'High-protein',
+    'Low-carb',
+    'Balanced',
+  ];
 
   @override
   void initState() {
@@ -368,7 +372,6 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               workoutDaysPerWeek: _workoutDays,
               sessionMinutes: _sessionMinutes,
               workoutSplit: _workoutSplit,
-
             )
           : UserProfile(
               uid: FirebaseAuth.instance.currentUser!.uid,
@@ -387,7 +390,6 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               workoutDaysPerWeek: _workoutDays,
               sessionMinutes: _sessionMinutes,
               workoutSplit: _workoutSplit,
-
             );
       await profileProvider.save(profile);
       if (mounted) {
@@ -603,9 +605,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                   Text(
                     _dobDisplay,
                     style: GoogleFonts.inter(
-                      color: _dob == null
-                          ? c.muted
-                          : c.onBackground,
+                      color: _dob == null ? c.muted : c.onBackground,
                       fontSize: 15,
                     ),
                   ),
@@ -659,16 +659,16 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                         margin: const EdgeInsets.only(right: 8),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         decoration: BoxDecoration(
-                          color: _gender == g
-                              ? AppColors.primary
-                              : c.inputFill,
+                          color: _gender == g ? AppColors.primary : c.inputFill,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Center(
                           child: Text(
                             g,
                             style: GoogleFonts.inter(
-                              color: _gender == g ? c.onPrimary : c.onBackground,
+                              color: _gender == g
+                                  ? c.onPrimary
+                                  : c.onBackground,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -772,8 +772,9 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                   // A home gym (rack) comes with a barbell + bench — add both so
                   // one tap unlocks the full free-weight setup.
                   if (v == 'Home Gym') {
-                    if (!_equipment.contains('Barbell'))
+                    if (!_equipment.contains('Barbell')) {
                       _equipment.add('Barbell');
+                    }
                     if (!_equipment.contains('Bench')) _equipment.add('Bench');
                   }
                 }
@@ -840,9 +841,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: sel
-                        ? AppColors.primary
-                        : c.inputFill,
+                    color: sel ? AppColors.primary : c.inputFill,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Center(
@@ -1025,19 +1024,12 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.info_outline,
-                  color: AppColors.primary,
-                  size: 20,
-                ),
+                Icon(Icons.info_outline, color: AppColors.primary, size: 20),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     'Your meal plan will be tailored to your dietary needs and calorie goals.',
-                    style: GoogleFonts.inter(
-                      color: c.muted,
-                      fontSize: 13,
-                    ),
+                    style: GoogleFonts.inter(color: c.muted, fontSize: 13),
                   ),
                 ),
               ],
@@ -1093,11 +1085,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
         const SizedBox(width: 6),
         GestureDetector(
           onTap: () => _showHelpSheet(text, help),
-          child: Icon(
-            Icons.help_outline,
-            size: 16,
-            color: AppColors.primary,
-          ),
+          child: Icon(Icons.help_outline, size: 16, color: AppColors.primary),
         ),
       ],
     );
@@ -1143,10 +1131,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                     const SizedBox(height: 2),
                     Text(
                       e.value,
-                      style: GoogleFonts.inter(
-                        color: c.muted,
-                        fontSize: 13,
-                      ),
+                      style: GoogleFonts.inter(color: c.muted, fontSize: 13),
                     ),
                   ],
                 ),
@@ -1177,9 +1162,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  color: selected == o
-                      ? AppColors.primary
-                      : c.inputFill,
+                  color: selected == o ? AppColors.primary : c.inputFill,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -1215,9 +1198,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  color: selected.contains(o)
-                      ? AppColors.primary
-                      : c.inputFill,
+                  color: selected.contains(o) ? AppColors.primary : c.inputFill,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(

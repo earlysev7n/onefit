@@ -64,7 +64,7 @@ class EdamamRecipe {
     final recipe = json['recipe'] as Map<String, dynamic>? ?? json;
     final servings = (recipe['yield'] as num?)?.toDouble() ?? 1.0;
 
-    double _n(String code) {
+    double n(String code) {
       final nutrients = recipe['totalNutrients'] as Map<String, dynamic>? ?? {};
       final entry = nutrients[code] as Map<String, dynamic>?;
       if (entry == null) return 0.0;
@@ -73,7 +73,9 @@ class EdamamRecipe {
 
     // Extract a stable ID from the URI
     final uri = recipe['uri'] as String? ?? '';
-    final id = uri.contains('#recipe_') ? uri.split('#recipe_').last : uri.hashCode.toString();
+    final id = uri.contains('#recipe_')
+        ? uri.split('#recipe_').last
+        : uri.hashCode.toString();
 
     return EdamamRecipe(
       id: id,
@@ -82,27 +84,27 @@ class EdamamRecipe {
       sourceUrl: recipe['url'] as String? ?? '',
       ingredientLines: List<String>.from(recipe['ingredientLines'] ?? []),
       servings: servings,
-      calories: _n('ENERC_KCAL'),
-      protein: _n('PROCNT'),
-      fat: _n('FAT'),
-      carbs: _n('CHOCDF'),
-      fiber: _n('FIBTG'),
-      sugar: _n('SUGAR'),
-      sodium: _n('NA'),
-      vitaminA: _n('VITA_RAE'),
-      vitaminC: _n('VITC'),
-      vitaminD: _n('VITD'),
-      vitaminE: _n('TOCPHA'),
-      vitaminK: _n('VITK1'),
-      vitaminB6: _n('VITB6A'),
-      vitaminB12: _n('VITB12'),
-      folate: _n('FOLDFE'),
-      calcium: _n('CA'),
-      iron: _n('FE'),
-      magnesium: _n('MG'),
-      potassium: _n('K'),
-      zinc: _n('ZN'),
-      phosphorus: _n('P'),
+      calories: n('ENERC_KCAL'),
+      protein: n('PROCNT'),
+      fat: n('FAT'),
+      carbs: n('CHOCDF'),
+      fiber: n('FIBTG'),
+      sugar: n('SUGAR'),
+      sodium: n('NA'),
+      vitaminA: n('VITA_RAE'),
+      vitaminC: n('VITC'),
+      vitaminD: n('VITD'),
+      vitaminE: n('TOCPHA'),
+      vitaminK: n('VITK1'),
+      vitaminB6: n('VITB6A'),
+      vitaminB12: n('VITB12'),
+      folate: n('FOLDFE'),
+      calcium: n('CA'),
+      iron: n('FE'),
+      magnesium: n('MG'),
+      potassium: n('K'),
+      zinc: n('ZN'),
+      phosphorus: n('P'),
     );
   }
 }

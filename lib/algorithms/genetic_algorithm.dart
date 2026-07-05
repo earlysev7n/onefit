@@ -808,19 +808,7 @@ class GeneticAlgorithm {
     }
 
     final totalW = slots.fold(0.0, (s, x) => s + x.weight);
-
-    // Meal-level macro gram targets: the day's diet-style-aware targets scaled
-    // to this meal's calorie share, so the ratios hold regardless of which
-    // goal (base or carry-adjusted) produced the budget.
-    final daily = _macroTargetsFor(profile);
-    final macroCals =
-        daily['protein']! * 4 + daily['carbs']! * 4 + daily['fat']! * 9;
-    final share = macroCals > 0 ? calorieBudget / macroCals : 0.0;
-    final targets = {
-      'protein': daily['protein']! * share,
-      'carbs': daily['carbs']! * share,
-      'fat': daily['fat']! * share,
-    };
+    final targets = _mealShareTargets(profile, calorieBudget);
 
     Meal build(List<MealIngredient> genes) {
       final items = <MealItem>[];
@@ -886,6 +874,152 @@ class GeneticAlgorithm {
           ..sort((a, b) => b.value.compareTo(a.value));
     final meal = build(best.first.key).closeResidual(calorieBudget);
     return MealEvolutionResult(meal, trace);
+  }
+
+  /// Meal-level macro gram targets: the day's diet-style-aware targets scaled
+  /// to this meal's calorie share, so the ratios hold regardless of which
+  /// goal (base or carry-adjusted) produced the budget.
+  Map<String, double> _mealShareTargets(
+    UserProfile profile,
+    double calorieBudget,
+  ) {
+    final daily = _macroTargetsFor(profile);
+    final macroCals =
+        daily['protein']! * 4 + daily['carbs']! * 4 + daily['fat']! * 9;
+    final share = macroCals > 0 ? calorieBudget / macroCals : 0.0;
+    return {
+      'protein': daily['protein']! * share,
+      'carbs': daily['carbs']! * share,
+      'fat': daily['fat']! * share,
+    };
+  }
+
+  /// The exclusion arm of [_passesRestrictions] alone: true when none of the
+  /// profile's restrictions maps to an allergen carried by [ing]. Used by
+  /// [optimizeMealPortions], where inclusion tags cannot apply (user-picked
+  /// foods carry no `dietaryTags`).
+  bool _passesAllergens(MealIngredient ing, UserProfile profile) {
+    final allergens = ing.allergens.map((a) => a.toLowerCase()).toSet();
+    for (final raw in profile.dietaryRestrictions) {
+      final mapped = _exclusionAllergens[raw.toLowerCase()];
+      if (mapped != null && allergens.contains(mapped)) return false;
+    }
+    return true;
+  }
+
+  // ── Portion optimization over a fixed ingredient set (Option A) ───────────
+
+  /// Meal Planning Option A ("Use Available Ingredients"): the user has fixed
+  /// the ingredient SET; the GA determines all GRAMS. Chromosome = gram
+  /// vector, one gene per ingredient clamped to 30–400 g — no subset
+  /// selection, every usable ingredient appears in the result exactly once.
+  ///
+  /// Evolution uses the GA's standard operators: tournament selection (size
+  /// [tournamentSize]), single-point crossover across genes, and
+  /// [mutationRate] single-gene jitter mutation (×0.6–1.4, re-clamped), with
+  /// top-2 elitism, over [mealGenerations] generations. Fitness is
+  /// [_mealFitness] (40 cal / 35 protein / 15 carb / 15 fat) against
+  /// [calorieBudget] + [_mealShareTargets]; the winner passes through the
+  /// same `scaleToCalories().closeResidual()` calorie enforcement as every
+  /// other meal path.
+  ///
+  /// Dietary restrictions: picked foods carry no `dietaryTags`, so inclusion
+  /// tags are NOT required here — name-level screening happens upstream (the
+  /// picker hides/rejects conflicting foods and the caller pre-screens with
+  /// `DietaryFilter.violates`). Allergen EXCLUSIONS still apply: ingredients
+  /// whose derived `allergens` conflict with the profile are dropped, as are
+  /// zero-kcal records (same guard as [buildPool]). If nothing usable
+  /// remains, the empty-meal sentinel is returned — restrictions are never
+  /// relaxed.
+  MealEvolutionResult optimizeMealPortions({
+    required List<MealIngredient> ingredients,
+    required UserProfile profile,
+    required String mealType,
+    required double calorieBudget,
+  }) {
+    final empty = MealEvolutionResult(
+      Meal(mealType: mealType, items: const []),
+      const [],
+    );
+    if (calorieBudget <= 30) return empty;
+    final usable = ingredients
+        .where((i) => i.calories > 0 && _passesAllergens(i, profile))
+        .toList();
+    if (usable.isEmpty) return empty;
+
+    final targets = _mealShareTargets(profile, calorieBudget);
+    final n = usable.length;
+
+    Meal build(List<double> grams) => Meal(
+      mealType: mealType,
+      items: [
+        for (int i = 0; i < n; i++)
+          MealItem(ingredient: usable[i], portionGrams: grams[i]),
+      ],
+    );
+
+    double fitness(List<double> grams) =>
+        _mealFitness(build(grams), targets, calorieBudget, const {});
+
+    // Seed: an even calorie split via _portionFor (the greedy baseline);
+    // the rest of the population is random uniform in the gram clamp range.
+    final seed = [for (final ing in usable) _portionFor(ing, calorieBudget / n)];
+    List<double> randomGenes() => [
+      for (int i = 0; i < n; i++) 30.0 + _random.nextDouble() * 370.0,
+    ];
+
+    var population = <List<double>>[
+      seed,
+      for (int i = 1; i < populationSize; i++) randomGenes(),
+    ];
+    final trace = <double>[];
+
+    for (int gen = 0; gen < mealGenerations; gen++) {
+      final scored =
+          population.map((g) => MapEntry(g, fitness(g))).toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
+      trace.add(scored.first.value);
+
+      final nextGen = <List<double>>[scored[0].key, scored[1].key];
+      while (nextGen.length < populationSize) {
+        final p1 = _tournamentGrams(scored);
+        final p2 = _tournamentGrams(scored);
+        var child = _crossoverGrams(p1, p2);
+        if (_random.nextDouble() < mutationRate) {
+          final i = _random.nextInt(n);
+          child = List<double>.from(child)
+            ..[i] = (child[i] * (0.6 + _random.nextDouble() * 0.8)).clamp(
+              30.0,
+              400.0,
+            );
+        }
+        nextGen.add(child);
+      }
+      population = nextGen;
+    }
+
+    final best =
+        population.map((g) => MapEntry(g, fitness(g))).toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+    final meal = build(
+      best.first.key,
+    ).scaleToCalories(calorieBudget).closeResidual(calorieBudget);
+    return MealEvolutionResult(meal, trace);
+  }
+
+  List<double> _tournamentGrams(List<MapEntry<List<double>, double>> scored) {
+    final t = List.generate(
+      tournamentSize,
+      (_) => scored[_random.nextInt(scored.length)],
+    );
+    t.sort((a, b) => b.value.compareTo(a.value));
+    return t.first.key;
+  }
+
+  List<double> _crossoverGrams(List<double> p1, List<double> p2) {
+    if (p1.length <= 1) return List<double>.from(p1);
+    final point = _random.nextInt(p1.length);
+    return [...p1.sublist(0, point), ...p2.sublist(point)];
   }
 
   /// Meal-level fitness — mirrors [_fitness]'s 40/35/15/15 weighting at meal

@@ -16,13 +16,13 @@ class WeightLog {
   });
 
   factory WeightLog.fromMap(Map<String, dynamic> m, String id) {
-    DateTime _ts(dynamic v) => v is Timestamp ? v.toDate() : DateTime.now();
+    DateTime ts(dynamic v) => v is Timestamp ? v.toDate() : DateTime.now();
     return WeightLog(
       id: id,
       userId: m['userId'] ?? '',
-      date: _ts(m['date']),
+      date: ts(m['date']),
       weight: (m['weight'] as num?)?.toDouble() ?? 0.0,
-      loggedAt: _ts(m['loggedAt']),
+      loggedAt: ts(m['loggedAt']),
     );
   }
 }

@@ -70,7 +70,9 @@ class PlanProvider extends ChangeNotifier {
     if (_workoutPlan.isEmpty) return;
     // Refuse to persist a plan where every training day has 0 exercises —
     // that would lock the user into a broken state across restarts.
-    final hasExercises = _workoutPlan.any((d) => !d.isRest && d.exercises.isNotEmpty);
+    final hasExercises = _workoutPlan.any(
+      (d) => !d.isRest && d.exercises.isNotEmpty,
+    );
     if (!hasExercises) return;
     await _firestoreService.saveWeeklyWorkoutPlan(userId, weekId, _workoutPlan);
   }
@@ -273,8 +275,9 @@ class PlanProvider extends ChangeNotifier {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         await _clearTodayGeneratedMeals(user.uid);
-        if (breakfast != null)
+        if (breakfast != null) {
           await _saveMealToFirestore('breakfast', breakfast);
+        }
         if (lunch != null) await _saveMealToFirestore('lunch', lunch);
         if (dinner != null) await _saveMealToFirestore('dinner', dinner);
         if (snack != null) await _saveMealToFirestore('snack', snack);

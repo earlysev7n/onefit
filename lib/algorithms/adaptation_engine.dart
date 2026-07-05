@@ -38,7 +38,7 @@ class AdaptationEngine {
     required double lastWeekCalorieAdherence, // avgCalories / calorieGoal * 100
     required double lastWeekWorkoutCompletion, // completedWorkouts / plannedWorkouts (0–1)
     required String currentExperienceLevel, // 'Beginner'|'Intermediate'|'Advanced'
-    double? lastWeekAvgRating, // avg perceived difficulty 1 (too easy) – 5 (too hard)
+    List<int> lastWeekRatings = const [], // per-session difficulty 1 (too easy) – 5 (too hard)
     double? weightChangeKg, // last week's net weight change (kg); + gain / − loss; null if <2 weigh-ins
     String fitnessGoal = 'General Fitness',
     double? lastWeekProteinAdherence, // avgProtein / proteinGoal * 100; null = not enough data
@@ -109,42 +109,68 @@ class AdaptationEngine {
       notes.add('Protein was low last week (~${lastWeekProteinAdherence.round()}% of target) even though calories were on track — prioritise protein-rich foods.');
     }
 
-    // ── Difficulty step ──────────────────────────────────────────────────────
-    if (lastWeekWorkoutCompletion < 0.5) {
-      difficultyBias = 'down';
-      notes.add(noteVolumeDownSchedule);
-    } else if (lastWeekWorkoutCompletion >= 0.8 &&
-        currentExperienceLevel != 'Advanced') {
-      difficultyBias = 'up';
-      notes.add(noteStepUp);
-    }
+    // ── Difficulty step (completion baseline + RPE vote) ─────────────────────
+    // Completion sets the baseline; the week's per-session ratings then refine
+    // it via a vote (Foster 2001 session-RPE; Helms 2016 RIR autoregulation).
+    // Each rating votes: 1→+2, 2→+1, 3→0, 4→−1, 5→−2. A single "too hard" (5)
+    // or completion < 0.5 is a safety brake that forbids stepping up.
+    final struggling = lastWeekWorkoutCompletion < 0.5;
+    final completionUp =
+        lastWeekWorkoutCompletion >= 0.8 && currentExperienceLevel != 'Advanced';
 
-    // ── RPE / rating autoregulation — a modifier, never a primary driver ────
-    // A perceived-difficulty rating (1 too easy … 5 too hard) refines, but does
-    // not override, the completion logic above (Foster 2001 session-RPE;
-    // Helms 2016 RIR-based autoregulation).
-    if (lastWeekAvgRating != null) {
-      if (lastWeekAvgRating >= 4 && difficultyBias == 'up') {
-        // Felt hard — don't pile on more load even if completion was high.
-        difficultyBias = 'same';
-        notes.add('Held difficulty steady — last week felt hard (high effort rating).');
-      } else if (lastWeekAvgRating >= 4 && difficultyBias == 'same') {
-        // W1: completing fine but it felt hard — ease volume one step (NSCA
-        // regression to avoid overtraining). The _getSets clamp keeps the
-        // reduced count at/above the goal's NSCA minimum, so the stimulus stays
-        // adequate; it never drops below range.
-        difficultyBias = 'down';
-        notes.add(noteVolumeDownHard);
-      } else if (lastWeekAvgRating <= 2 &&
-          difficultyBias == 'same' &&
-          currentExperienceLevel != 'Advanced' &&
-          lastWeekWorkoutCompletion >= 0.7) {
-        // W3: gate raised from 0.5 → 0.7 so a heavy partial-skipper (completion
-        // < 0.7) isn't rewarded with more load just for rating it easy.
-        difficultyBias = 'up';
-        notes.add(noteStepUpEasy);
+    int? vote;
+    var hasTooHard = false;
+    if (lastWeekRatings.isNotEmpty) {
+      vote = 0;
+      for (final r in lastWeekRatings) {
+        if (r <= 1) {
+          vote = vote! + 2;
+        } else if (r == 2) {
+          vote = vote! + 1;
+        } else if (r == 3) {
+          vote = vote!; // neutral
+        } else if (r == 4) {
+          vote = vote! - 1;
+        } else {
+          vote = vote! - 2; // 5+ = too hard
+          hasTooHard = true;
+        }
       }
     }
+    final blockUp = hasTooHard || struggling;
+
+    // Baseline from completion.
+    String? diffNote;
+    if (struggling) {
+      difficultyBias = 'down';
+      diffNote = noteVolumeDownSchedule;
+    } else if (completionUp) {
+      difficultyBias = 'up';
+      diffNote = noteStepUp;
+    }
+
+    // Vote refinement (only when the week has ratings).
+    if (vote != null) {
+      if (vote <= -2 && difficultyBias != 'down') {
+        // Felt hard overall — ease one step, overriding an up/same baseline.
+        difficultyBias = 'down';
+        diffNote = noteVolumeDownHard;
+      } else if (vote >= 2 &&
+          !blockUp &&
+          lastWeekWorkoutCompletion >= 0.7 && // W3: don't reward partial-skippers
+          currentExperienceLevel != 'Advanced' &&
+          difficultyBias != 'up') {
+        difficultyBias = 'up';
+        diffNote = noteStepUpEasy;
+      }
+      // Safety: never step up when a session was too hard or completion was poor.
+      if (difficultyBias == 'up' && blockUp) {
+        difficultyBias = 'same';
+        diffNote =
+            'Held difficulty steady — last week felt hard (high effort rating).';
+      }
+    }
+    if (diffNote != null) notes.add(diffNote);
 
     return AdaptationResult(
       calorieBiasKcal: calorieBias,
