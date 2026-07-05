@@ -481,11 +481,21 @@ class GreedyAlgorithm {
       }
     }
 
-    // Focus-relevant pools only, in priority order: primary-mover matches first
-    // (cap on → off for small pools), then secondary-mover assists as a last
-    // resort. If these can't reach `count` the day is simply shorter — never
-    // padded with an off-focus exercise.
-    fill(primaryPool, true);
+    // Prefer exercises WITH a demo GIF — a generated plan shouldn't recommend an
+    // exercise it can't animate. GIF-having focus pools are tried first (primary,
+    // then assist); the full pools (incl. no-GIF) are a graceful fallback only
+    // when the GIF pool can't reach `count`, so days never starve. `fill` skips
+    // seenIds, so the fallback rounds only add what the GIF rounds missed. When
+    // no exercise has a GIF the GIF pools are empty and this is identical to the
+    // original primary→primary→assist sequence.
+    bool hasGif(Exercise e) => e.gifUrl != null && e.gifUrl!.isNotEmpty;
+    final primaryGif = primaryPool.where(hasGif).toList();
+    final assistGif = assistPool.where(hasGif).toList();
+
+    fill(primaryGif, true);
+    if (selected.length < count) fill(primaryGif, false);
+    if (selected.length < count) fill(assistGif, false);
+    if (selected.length < count) fill(primaryPool, true);
     if (selected.length < count) fill(primaryPool, false);
     if (selected.length < count) fill(assistPool, false);
 

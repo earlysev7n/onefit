@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/meal_ingredient.dart';
@@ -1172,18 +1173,12 @@ class _WorkoutTabState extends State<_WorkoutTab>
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: gifUrl != null
-                ? Image.network(
+                ? _gifImage(
                     gifUrl,
                     key: ValueKey('gif_warmup_${ex!.id}'),
                     height: 200,
                     width: double.infinity,
-                    fit: BoxFit.cover,
-                    gaplessPlayback: true,
-                    headers: const {'User-Agent': 'OneFit/1.0'},
-                    loadingBuilder: (_, child, p) => p == null
-                        ? child
-                        : _gifPlaceholder(loading: true, height: 200),
-                    errorBuilder: (_, __, ___) => _gifPlaceholder(height: 200),
+                    loading: _gifPlaceholder(loading: true, height: 200),
                   )
                 : _gifPlaceholder(height: 200),
           ),
@@ -1244,15 +1239,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: hasGif
-                ? Image.network(
-                    ex!.gifUrl!,
-                    width: 44,
-                    height: 44,
-                    fit: BoxFit.cover,
-                    gaplessPlayback: true,
-                    headers: const {'User-Agent': 'OneFit/1.0'},
-                    errorBuilder: (_, __, ___) => _gifPlaceholder(height: 44),
-                  )
+                ? _gifImage(ex!.gifUrl!, width: 44, height: 44)
                 : Container(
                     width: 44,
                     height: 44,
@@ -1959,6 +1946,16 @@ class _WorkoutTabState extends State<_WorkoutTab>
         GreedyAlgorithm.difficultyAllowed(e.difficulty, p.experienceLevel);
   }
 
+  /// Reorders auto-refill candidates so exercises WITH a demo GIF come first
+  /// (shuffled within each tier). Callers take from the front, so no-GIF
+  /// exercises are only used when the GIF-having pool is exhausted — mirroring
+  /// the generator's gif-first preference. The manual picker does NOT use this.
+  List<Exercise> _gifPreferred(List<Exercise> candidates) {
+    final shuffled = [...candidates]..shuffle();
+    bool hasGif(Exercise e) => e.gifUrl?.isNotEmpty ?? false;
+    return [...shuffled.where(hasGif), ...shuffled.where((e) => !hasGif(e))];
+  }
+
   /// All restrictions [e] fails for the current profile, as warn-then-allow
   /// messages: equipment/location (via [GreedyAlgorithm.equipmentRestrictions])
   /// plus the experience-tier note. Empty when the user can perform it freely.
@@ -2118,11 +2115,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
       if (kept.length < originalCount) {
         final targets = _focusToMuscles(day.focus);
         final existingIds = kept.map((e) => e.exercise.id).toSet();
-        final candidates = _allExercises.where((e) {
+        final candidates = _gifPreferred(_allExercises.where((e) {
           if (existingIds.contains(e.id)) return false;
           if (!eligible(e)) return false;
           return targets.isEmpty || e.primaryMuscles.any(targets.contains);
-        }).toList()..shuffle();
+        }).toList());
 
         for (final ex in candidates) {
           if (kept.length >= originalCount) break;
@@ -2158,12 +2155,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final targets = _focusToMuscles(day.focus);
     final existingIds = day.exercises.map((e) => e.exercise.id).toSet();
 
-    final candidates = _allExercises.where((e) {
+    final candidates = _gifPreferred(_allExercises.where((e) {
       if (existingIds.contains(e.id)) return false;
       if (!_usableByUser(e)) return false;
       return targets.isEmpty || e.primaryMuscles.any(targets.contains);
-    }).toList();
-    candidates.shuffle();
+    }).toList());
 
     int added = 0;
     for (final ex in candidates) {
@@ -2191,12 +2187,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
       final targets = _focusToMuscles(nextDay.focus);
       final existingIds = nextDay.exercises.map((e) => e.exercise.id).toSet();
-      final candidates = _allExercises.where((e) {
+      final candidates = _gifPreferred(_allExercises.where((e) {
         if (existingIds.contains(e.id)) return false;
         if (!_usableByUser(e)) return false;
         return targets.isEmpty || e.primaryMuscles.any(targets.contains);
-      }).toList();
-      candidates.shuffle();
+      }).toList());
 
       if (candidates.isNotEmpty) {
         final ex = candidates.first;
@@ -3201,19 +3196,12 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: (ex.gifUrl?.isNotEmpty == true)
-                      ? Image.network(
+                      ? _gifImage(
                           ex.gifUrl!,
                           key: ValueKey('gif_ready_${ex.id}'),
                           height: 140,
                           width: double.infinity,
-                          fit: BoxFit.cover,
-                          gaplessPlayback: true,
-                          headers: const {'User-Agent': 'OneFit/1.0'},
-                          loadingBuilder: (_, child, p) => p == null
-                              ? child
-                              : _gifPlaceholder(loading: true, height: 140),
-                          errorBuilder: (_, __, ___) =>
-                              _gifPlaceholder(height: 140),
+                          loading: _gifPlaceholder(loading: true, height: 140),
                         )
                       : _gifPlaceholder(height: 140),
                 ),
@@ -3370,19 +3358,15 @@ class _WorkoutTabState extends State<_WorkoutTab>
           ? ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: gifUrl != null
-                  ? Image.network(
+                  ? _gifImage(
                       gifUrl,
                       key: ValueKey('gif_active_${ex.id}'),
                       height: gifHeight,
                       width: double.infinity,
-                      fit: BoxFit.cover,
-                      gaplessPlayback: true,
-                      headers: const {'User-Agent': 'OneFit/1.0'},
-                      loadingBuilder: (_, child, p) => p == null
-                          ? child
-                          : _gifPlaceholder(loading: true, height: gifHeight),
-                      errorBuilder: (_, __, ___) =>
-                          _gifPlaceholder(height: gifHeight),
+                      loading: _gifPlaceholder(
+                        loading: true,
+                        height: gifHeight,
+                      ),
                     )
                   : _gifPlaceholder(height: gifHeight),
             )
@@ -3393,22 +3377,15 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: gifUrl != null
-                      ? Image.network(
+                      ? _gifImage(
                           gifUrl,
                           key: ValueKey('gif_idle_${ex.id}'),
                           height: gifHeight,
                           width: double.infinity,
-                          fit: BoxFit.cover,
-                          gaplessPlayback: true,
-                          headers: const {'User-Agent': 'OneFit/1.0'},
-                          loadingBuilder: (_, child, p) => p == null
-                              ? child
-                              : _gifPlaceholder(
-                                  loading: true,
-                                  height: gifHeight,
-                                ),
-                          errorBuilder: (_, __, ___) =>
-                              _gifPlaceholder(height: gifHeight),
+                          loading: _gifPlaceholder(
+                            loading: true,
+                            height: gifHeight,
+                          ),
                         )
                       : _gifPlaceholder(height: gifHeight),
                 ),
@@ -3692,6 +3669,38 @@ class _WorkoutTabState extends State<_WorkoutTab>
     );
   }
 
+  /// Demo GIF via the [CachedNetworkImage] widget: each GIF downloads once, then
+  /// renders instantly (and offline) from the disk cache on every later view.
+  /// Placeholder/error are driven by the widget (via OctoImage), NOT by Image's
+  /// frameBuilder — the frameBuilder approach is the one that gets stuck on the
+  /// spinner forever (flutter/flutter#71290: the builder isn't re-invoked once
+  /// the decoded frame arrives). The widget still animates GIFs on Android/
+  /// Windows via MultiImageStreamCompleter.
+  Widget _gifImage(
+    String url, {
+    Key? key,
+    double? height,
+    double? width,
+    BoxFit fit = BoxFit.cover,
+    Widget? loading,
+    Widget? error,
+  }) {
+    return CachedNetworkImage(
+      key: key,
+      imageUrl: url,
+      httpHeaders: const {'User-Agent': 'OneFit/1.0'},
+      height: height,
+      width: width,
+      fit: fit,
+      fadeInDuration: Duration.zero,
+      useOldImageOnUrlChange: true, // gaplessPlayback-like: hold prior GIF
+      placeholder: (_, _) =>
+          loading ?? _gifPlaceholder(loading: true, height: height ?? 160),
+      errorWidget: (_, _, _) =>
+          error ?? _gifPlaceholder(height: height ?? 160),
+    );
+  }
+
   Widget _gifPlaceholder({bool loading = false, double height = 160}) {
     final c = context.colors;
     return Container(
@@ -3750,16 +3759,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
               const SizedBox(height: 12),
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: Image.network(
+                child: _gifImage(
                   gifUrl,
                   fit: BoxFit.contain,
-                  gaplessPlayback: true,
-                  headers: const {'User-Agent': 'OneFit/1.0'},
-                  loadingBuilder: (_, child, p) => p == null
-                      ? child
-                      : _gifPlaceholder(loading: true, height: 200),
-                  errorBuilder: (_, __, ___) =>
-                      Icon(Icons.broken_image, color: c.subtle, size: 60),
+                  loading: _gifPlaceholder(loading: true, height: 200),
+                  error: Icon(Icons.broken_image, color: c.subtle, size: 60),
                 ),
               ),
               const SizedBox(height: 12),

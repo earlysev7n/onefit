@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 import 'dart:convert';
 import '../services/openfoodfacts_service.dart';
 import '../services/firestore_service.dart';
@@ -57,6 +58,30 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
 
   static const String _apiKey = 'Fte86dAfeHdSgs4PI68EdVN3LevdLEebYFiDM6fZ';
   static const String _baseUrl = 'https://api.nal.usda.gov/fdc/v1';
+
+  /// Recent search results keyed on the normalized query, so repeating a
+  /// search never re-hits the network. Bounded to the last [_searchCacheMax]
+  /// queries (insertion order = eviction order).
+  static const int _searchCacheMax = 30;
+  final Map<String, List<_USDAFoodItem>> _searchCache = {};
+  String _lastQuery = '';
+
+  /// GET with a 10 s timeout and one retry on transient failure (timeout,
+  /// connection error, or 5xx) — a single blip on flaky WiFi shouldn't
+  /// surface as a search error.
+  Future<http.Response> _getWithRetry(Uri uri) async {
+    const timeout = Duration(seconds: 10);
+    try {
+      final resp = await http.get(uri).timeout(timeout);
+      if (resp.statusCode < 500) return resp;
+    } on TimeoutException {
+      // fall through to retry
+    } on http.ClientException {
+      // fall through to retry
+    }
+    await Future.delayed(const Duration(milliseconds: 400));
+    return http.get(uri).timeout(timeout);
+  }
 
   @override
   void initState() {
@@ -396,6 +421,8 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
     final restrictions =
         context.read<ProfileProvider>().profile?.dietaryRestrictions ??
             const <String>[];
+    final cacheKey = query.trim().toLowerCase();
+    _lastQuery = query;
     setState(() {
       _isLoading = true;
       _error = null;
@@ -403,22 +430,70 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
       _hiddenCount = 0;
     });
     try {
-      final uri = Uri.parse('$_baseUrl/foods/search').replace(
-        queryParameters: {
-          'query': query,
-          'api_key': _apiKey,
-          'pageSize': '20',
-          'dataType': 'Survey (FNDDS),SR Legacy,Foundation',
-        },
+      List<_USDAFoodItem> results;
+      final cached = _searchCache[cacheKey];
+      if (cached != null) {
+        results = cached;
+      } else {
+        final uri = Uri.parse('$_baseUrl/foods/search').replace(
+          queryParameters: {
+            'query': query,
+            'api_key': _apiKey,
+            'pageSize': '20',
+            'dataType': 'Survey (FNDDS),SR Legacy,Foundation',
+          },
+        );
+        final response = await _getWithRetry(uri);
+        if (response.statusCode == 429) {
+          throw Exception(
+            'Search is temporarily rate-limited — try again in a moment.',
+          );
+        }
+        if (response.statusCode != 200)
+          throw Exception('API error ${response.statusCode}');
+
+        results = _parseSearchResults(jsonDecode(response.body));
+        if (_searchCache.length >= _searchCacheMax) {
+          _searchCache.remove(_searchCache.keys.first);
+        }
+        _searchCache[cacheKey] = results;
+      }
+
+      // Hide results that conflict with the user's dietary restrictions.
+      // USDA has no dietary tags, so this is a name-keyword denylist — it hides
+      // obvious conflicts (pork for Halal, meat for Vegetarian, …) but cannot
+      // certify compliance. See DietaryFilter.
+      final compliant = DietaryFilter.filter(
+        results,
+        restrictions,
+        (f) => '${f.name} ${f.brandOwner}',
       );
-      final response = await http.get(uri);
-      if (response.statusCode != 200)
-        throw Exception('API error ${response.statusCode}');
 
-      final data = jsonDecode(response.body);
-      final foods = data['foods'] as List? ?? [];
+      if (!mounted) return;
+      setState(() {
+        _results = compliant;
+        _hiddenCount = results.length - compliant.length;
+        _isLoading = false;
+      });
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Search timed out — check your connection and try again.';
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _isLoading = false;
+      });
+    }
+  }
 
-      final results = foods
+  /// Maps a USDA `/foods/search` response body to model items (kcal > 0 only).
+  List<_USDAFoodItem> _parseSearchResults(dynamic data) {
+    final foods = data['foods'] as List? ?? [];
+    return foods
           .map((f) {
             final nutrients = (f['foodNutrients'] as List? ?? []);
 
@@ -467,28 +542,6 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
           })
           .where((f) => f.calories > 0)
           .toList();
-
-      // Hide results that conflict with the user's dietary restrictions.
-      // USDA has no dietary tags, so this is a name-keyword denylist — it hides
-      // obvious conflicts (pork for Halal, meat for Vegetarian, …) but cannot
-      // certify compliance. See DietaryFilter.
-      final compliant = DietaryFilter.filter(
-        results,
-        restrictions,
-        (f) => '${f.name} ${f.brandOwner}',
-      );
-
-      setState(() {
-        _results = compliant;
-        _hiddenCount = results.length - compliant.length;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
-    }
   }
 
   Future<void> _quickAddUSDA(_USDAFoodItem food) async {
@@ -776,12 +829,27 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-            TextButton(
-              onPressed: () => setState(() => _error = null),
-              child: Text(
-                'Dismiss',
-                style: GoogleFonts.inter(color: AppColors.primary),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextButton(
+                  onPressed: () => setState(() => _error = null),
+                  child: Text(
+                    'Dismiss',
+                    style: GoogleFonts.inter(color: c.muted),
+                  ),
+                ),
+                if (_lastQuery.trim().isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: () => _search(_lastQuery),
+                    child: Text(
+                      'Retry',
+                      style: GoogleFonts.inter(color: AppColors.primary),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ),

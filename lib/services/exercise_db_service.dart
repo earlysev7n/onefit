@@ -47,7 +47,7 @@ class ExerciseDBService {
   ///      removed from DNS, so gifUrls are now resolved by name against the
   ///      jsDelivr-hosted ExerciseGymGifsDB (see _gifCdnBase). Cached docs hold
   ///      dead URLs and must be rebuilt once.
-  static const _cacheVersion = 8;
+  static const _cacheVersion = 9;
 
   final _db = FirebaseFirestore.instance;
 
@@ -108,7 +108,10 @@ class ExerciseDBService {
         'Accept': 'application/vnd.github+json',
         'User-Agent': 'OneFit/1.0',
       }).timeout(const Duration(seconds: 30));
-      if (resp.statusCode != 200) return;
+      if (resp.statusCode != 200) {
+        if (kDebugMode) debugPrint('ExerciseDBService: GitHub GIF index ${resp.statusCode}');
+        return;
+      }
       final json = jsonDecode(resp.body) as Map<String, dynamic>;
       final tree = json['tree'] as List? ?? [];
       final index = <String, String>{};
@@ -121,8 +124,8 @@ class ExerciseDBService {
         index[slug] = '$_gifCdnBase/$path';
       }
       if (index.isNotEmpty) _gifIndex = index;
-    } catch (_) {
-      // Leave _gifIndex empty; exercises fall back to the placeholder.
+    } catch (e) {
+      if (kDebugMode) debugPrint('ExerciseDBService: _buildGifIndex failed – $e');
     }
   }
 
@@ -299,9 +302,21 @@ class ExerciseDBService {
         : (raw['instructions'] as String? ?? '');
     final name = (raw['name'] as String? ?? '').toLowerCase();
 
+    // If the exact name slug has no GIF match, try stripping parenthetical
+    // qualifiers (e.g. "(Competition Grip)", "(Smith Machine)"). When the
+    // stripped version matches, rename the exercise to the cleaner base form
+    // so the display name and GIF align without needing a fuzzy lookup.
+    String displayName = name;
+    if (!_gifIndex.containsKey(_slugify(name))) {
+      final stripped = name.replaceAll(RegExp(r'\s*\(.*?\)'), '').trim();
+      if (stripped.isNotEmpty && _gifIndex.containsKey(_slugify(stripped))) {
+        displayName = stripped;
+      }
+    }
+
     return Exercise(
       id: raw['exerciseId']?.toString() ?? raw['id']?.toString() ?? name.hashCode.toString(),
-      name: _titleCase(name),
+      name: _titleCase(displayName),
       category: bodyParts.isNotEmpty ? bodyParts.first : 'Other',
       primaryMuscles: targetMuscles,
       secondaryMuscles: secondaryMuscles,
@@ -310,9 +325,7 @@ class ExerciseDBService {
       goals: _inferGoals(bodyParts, name),
       locations: _inferLocations(equipments),
       instructions: instructions,
-      // The API's raw['gifUrl'] points at the dead static.exercisedb.dev host;
-      // resolve the demo animation by name against the jsDelivr library instead.
-      gifUrl: _resolveGif(name),
+      gifUrl: _resolveGif(displayName),
     );
   }
 
