@@ -1,8 +1,24 @@
 import 'package:flutter/foundation.dart';
 
-/// Master switch for the debug day-changer overlay.
-/// MUST be `false` for any build intended for real use.
-const bool kDebugDayChanger = false;
+/// Which adaptation the developer-mode "Skip to Next Week" seeder should
+/// provoke — it decides what last week's fake data makes the AdaptationEngine
+/// do (see `lib/dev/dev_tools.dart`).
+enum DevScenario { levelUp, easeOff, realistic }
+
+/// Master switch for Developer Mode, toggled from the Settings screen. When
+/// off, the whole demo toolset (the day-changer pill and the seeding actions)
+/// is hidden/inert. Persisted to SharedPreferences ('developerMode') so it
+/// survives a hot restart. MUST default `false` — real users never enable it.
+final ValueNotifier<bool> developerModeEnabled = ValueNotifier<bool>(false);
+
+/// Whether the floating day-changer pill is shown and its offset applied to
+/// [appNow]. A sub-toggle of Developer Mode ("Change Day"); turning Developer
+/// Mode off resets this to false and the offset to 0.
+final ValueNotifier<bool> devDayChangerEnabled = ValueNotifier<bool>(false);
+
+/// The scenario picked in Developer Mode for the week seeder.
+final ValueNotifier<DevScenario> devScenario =
+    ValueNotifier<DevScenario>(DevScenario.levelUp);
 
 /// When true, shows an amber ⚡ "Auto-Complete" button on each training day
 /// card in the Workout tab so workouts can be logged without doing the full
@@ -22,7 +38,7 @@ final ValueNotifier<int> debugDayOffset = ValueNotifier<int>(0);
 /// Do NOT use it for cache TTLs, unique IDs (`millisecondsSinceEpoch`), or
 /// elapsed-time timers (e.g. workout duration) — those must track real time.
 DateTime appNow() => DateTime.now().add(
-  Duration(days: kDebugDayChanger ? debugDayOffset.value : 0),
+  Duration(days: devDayChangerEnabled.value ? debugDayOffset.value : 0),
 );
 
 /// Midnight of the simulated day — convenience for date-only comparisons.

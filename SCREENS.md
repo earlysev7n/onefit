@@ -473,6 +473,21 @@ Two modes:
 
 ---
 
+### SettingsScreen
+**File:** `lib/screens/settings_screen.dart`
+
+**Purpose:** Preferences (dark mode, units, goal-adjustment notification) and Account actions (edit profile, change password, log out). Reached from the Profile tab.
+
+**Developer section (demo tooling):** a **Developer Mode** `Switch` (persisted to `SharedPreferences` `developerMode`, toggling `developerModeEnabled`) reveals, when on, a set of adaptive-system demo controls — see the CLAUDE.md "Debug flags" section for the full behaviour:
+- **Change Day** switch → `devDayChangerEnabled` (shows the floating date pill).
+- **Demo Scenario** `ChoiceChip`s → `devScenario` (`Level up` / `Ease off` / `Realistic`).
+- **Auto-Complete Today's Workout** → `DevTools.autoCompleteToday` (logs today's plan as done).
+- **Skip to Next Week** → `DevTools.simulateWeekAndAdvance` (seeds this week's workout + food logs per scenario, then jumps the clock +7 so opening Plans fires the weekly adaptation and writes a `WeeklySummary`).
+
+Turning Developer Mode off resets `devDayChangerEnabled` and `debugDayOffset` so a real user is never left on a shifted day.
+
+---
+
 ## 10. Providers
 
 ### ProfileProvider

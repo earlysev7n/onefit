@@ -16,6 +16,7 @@ import 'theme/app_theme.dart';
 import 'theme/app_colors.dart';
 import 'app_clock.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Set to false before deployment
 const bool _DEBUG_FORCE_LOGOUT = false;
@@ -34,6 +35,11 @@ void main() async {
   }
 
   final themeProvider = await ThemeProvider.create();
+
+  // Restore the Developer Mode toggle (day-changer stays off until re-enabled
+  // so a real user is never left on a shifted day after a restart).
+  final prefs = await SharedPreferences.getInstance();
+  developerModeEnabled.value = prefs.getBool('developerMode') ?? false;
 
   runApp(
     MultiProvider(
@@ -59,12 +65,16 @@ class _OneFitAppState extends State<OneFitApp> {
   @override
   void initState() {
     super.initState();
-    if (kDebugDayChanger) debugDayOffset.addListener(_onDayChanged);
+    // Both the offset and the on/off toggle change what appNow() returns, so
+    // either one requires rebuilding the stack against the new simulated day.
+    debugDayOffset.addListener(_onDayChanged);
+    devDayChangerEnabled.addListener(_onDayChanged);
   }
 
   @override
   void dispose() {
-    if (kDebugDayChanger) debugDayOffset.removeListener(_onDayChanged);
+    debugDayOffset.removeListener(_onDayChanged);
+    devDayChangerEnabled.removeListener(_onDayChanged);
     super.dispose();
   }
 
@@ -90,12 +100,16 @@ class _OneFitAppState extends State<OneFitApp> {
       themeMode: themeProvider.themeMode,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
-      builder: (context, child) => ValueListenableBuilder<int>(
-        valueListenable: debugDayOffset,
-        // Rebuilds only the day pill's label; the actual screen refresh on a
-        // day change is driven by _onDayChanged re-pushing a fresh HomeScreen.
-        builder: (context, offset, _) =>
-            Stack(children: [child!, if (kDebugDayChanger) _DebugDayChanger()]),
+      builder: (context, child) => ValueListenableBuilder<bool>(
+        valueListenable: devDayChangerEnabled,
+        builder: (context, changerOn, _) => ValueListenableBuilder<int>(
+          valueListenable: debugDayOffset,
+          // Rebuilds only the day pill's label; the actual screen refresh on a
+          // day change is driven by _onDayChanged re-pushing a fresh HomeScreen.
+          builder: (context, offset, _) => Stack(
+            children: [child!, if (changerOn) const _DebugDayChanger()],
+          ),
+        ),
       ),
       home: const AuthGate(),
     );
@@ -103,7 +117,8 @@ class _OneFitAppState extends State<OneFitApp> {
 }
 
 /// Debug-only floating control to shift the app's notion of "today".
-/// Visible only while [kDebugDayChanger] is true.
+/// Visible only while [devDayChangerEnabled] is true (the "Change Day" toggle
+/// inside Developer Mode).
 class _DebugDayChanger extends StatelessWidget {
   const _DebugDayChanger();
 

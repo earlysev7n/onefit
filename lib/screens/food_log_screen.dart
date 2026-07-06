@@ -63,8 +63,13 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   /// search never re-hits the network. Bounded to the last [_searchCacheMax]
   /// queries (insertion order = eviction order).
   static const int _searchCacheMax = 30;
-  final Map<String, List<_USDAFoodItem>> _searchCache = {};
+  final Map<String, ({List<_USDAFoodItem> items, int totalPages})> _searchCache = {};
   String _lastQuery = '';
+
+  int _searchPage = 1;
+  int _totalPages = 0;
+  bool _isLoadingMore = false;
+  final ScrollController _scrollController = ScrollController();
 
   /// GET with a 10 s timeout and one retry on transient failure (timeout,
   /// connection error, or 5xx) — a single blip on flaky WiFi shouldn't
@@ -73,7 +78,9 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
     const timeout = Duration(seconds: 10);
     try {
       final resp = await http.get(uri).timeout(timeout);
-      if (resp.statusCode < 500) return resp;
+      // Retry 5xx and 400: USDA's front-end intermittently 400s on otherwise
+      // valid requests, so give a flaky blip one more chance before surfacing.
+      if (resp.statusCode < 500 && resp.statusCode != 400) return resp;
     } on TimeoutException {
       // fall through to retry
     } on http.ClientException {
@@ -87,6 +94,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   void initState() {
     super.initState();
     _loadHistory();
+    _scrollController.addListener(_onScroll);
     if (widget.autoScan) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _scanBarcode());
     }
@@ -95,7 +103,17 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 250 &&
+        !_isLoadingMore &&
+        _searchPage < _totalPages) {
+      _loadMore();
+    }
   }
 
   // ── History ──────────────────────────────────────────────────────────────────
@@ -423,6 +441,9 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
             const <String>[];
     final cacheKey = query.trim().toLowerCase();
     _lastQuery = query;
+    _searchPage = 1;
+    _totalPages = 0;
+    if (_scrollController.hasClients) _scrollController.jumpTo(0);
     setState(() {
       _isLoading = true;
       _error = null;
@@ -433,14 +454,17 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
       List<_USDAFoodItem> results;
       final cached = _searchCache[cacheKey];
       if (cached != null) {
-        results = cached;
+        results = cached.items;
+        _totalPages = cached.totalPages;
       } else {
         final uri = Uri.parse('$_baseUrl/foods/search').replace(
           queryParameters: {
             'query': query,
             'api_key': _apiKey,
-            'pageSize': '20',
-            'dataType': 'Survey (FNDDS),SR Legacy,Foundation',
+            'pageSize': '100',
+            // Omit 'Survey (FNDDS)' — USDA's front-end intermittently 400s on
+            // the parenthesized value. SR Legacy + Foundation cover generics.
+            'dataType': 'Foundation,SR Legacy',
           },
         );
         final response = await _getWithRetry(uri);
@@ -452,11 +476,13 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
         if (response.statusCode != 200)
           throw Exception('API error ${response.statusCode}');
 
-        results = _parseSearchResults(jsonDecode(response.body));
+        final body = jsonDecode(response.body);
+        _totalPages = (body['totalPages'] as num?)?.toInt() ?? 1;
+        results = _rankResults(_parseSearchResults(body), query);
         if (_searchCache.length >= _searchCacheMax) {
           _searchCache.remove(_searchCache.keys.first);
         }
-        _searchCache[cacheKey] = results;
+        _searchCache[cacheKey] = (items: results, totalPages: _totalPages);
       }
 
       // Hide results that conflict with the user's dietary restrictions.
@@ -490,6 +516,94 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
     }
   }
 
+  Future<void> _loadMore() async {
+    if (_isLoadingMore || _searchPage >= _totalPages) return;
+    final restrictions =
+        context.read<ProfileProvider>().profile?.dietaryRestrictions ??
+            const <String>[];
+    setState(() => _isLoadingMore = true);
+    try {
+      final nextPage = _searchPage + 1;
+      final uri = Uri.parse('$_baseUrl/foods/search').replace(
+        queryParameters: {
+          'query': _lastQuery,
+          'api_key': _apiKey,
+          'pageSize': '100',
+          'dataType': 'Foundation,SR Legacy',
+          'pageNumber': '$nextPage',
+        },
+      );
+      final response = await _getWithRetry(uri);
+      if (response.statusCode != 200) {
+        if (mounted) setState(() => _isLoadingMore = false);
+        return;
+      }
+      final more = _rankResults(_parseSearchResults(jsonDecode(response.body)), _lastQuery);
+      final compliant = DietaryFilter.filter(
+        more,
+        restrictions,
+        (f) => '${f.name} ${f.brandOwner}',
+      );
+      if (!mounted) return;
+      setState(() {
+        _searchPage = nextPage;
+        _results = [..._results, ...compliant];
+        _hiddenCount += more.length - compliant.length;
+        _isLoadingMore = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoadingMore = false);
+    }
+  }
+
+  static const _processedWords = {
+    'cracker', 'cake', 'cookie', 'bread', 'mix', 'flour', 'bran',
+    'noodle', 'oil', 'syrup', 'nugget', 'snack', 'bar', 'puff',
+    'chips', 'frozen', 'flavored', 'instant', 'cereal', 'candy',
+    'dessert', 'beverage', 'drink', 'dressing', 'spread', 'paste',
+    'powder', 'extract',
+  };
+  static const _simpleWords = {
+    'raw', 'cooked', 'whole', 'plain', 'fluid', 'fresh', 'steamed',
+    'boiled', 'baked', 'roasted', 'grilled', 'unenriched', 'enriched',
+  };
+
+  /// Re-ranks USDA results so generic staple foods surface before processed
+  /// products. USDA names staples as "Rice, white, cooked" (first comma-segment
+  /// = food name) while products look like "Rice crackers" or "Snacks, rice
+  /// cakes" — so an exact first-segment match is the strongest signal.
+  List<_USDAFoodItem> _rankResults(List<_USDAFoodItem> items, String query) {
+    final q = query.toLowerCase().trim();
+    int scoreItem(_USDAFoodItem item) {
+      final d = item.name.toLowerCase();
+      int s = 0;
+      final firstSeg = d.split(',').first.trim();
+      final exactMatch = firstSeg == q ||
+          firstSeg == '${q}s' ||
+          (q.endsWith('s') && firstSeg == q.substring(0, q.length - 1));
+      if (exactMatch) {
+        s += 20;
+        // Don't penalise exact matches for processed words — "Soy sauce,
+        // reduced sodium" is still the right result for query "soy sauce".
+      } else if (firstSeg.startsWith('$q ')) {
+        s += 4;
+        if (_processedWords.any(d.contains)) s -= 8;
+      } else if (firstSeg.startsWith(q)) {
+        s += 2;
+        if (_processedWords.any(d.contains)) s -= 8;
+      } else {
+        if (_processedWords.any(d.contains)) s -= 8;
+      }
+      if (_simpleWords.any(d.contains)) s += 3;
+      s -= d.split(',').length - 1;
+      s -= item.name.length ~/ 35;
+      return s;
+    }
+    return List<_USDAFoodItem>.from(items)
+      ..sort((a, b) => scoreItem(b).compareTo(scoreItem(a)));
+  }
+
   /// Maps a USDA `/foods/search` response body to model items (kcal > 0 only).
   List<_USDAFoodItem> _parseSearchResults(dynamic data) {
     final foods = data['foods'] as List? ?? [];
@@ -508,6 +622,16 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
               return ((n['value'] ?? n['amount'] ?? 0) as num).toDouble();
             }
 
+            // Foundation foods report energy under the Atwater IDs (2047/2048)
+            // instead of 1008 — fall back so they aren't dropped as 0 kcal.
+            double getEnergy() {
+              final kcal = getN(1008);
+              if (kcal > 0) return kcal;
+              final atwaterGeneral = getN(2047);
+              if (atwaterGeneral > 0) return atwaterGeneral;
+              return getN(2048);
+            }
+
             return _USDAFoodItem(
               fdcId: f['fdcId']?.toString() ?? '',
               name: f['description'] ?? 'Unknown',
@@ -515,7 +639,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
               servingSize: (f['servingSize'] ?? 100).toDouble(),
               servingUnit: f['servingSizeUnit'] ?? 'g',
               // Macros
-              calories: getN(1008),
+              calories: getEnergy(),
               protein: getN(1003),
               carbs: getN(1005),
               fat: getN(1004),
@@ -1076,12 +1200,23 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
       );
     }
     final hasBanner = _hiddenCount > 0;
+    final showLoader = _isLoadingMore;
     return ListView.builder(
+      controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-      itemCount: _results.length + (hasBanner ? 1 : 0),
+      itemCount: _results.length + (hasBanner ? 1 : 0) + (showLoader ? 1 : 0),
       itemBuilder: (context, i) {
         if (hasBanner && i == 0) return _buildHiddenNotice();
-        return _buildSearchCard(_results[i - (hasBanner ? 1 : 0)]);
+        final idx = i - (hasBanner ? 1 : 0);
+        if (showLoader && idx == _results.length) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: CircularProgressIndicator(color: Color(0xFF00C97B)),
+            ),
+          );
+        }
+        return _buildSearchCard(_results[idx]);
       },
     );
   }
