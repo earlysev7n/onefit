@@ -110,6 +110,19 @@ void main() {
       );
       expect(r.calorieBiasKcal, -100);
     });
+
+    test('held target also silences the weight-trend modifier (fast loss)', () {
+      // Over target + losing faster than −1.0 kg: the W4 hold applies, and the
+      // fast-loss +100 branch must NOT fire afterwards — one note, zero bias.
+      final r = run(
+        adherence: 120,
+        weightChangeKg: -1.5,
+        fitnessGoal: 'Weight Loss',
+      );
+      expect(r.calorieBiasKcal, 0);
+      expect(r.notes, contains('Calorie target held'));
+      expect(r.notes, isNot(contains('nudged')));
+    });
   });
 
   // ── Difficulty / RPE vote aggregation ─────────────────────────────────────

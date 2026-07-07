@@ -1,12 +1,12 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/edamam_recipe.dart';
 
 class EdamamService {
-  // Register free at developer.edamam.com → Recipe Search API
-  // Add your own keys here or load from environment
-  static const _appId = '1d4b0e1d';
-  static const _appKey = 'efab9f7189efaf76423e7102e116985d';
+  // Register free at developer.edamam.com → Meal Planner plan.
+  static final String _appId = dotenv.env['EDAMAM_APP_ID'] ?? '';
+  static final String _appKey = dotenv.env['EDAMAM_APP_KEY'] ?? '';
   static const _base = 'https://api.edamam.com/api/recipes/v2';
 
   // ── Public API ──────────────────────────────────────────────────────────────

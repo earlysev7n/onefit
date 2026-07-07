@@ -45,6 +45,10 @@ class AdaptationEngine {
   }) {
     int calorieBias = 0;
     String difficultyBias = 'same';
+    // W4: a deliberate "target held" decision must also silence the
+    // weight-trend modifier below, or the fast-loss branch re-adds +100 and
+    // contradicts the "held" note.
+    var heldForWeightLoss = false;
     final notes = <String>[];
 
     // ── Calorie adjustment ──────────────────────────────────────────────────
@@ -60,6 +64,7 @@ class AdaptationEngine {
           weightChangeKg != null &&
           weightChangeKg < -0.1;
       if (losingOnWeightLoss) {
+        heldForWeightLoss = true;
         notes.add('Calorie target held — you were over your logged target but still losing weight, so the deficit is working.');
       } else {
         calorieBias = -100;
@@ -70,7 +75,7 @@ class AdaptationEngine {
     // ── Weight-trend modifier (outcome signal, non-stacking) ────────────────
     // Only fires when adherence didn't already move calories, so the two
     // calorie signals never fight. Needs a real weekly delta (>=2 weigh-ins).
-    if (calorieBias == 0 && weightChangeKg != null) {
+    if (calorieBias == 0 && !heldForWeightLoss && weightChangeKg != null) {
       const flat = 0.1; // within ±0.1 kg ≈ no real change this week
       const fastLoss = -1.0; // losing faster than this is too aggressive
       const fastGain = 0.75; // gaining faster than this adds excess fat

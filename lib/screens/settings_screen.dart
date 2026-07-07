@@ -416,27 +416,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _runReset() async {
+    final c = context.colors;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: c.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           'Reset to Day One?',
           style: GoogleFonts.spaceGrotesk(
-            color: Colors.white,
+            color: c.onBackground,
             fontWeight: FontWeight.w700,
           ),
         ),
         content: Text(
           'This will permanently delete all workout, nutrition, and progress data. '
           'Your profile settings (goals, equipment, etc.) will be kept.',
-          style: GoogleFonts.inter(color: const Color(0xFF888888)),
+          style: GoogleFonts.inter(color: c.muted),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: GoogleFonts.inter(color: const Color(0xFF888888))),
+            child: Text('Cancel', style: GoogleFonts.inter(color: c.muted)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),

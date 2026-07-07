@@ -134,8 +134,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           setState(() => _isLoading = true);
                           try {
                             await AuthService().register(email, password);
-                            if (mounted) Navigator.pop(context);
+                            if (!context.mounted) return;
+                            Navigator.pop(context);
                           } catch (e) {
+                            if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text(e.toString())),
                             );

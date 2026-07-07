@@ -64,21 +64,22 @@ class _HomeScreenState extends State<HomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool('hideGoalAdjustmentPopup') ?? false) return;
 
-    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final today = appToday().toIso8601String().substring(0, 10);
     if (prefs.getString('goalAdjustmentLastShown') == today) return;
     await prefs.setString('goalAdjustmentLastShown', today);
 
     if (!mounted) return;
     final increased = adjusted > base;
+    final c = context.colors;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: c.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           'Daily Goal Updated',
           style: GoogleFonts.spaceGrotesk(
-            color: Colors.white,
+            color: c.onBackground,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -87,7 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
           'so your calorie goal has been '
           '${increased ? "increased to" : "reduced to"} $adjusted kcal today '
           'to keep you on track for your weekly target.',
-          style: GoogleFonts.inter(color: const Color(0xFF888888)),
+          style: GoogleFonts.inter(color: c.muted),
         ),
         actions: [
           TextButton(
@@ -98,18 +99,18 @@ class _HomeScreenState extends State<HomeScreen> {
             },
             child: Text(
               "Don't show again",
-              style: GoogleFonts.inter(color: const Color(0xFF888888)),
+              style: GoogleFonts.inter(color: c.muted),
             ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00C97B),
+              backgroundColor: AppColors.primary,
             ),
             child: Text(
               'OK',
               style: GoogleFonts.inter(
-                color: Colors.black,
+                color: c.onPrimary,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -124,33 +125,36 @@ class _HomeScreenState extends State<HomeScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: c.surface,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              autoScan ? 'Select Meal Type for Barcode' : 'Select Meal Type',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: c.onBackground,
+      builder: (_) => SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                autoScan ? 'Select Meal Type for Barcode' : 'Select Meal Type',
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: c.onBackground,
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            _buildMealTypeOption('Breakfast', autoScan: autoScan),
-            const SizedBox(height: 10),
-            _buildMealTypeOption('Lunch', autoScan: autoScan),
-            const SizedBox(height: 10),
-            _buildMealTypeOption('Dinner', autoScan: autoScan),
-            const SizedBox(height: 10),
-            _buildMealTypeOption('Snack', autoScan: autoScan),
-            const SizedBox(height: 8),
-          ],
+              const SizedBox(height: 20),
+              _buildMealTypeOption('Breakfast', autoScan: autoScan),
+              const SizedBox(height: 10),
+              _buildMealTypeOption('Lunch', autoScan: autoScan),
+              const SizedBox(height: 10),
+              _buildMealTypeOption('Dinner', autoScan: autoScan),
+              const SizedBox(height: 10),
+              _buildMealTypeOption('Snack', autoScan: autoScan),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
@@ -201,58 +205,61 @@ class _HomeScreenState extends State<HomeScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: c.surface,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Add',
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: c.onBackground,
+      builder: (_) => SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Add',
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: c.onBackground,
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildAddOption(
-                  Icons.fitness_center_rounded,
-                  'Log\nWorkout',
-                  AppColors.primary,
-                  onTap: () {
-                    Navigator.pop(context);
-                    setState(() => _currentIndex = 1);
-                  },
-                ),
-                _buildAddOption(
-                  Icons.restaurant_menu_rounded,
-                  'Log\nMeal',
-                  AppColors.orange,
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showMealTypeSelector();
-                  },
-                ),
-                _buildAddOption(
-                  FontAwesomeIcons.barcode,
-                  'Scan\nBarcode',
-                  AppColors.purple,
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showMealTypeSelector(autoScan: true);
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-          ],
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildAddOption(
+                    Icons.fitness_center_rounded,
+                    'Log\nWorkout',
+                    AppColors.primary,
+                    onTap: () {
+                      Navigator.pop(context);
+                      setState(() => _currentIndex = 1);
+                    },
+                  ),
+                  _buildAddOption(
+                    Icons.restaurant_menu_rounded,
+                    'Log\nMeal',
+                    AppColors.orange,
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showMealTypeSelector();
+                    },
+                  ),
+                  _buildAddOption(
+                    FontAwesomeIcons.barcode,
+                    'Scan\nBarcode',
+                    AppColors.purple,
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showMealTypeSelector(autoScan: true);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );

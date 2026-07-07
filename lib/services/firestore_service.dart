@@ -115,7 +115,11 @@ class FirestoreService {
           'loggedAt',
           isGreaterThanOrEqualTo: Timestamp.fromDate(startDate),
         )
-        .where('loggedAt', isLessThanOrEqualTo: Timestamp.fromDate(endDate))
+        // Exclusive end, matching getWorkoutLogsForDateRange — callers pass
+        // the next window's start (e.g. next Monday 00:00, or today to
+        // exclude today), so an inclusive bound would double-count a
+        // midnight-stamped log into two windows.
+        .where('loggedAt', isLessThan: Timestamp.fromDate(endDate))
         .orderBy('loggedAt', descending: false)
         .get();
 
@@ -325,40 +329,6 @@ class FirestoreService {
   }
 
   // ========================================
-  // MEAL PLAN METHODS (for future integration)
-  // ========================================
-
-  /// Save generated meal plan
-  Future<void> saveMealPlan(
-    String userId,
-    String weekId,
-    Map<String, dynamic> mealPlan,
-  ) async {
-    await _db
-        .collection('users')
-        .doc(userId)
-        .collection('meal_plans')
-        .doc(weekId)
-        .set(mealPlan);
-  }
-
-  /// Get current meal plan
-  Future<Map<String, dynamic>?> getCurrentMealPlan(String userId) async {
-    final now = DateTime.now();
-    final weekId = 'week_${now.year}_${now.month}_${now.day}';
-
-    final doc = await _db
-        .collection('users')
-        .doc(userId)
-        .collection('meal_plans')
-        .doc(weekId)
-        .get();
-
-    if (doc.exists) return doc.data();
-    return null;
-  }
-
-  // ========================================
   // WORKOUT PLAN METHODS
   // ========================================
 
@@ -430,34 +400,6 @@ class FirestoreService {
     return days
         .map((d) => WorkoutDay.fromMap(d as Map<String, dynamic>))
         .toList();
-  }
-
-  /// Legacy generic save (kept for compatibility).
-  Future<void> saveWorkoutPlan(
-    String userId,
-    String weekId,
-    Map<String, dynamic> workoutPlan,
-  ) async {
-    await _db
-        .collection('users')
-        .doc(userId)
-        .collection('workout_plans')
-        .doc(weekId)
-        .set(workoutPlan);
-  }
-
-  /// Legacy generic get (kept for compatibility).
-  Future<Map<String, dynamic>?> getCurrentWorkoutPlan(String userId) async {
-    final now = DateTime.now();
-    final weekId = weekIdFor(now);
-    final doc = await _db
-        .collection('users')
-        .doc(userId)
-        .collection('workout_plans')
-        .doc(weekId)
-        .get();
-    if (doc.exists) return doc.data();
-    return null;
   }
 
   // ========================================

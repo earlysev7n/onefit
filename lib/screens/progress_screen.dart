@@ -415,7 +415,7 @@ class _CalorieTrendChartState extends State<_CalorieTrendChart> {
     final c = context.colors;
     final labels = prov.bucketLabels(_range);
     final series = prov.calorieSeries(_range);
-    final goal = prov.calorieGoal.toDouble();
+    final goal = prov.baseCalorieGoal.toDouble();
     final maxY = math.max(goal * 1.3, 500.0);
 
     final bars = series.asMap().entries.map((e) {
@@ -436,7 +436,7 @@ class _CalorieTrendChartState extends State<_CalorieTrendChart> {
 
     return _SectionCard(
       title: 'Calorie Trend',
-      subtitle: '${_subtitles[_range]} • Goal ${prov.calorieGoal} kcal',
+      subtitle: '${_subtitles[_range]} • Goal ${prov.baseCalorieGoal} kcal',
       trailing: _RangeSelector(
         value: _range,
         onChanged: (r) => setState(() => _range = r),

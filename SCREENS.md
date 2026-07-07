@@ -20,10 +20,12 @@
    - [FoodLogScreen](#foodlogscreen)
    - [BarcodeScanScreen](#barcodescanscreen)
    - [RecipeScreen](#recipescreen)
+   - [SettingsScreen](#settingsscreen)
+   - [WeeklyReviewScreen](#weeklyreviewscreen--weekly-adaptive-report)
 10. [Providers](#10-providers)
     - [ProfileProvider](#profileprovider)
     - [PlanProvider](#planprovider)
-    - [ProgressProvider](#processprovider)
+    - [ProgressProvider](#progressprovider)
     - [ThemeProvider](#themeprovider)
 11. [Algorithms](#11-algorithms)
     - [GreedyAlgorithm](#greedyalgorithm)
@@ -690,8 +692,7 @@ Difficulty:
 | `AuthService` | `lib/services/auth_service.dart` | Firebase Auth wrapper: `signIn`, `register`, `signOut`, `authStateChanges`, `currentUser` |
 | `FirestoreService` | `lib/services/firestore_service.dart` | All Firestore reads/writes. Plain class — instantiate anywhere with `FirestoreService()` |
 | `ExerciseDBService` | `lib/services/exercise_db_service.dart` | Fetches from `oss.exercisedb.dev` (AscendAPI free tier, cursor-paginated 25/page; GIFs on `static.exercisedb.dev`); caches ~1 500 exercises in Firestore for 30 days |
-| ~~`MealService`~~ | `lib/services/meal_service.dart` | **No longer used** — meal generation now runs the `GeneticAlgorithm` over USDA ingredients. File is orphaned; safe to delete. |
-| `EdamamService` | `lib/services/edamam_service.dart` | Edamam Meal Planner integration; kept for future recipe features |
+| `EdamamService` | `lib/services/edamam_service.dart` | Edamam Meal Planner integration; kept for future recipe features. (The old TheMealDB `MealService` has been deleted — meal generation runs the `GeneticAlgorithm` over USDA ingredients.) |
 | `OpenFoodFactsService` | `lib/services/openfoodfacts_service.dart` | Barcode → product lookup |
 
 ### FirestoreService — key methods added in Phase 2
@@ -732,11 +733,13 @@ users/{uid}
   food_logs/{logId}           FoodItem (full macro + 14 micro)
   workout_logs/{logId}        WorkoutLog (completed session)
   workout_plans/{weekId}      Serialised List<WorkoutDay> (persisted editable plan)
-  weight_logs/{logId}         WeightLog
-  meal_plans/{planId}         (legacy stub, not fully wired)
-  weekly_summaries/{weekId}   (planned, not yet used)
+  weight_logs/{logId}         WeightLog (doc ID = YYYY-MM-DD)
+  exercise_stats/{exerciseId} ExerciseStat (last/PR top set + last session sets)
+  weekly_summaries/{weekId}   WeeklySummary (weekly adaptive report snapshot)
+  saved_recipes/{mealType}    Cached OpenAI recipe per meal card
 
 exercises/{exerciseId}        ExerciseDB cache (30-day TTL)
+ingredients/{id}              USDA-seeded MealIngredient pool (Genetic Algorithm)
 ```
 
 ---
@@ -766,7 +769,7 @@ exercises/{exerciseId}        ExerciseDB cache (30-day TTL)
 | `plan_provider.dart` | `persistWorkoutPlan`, `loadWorkoutPlan`, `replaceExercise`, `removeExercise`, `addExercise`, `updateExerciseParams` |
 | `plans_screen.dart` | `_generate()` loads persisted plan first; caches `_allExercises` for picker; edit-mode toggle + delete/params-editor/add-exercise UI |
 | `progress_provider.dart` | `plannedWorkoutDays` + `weeklyWorkoutCompletion` use real `profile.workoutDaysPerWeek` |
-| `meal_service.dart` | `_categoriesForMealType` handles all 10 diet styles as hard constraints; `scaleToCalories`; `_score` doubles protein weight when target > 30 g |
+| `meal_service.dart` | `_categoriesForMealType` handled diet styles as hard constraints (historical — file since deleted with the move to the Genetic Algorithm) |
 
 ### Fixes (between phases)
 
@@ -775,7 +778,7 @@ exercises/{exerciseId}        ExerciseDB cache (30-day TTL)
 | `profile_input_screen.dart` | DOB picker instead of age text field |
 | `profile_input_screen.dart` | Split/days incompatibility guard (live warning + dialog) |
 | `profile_input_screen.dart` | Removed "Other" gender (irrelevant to BMR formula) |
-| `meal_service.dart` | High-protein and all other diet styles now hard-constrain category selection |
+| `meal_service.dart` | High-protein and other diet styles hard-constrained category selection (historical — file since deleted) |
 | `plans_screen.dart` | `scaleToCalories` applied after `pickBest` so meals hit calorie targets and protein scales proportionally |
 
 ### Post-Phase 2 fixes

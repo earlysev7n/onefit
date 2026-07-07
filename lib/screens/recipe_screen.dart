@@ -167,6 +167,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
 
       if (_isSaved) {
         await ref.delete();
+        if (!mounted) return;
         setState(() {
           _isSaved = false;
           _isSaving = false;

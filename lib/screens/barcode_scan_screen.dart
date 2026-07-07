@@ -115,7 +115,7 @@ class ScannerOverlay extends CustomPainter {
 
     // Draw corner brackets
     final bracketPaint = Paint()
-      ..color = const Color(0xFF00C97B)
+      ..color = AppColors.primary
       ..style = PaintingStyle.stroke
       ..strokeWidth = 4;
 

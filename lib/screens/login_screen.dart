@@ -99,10 +99,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                 _passwordController.text.trim(),
                               );
                             } catch (e) {
+                              if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text(e.toString())),
                               );
                             }
+                            if (!context.mounted) return;
                             setState(() => _isLoading = false);
                           },
                     style: ElevatedButton.styleFrom(

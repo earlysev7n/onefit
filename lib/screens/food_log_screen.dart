@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
@@ -56,7 +57,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   /// Picker-mode basket of available ingredients (per-100g, GA-ready).
   final List<MealIngredient> _picked = [];
 
-  static const String _apiKey = 'Fte86dAfeHdSgs4PI68EdVN3LevdLEebYFiDM6fZ';
+  static final String _apiKey = dotenv.env['USDA_API_KEY'] ?? '';
   static const String _baseUrl = 'https://api.nal.usda.gov/fdc/v1';
 
   /// Recent search results keyed on the normalized query, so repeating a
@@ -1212,7 +1213,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
             child: Center(
-              child: CircularProgressIndicator(color: Color(0xFF00C97B)),
+              child: CircularProgressIndicator(color: AppColors.primary),
             ),
           );
         }

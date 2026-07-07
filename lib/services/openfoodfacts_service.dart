@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/food_item.dart';
 import '../app_clock.dart';
@@ -17,7 +18,7 @@ class OpenFoodFactsService {
       }
       return null;
     } catch (e) {
-      print('Error fetching product: $e');
+      debugPrint('Error fetching product: $e');
       return null;
     }
   }
@@ -82,7 +83,7 @@ class OpenFoodFactsService {
         quantity: 1.0,
       );
     } catch (e) {
-      print('Error parsing product: $e');
+      debugPrint('Error parsing product: $e');
       return null;
     }
   }

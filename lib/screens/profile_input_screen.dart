@@ -105,6 +105,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   // are multi-select; diet styles are single-select (they reshape macro
   // targets, so they cannot be combined).
   final List<String> _restrictionOptions = [
+    'None',
     'Vegetarian',
     'Vegan',
     'Halal',
@@ -999,9 +1000,15 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
             _restrictionOptions,
             _dietaryRestrictions,
             (v) => setState(() {
-              _dietaryRestrictions.contains(v)
-                  ? _dietaryRestrictions.remove(v)
-                  : _dietaryRestrictions.add(v);
+              if (v == 'None') {
+                _dietaryRestrictions.removeWhere(_restrictionOptions.contains);
+                _dietaryRestrictions.add('None');
+              } else {
+                _dietaryRestrictions.remove('None');
+                _dietaryRestrictions.contains(v)
+                    ? _dietaryRestrictions.remove(v)
+                    : _dietaryRestrictions.add(v);
+              }
             }),
           ),
           const SizedBox(height: 16),
@@ -1098,48 +1105,51 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: c.surface,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: GoogleFonts.spaceGrotesk(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: c.onBackground,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ...help.entries.map(
-              (e) => Padding(
-                padding: const EdgeInsets.only(bottom: 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      e.key,
-                      style: GoogleFonts.inter(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      e.value,
-                      style: GoogleFonts.inter(color: c.muted, fontSize: 13),
-                    ),
-                  ],
+      builder: (_) => SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: c.onBackground,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+              ...help.entries.map(
+                (e) => Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        e.key,
+                        style: GoogleFonts.inter(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        e.value,
+                        style: GoogleFonts.inter(color: c.muted, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

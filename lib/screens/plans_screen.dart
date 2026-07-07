@@ -330,6 +330,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
       // log and leak this week's Monday into last week's aggregates.
       final today = DateTime(now.year, now.month, now.day);
       final weekId = FirestoreService.weekIdFor(now);
+      if (!mounted) return;
       final planProvider = context.read<PlanProvider>();
 
       // ── Always fetch exercises first so the picker works on every path ────────
@@ -808,55 +809,58 @@ class _WorkoutTabState extends State<_WorkoutTab>
     return showModalBottomSheet<int>(
       context: context,
       backgroundColor: c.surface,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'How did that feel?',
-              style: GoogleFonts.spaceGrotesk(
-                color: c.onBackground,
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
+      builder: (ctx) => SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'How did that feel?',
+                style: GoogleFonts.spaceGrotesk(
+                  color: c.onBackground,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 18,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              "Tunes next week's difficulty.",
-              style: GoogleFonts.inter(color: c.muted, fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            ...List.generate(
-              5,
-              (i) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Text(
-                  '${i + 1}',
-                  style: GoogleFonts.spaceGrotesk(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
+              const SizedBox(height: 4),
+              Text(
+                "Tunes next week's difficulty.",
+                style: GoogleFonts.inter(color: c.muted, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              ...List.generate(
+                5,
+                (i) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Text(
+                    '${i + 1}',
+                    style: GoogleFonts.spaceGrotesk(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
                   ),
+                  title: Text(
+                    labels[i],
+                    style: GoogleFonts.inter(color: c.onBackground),
+                  ),
+                  onTap: () => Navigator.pop(ctx, i + 1),
                 ),
-                title: Text(
-                  labels[i],
-                  style: GoogleFonts.inter(color: c.onBackground),
+              ),
+              Center(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx, null),
+                  child: Text('Skip', style: GoogleFonts.inter(color: c.muted)),
                 ),
-                onTap: () => Navigator.pop(ctx, i + 1),
               ),
-            ),
-            Center(
-              child: TextButton(
-                onPressed: () => Navigator.pop(ctx, null),
-                child: Text('Skip', style: GoogleFonts.inter(color: c.muted)),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -4158,63 +4162,66 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     return showModalBottomSheet<String>(
       context: context,
       backgroundColor: c.surface,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (sheetCtx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
-              child: Text(
-                'Generate Meal',
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: c.onBackground,
+      builder: (sheetCtx) => SingleChildScrollView(
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
+                child: Text(
+                  'Generate Meal',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: c.onBackground,
+                  ),
                 ),
               ),
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.kitchen_rounded,
-                color: AppColors.primary,
-              ),
-              title: Text(
-                'Use My Ingredients',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w600,
-                  color: c.onBackground,
+              ListTile(
+                leading: const Icon(
+                  Icons.kitchen_rounded,
+                  color: AppColors.primary,
                 ),
-              ),
-              subtitle: Text(
-                'Pick the ingredients you have and AI decides the amounts',
-                style: GoogleFonts.inter(fontSize: 12, color: c.muted),
-              ),
-              onTap: () => Navigator.pop(sheetCtx, 'available'),
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.auto_awesome_rounded,
-                color: AppColors.purple,
-              ),
-              title: Text(
-                'Generate Automatically',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w600,
-                  color: c.onBackground,
+                title: Text(
+                  'Use My Ingredients',
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                    color: c.onBackground,
+                  ),
                 ),
+                subtitle: Text(
+                  'Pick the ingredients you have and AI decides the amounts',
+                  style: GoogleFonts.inter(fontSize: 12, color: c.muted),
+                ),
+                onTap: () => Navigator.pop(sheetCtx, 'available'),
               ),
-              subtitle: Text(
-                'AI picks foods and amounts from the ingredient database',
-                style: GoogleFonts.inter(fontSize: 12, color: c.muted),
+              ListTile(
+                leading: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: AppColors.purple,
+                ),
+                title: Text(
+                  'Generate Automatically',
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                    color: c.onBackground,
+                  ),
+                ),
+                subtitle: Text(
+                  'AI picks foods and amounts from the ingredient database',
+                  style: GoogleFonts.inter(fontSize: 12, color: c.muted),
+                ),
+                onTap: () => Navigator.pop(sheetCtx, 'auto'),
               ),
-              onTap: () => Navigator.pop(sheetCtx, 'auto'),
-            ),
-            const SizedBox(height: 12),
-          ],
+              const SizedBox(height: 12),
+            ],
+          ),
         ),
       ),
     );

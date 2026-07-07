@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:convert';
 
 /// Dev-only switch. Set `true` to expose the "Seed Ingredients" button on the
@@ -9,13 +11,13 @@ import 'dart:convert';
 const bool kShowSeedTools = false;
 
 class SeedData {
-  static const String _apiKey = 'Fte86dAfeHdSgs4PI68EdVN3LevdLEebYFiDM6fZ';
+  static final String _apiKey = dotenv.env['USDA_API_KEY'] ?? '';
   static const String _baseUrl = 'https://api.nal.usda.gov/fdc/v1';
 
   static Future<void> seedAll() async {
     await seedExercises();
     await seedIngredients();
-    print('Seeding complete!');
+    debugPrint('Seeding complete!');
   }
 
   // ── USDA nutrient fetch ────────────────────────────────────────────────────
@@ -95,7 +97,7 @@ class SeedData {
         'phosphorus': getN(1091),
       };
     } catch (e) {
-      print('  ⚠ USDA fetch failed for "$query": $e — skipping');
+      debugPrint('  ⚠ USDA fetch failed for "$query": $e — skipping');
       return null;
     }
   }
@@ -120,7 +122,7 @@ class SeedData {
       }
       await batch.commit();
     }
-    print('${exercises.length} exercises seeded!');
+    debugPrint('${exercises.length} exercises seeded!');
   }
 
   // ── Ingredients ────────────────────────────────────────────────────────────
@@ -133,7 +135,7 @@ class SeedData {
 
     // Wipe the entire collection first so stale 0-kcal docs (left by the
     // original rate-limited seed) don't survive a re-run.
-    print('Wiping existing ingredient docs...');
+    debugPrint('Wiping existing ingredient docs...');
     final existing = await db.collection('ingredients').get();
     if (existing.docs.isNotEmpty) {
       for (var i = 0; i < existing.docs.length; i += 400) {
@@ -144,7 +146,7 @@ class SeedData {
         }
         await deleteBatch.commit();
       }
-      print('Wiped ${existing.docs.length} existing docs.');
+      debugPrint('Wiped ${existing.docs.length} existing docs.');
     }
 
     int count = 0;
@@ -153,7 +155,7 @@ class SeedData {
     int batchCount = 0;
 
     for (final stub in _ingredientStubs) {
-      print('Fetching: ${stub['name']}...');
+      debugPrint('Fetching: ${stub['name']}...');
       final nutrition = await _fetchNutrition(stub['name'] as String);
 
       // Throttle to stay under the USDA rate limit.
@@ -192,9 +194,9 @@ class SeedData {
     }
 
     if (batchCount > 0) await writeBatch.commit();
-    print('$count ingredients seeded with live USDA nutrition!');
+    debugPrint('$count ingredients seeded with live USDA nutrition!');
     if (failed.isNotEmpty) {
-      print(
+      debugPrint(
         '⚠ ${failed.length} skipped (no USDA data — re-run to retry): '
         '${failed.join(', ')}',
       );

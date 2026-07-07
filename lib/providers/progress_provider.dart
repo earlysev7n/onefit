@@ -115,6 +115,11 @@ class ProgressProvider extends ChangeNotifier {
   /// [ProfileProvider.dailyEffectiveGoal]. The today-ring and chart use this.
   int _effectiveGoal = 2000;
   int get calorieGoal => _effectiveGoal;
+
+  /// Base (non-daily-adjusted) calorie goal. Historical comparisons — the
+  /// Calorie Trend reference line and over-goal coloring — use this, because
+  /// past days/weeks were never subject to today's ±10% adaptive goal.
+  int get baseCalorieGoal => _profile?.calorieGoal ?? _effectiveGoal;
   double get proteinGoal => (_profile?.macroGoals['protein'] ?? 150).toDouble();
 
   /// Planned training days per week — driven by the user's real profile input.
