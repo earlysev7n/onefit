@@ -9,6 +9,7 @@ import '../providers/profile_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/auth_service.dart';
 import '../theme/app_colors.dart';
+import 'home_screen.dart';
 import 'login_screen.dart';
 import 'profile_input_screen.dart';
 
@@ -22,6 +23,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _showGoalPopup = true;
   bool _seeding = false;
+  bool _resetting = false;
 
   @override
   void initState() {
@@ -291,6 +293,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         : Icon(Icons.chevron_right, color: c.subtle),
                     onTap: _seeding ? null : _runSkipToNextWeek,
                   ),
+                  divider(),
+                  _settingsTile(
+                    context,
+                    icon: Icons.restart_alt_outlined,
+                    iconColor: Colors.redAccent,
+                    title: 'Reset to Day One',
+                    subtitle: 'Delete all history and restart from scratch',
+                    trailing: _resetting
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.redAccent,
+                            ),
+                          )
+                        : Icon(Icons.chevron_right, color: c.subtle),
+                    onTap: _resetting ? null : _runReset,
+                  ),
                 ],
               ],
             ),
@@ -391,6 +412,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     } finally {
       if (mounted) setState(() => _seeding = false);
+    }
+  }
+
+  Future<void> _runReset() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Reset to Day One?',
+          style: GoogleFonts.spaceGrotesk(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
+          'This will permanently delete all workout, nutrition, and progress data. '
+          'Your profile settings (goals, equipment, etc.) will be kept.',
+          style: GoogleFonts.inter(color: const Color(0xFF888888)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: GoogleFonts.inter(color: const Color(0xFF888888))),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: Text('Reset', style: GoogleFonts.inter(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _resetting = true);
+    try {
+      await DevTools.resetAccount(context);
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (_) => false,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Reset failed: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _resetting = false);
     }
   }
 

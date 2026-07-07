@@ -4427,7 +4427,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
   Widget _buildPlan() {
     final c = context.colors;
     final totalCals = _totalCals();
-    final targetCal = context.read<ProfileProvider>().dailyEffectiveGoal;
+    final targetCal = context.watch<ProfileProvider>().dailyEffectiveGoal;
 
     return Column(
       children: [

@@ -315,13 +315,32 @@ class _WeeklyReportCard extends StatelessWidget {
 }
 
 // ─── WEEKLY ACHIEVEMENTS ───────────────────────────────────────────────────────
-class _WeeklyAchievements extends StatelessWidget {
+class _WeeklyAchievements extends StatefulWidget {
   final ProgressProvider prov;
   const _WeeklyAchievements({required this.prov});
 
   @override
+  State<_WeeklyAchievements> createState() => _WeeklyAchievementsState();
+}
+
+class _WeeklyAchievementsState extends State<_WeeklyAchievements> {
+  TrendRange _range = TrendRange.week;
+
+  static const _titles = {
+    TrendRange.week: 'This Week',
+    TrendRange.month: 'This Month',
+    TrendRange.year: 'This Year',
+  };
+  static const _periods = {
+    TrendRange.week: 'this week',
+    TrendRange.month: 'this month',
+    TrendRange.year: 'this year',
+  };
+
+  @override
   Widget build(BuildContext context) {
-    final adherence = prov.calorieAdherence;
+    final prov = widget.prov;
+    final adherence = prov.calorieAdherenceFor(_range);
     final adherenceColor = adherence >= 90
         ? AppColors.primary
         : adherence >= 75
@@ -329,7 +348,11 @@ class _WeeklyAchievements extends StatelessWidget {
         : Colors.redAccent;
 
     return _SectionCard(
-      title: 'This Week',
+      title: _titles[_range]!,
+      trailing: _RangeSelector(
+        value: _range,
+        onChanged: (r) => setState(() => _range = r),
+      ),
       child: GridView.count(
         crossAxisCount: 2,
         shrinkWrap: true,
@@ -352,13 +375,13 @@ class _WeeklyAchievements extends StatelessWidget {
           ),
           _StatTile(
             label: 'Workouts Done',
-            value: '${prov.weekWorkoutLogs.length} this week',
+            value: '${prov.workoutsDoneFor(_range)} ${_periods[_range]}',
             color: AppColors.orange,
             icon: Icons.fitness_center_rounded,
           ),
           _StatTile(
             label: 'Protein Consistency',
-            value: '${prov.proteinConsistency.round()}%',
+            value: '${prov.proteinConsistencyFor(_range).round()}%',
             color: AppColors.primary,
             icon: Icons.egg_alt_rounded,
           ),
@@ -369,19 +392,34 @@ class _WeeklyAchievements extends StatelessWidget {
 }
 
 // ─── CALORIE TREND CHART ───────────────────────────────────────────────────────
-class _CalorieTrendChart extends StatelessWidget {
+class _CalorieTrendChart extends StatefulWidget {
   final ProgressProvider prov;
   const _CalorieTrendChart({required this.prov});
 
   @override
+  State<_CalorieTrendChart> createState() => _CalorieTrendChartState();
+}
+
+class _CalorieTrendChartState extends State<_CalorieTrendChart> {
+  TrendRange _range = TrendRange.week;
+
+  static const _subtitles = {
+    TrendRange.week: 'Daily',
+    TrendRange.month: 'Last 30 Days',
+    TrendRange.year: 'Last 12 Months',
+  };
+
+  @override
   Widget build(BuildContext context) {
+    final prov = widget.prov;
     final c = context.colors;
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final labels = prov.bucketLabels(_range);
+    final series = prov.calorieSeries(_range);
     final goal = prov.calorieGoal.toDouble();
     final maxY = math.max(goal * 1.3, 500.0);
 
-    final bars = days.asMap().entries.map((e) {
-      final cal = prov.weeklyCalories[e.value] ?? 0.0;
+    final bars = series.asMap().entries.map((e) {
+      final cal = e.value;
       final color = cal > goal * 1.05 ? AppColors.orange : AppColors.primary;
       return BarChartGroupData(
         x: e.key,
@@ -389,7 +427,7 @@ class _CalorieTrendChart extends StatelessWidget {
           BarChartRodData(
             toY: cal,
             color: color,
-            width: 16,
+            width: _range == TrendRange.year ? 10 : 16,
             borderRadius: BorderRadius.circular(4),
           ),
         ],
@@ -398,7 +436,11 @@ class _CalorieTrendChart extends StatelessWidget {
 
     return _SectionCard(
       title: 'Calorie Trend',
-      subtitle: '7-day · goal ${prov.calorieGoal} kcal',
+      subtitle: '${_subtitles[_range]} • Goal ${prov.calorieGoal} kcal',
+      trailing: _RangeSelector(
+        value: _range,
+        onChanged: (r) => setState(() => _range = r),
+      ),
       child: SizedBox(
         height: 160,
         child: BarChart(
@@ -425,10 +467,17 @@ class _CalorieTrendChart extends StatelessWidget {
               bottomTitles: AxisTitles(
                 sideTitles: SideTitles(
                   showTitles: true,
-                  getTitlesWidget: (v, _) => Text(
-                    days[v.toInt()],
-                    style: GoogleFonts.inter(color: c.inactive, fontSize: 10),
-                  ),
+                  interval: 1,
+                  getTitlesWidget: (v, _) {
+                    final i = v.toInt();
+                    if (i < 0 || i >= labels.length) {
+                      return const SizedBox.shrink();
+                    }
+                    return Text(
+                      labels[i],
+                      style: GoogleFonts.inter(color: c.inactive, fontSize: 9),
+                    );
+                  },
                 ),
               ),
             ),
@@ -463,51 +512,103 @@ class _CalorieTrendChart extends StatelessWidget {
 }
 
 // ─── MACRO TREND CHART ────────────────────────────────────────────────────────
-class _MacroTrendChart extends StatelessWidget {
+class _MacroTrendChart extends StatefulWidget {
   final ProgressProvider prov;
   const _MacroTrendChart({required this.prov});
 
   @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  State<_MacroTrendChart> createState() => _MacroTrendChartState();
+}
 
-    List<FlSpot> spots(String macro) => days
+class _MacroTrendChartState extends State<_MacroTrendChart> {
+  TrendRange _range = TrendRange.week;
+  String _macro = 'protein';
+
+  static const _subtitles = {
+    TrendRange.week: 'grams/day',
+    TrendRange.month: 'Last 30 Days • grams/day',
+    TrendRange.year: 'Last 12 Months • grams/day',
+  };
+  static const _macros = ['protein', 'carbs', 'fat'];
+  static const _macroLabels = {
+    'protein': 'Protein',
+    'carbs': 'Carbs',
+    'fat': 'Fat',
+  };
+
+  Color _colorFor(String macro) {
+    switch (macro) {
+      case 'carbs':
+        return AppColors.purple;
+      case 'fat':
+        return AppColors.orange;
+      default:
+        return AppColors.primary;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final prov = widget.prov;
+    final c = context.colors;
+    final labels = prov.bucketLabels(_range);
+    final series = prov.macroSeries(_range, _macro);
+    final color = _colorFor(_macro);
+
+    final spots = series
         .asMap()
         .entries
-        .map(
-          (e) =>
-              FlSpot(e.key.toDouble(), prov.weeklyMacros[e.value]?[macro] ?? 0),
-        )
+        .map((e) => FlSpot(e.key.toDouble(), e.value))
         .toList();
 
-    double maxY = 10;
-    for (final day in prov.weeklyMacros.values) {
-      final v = [
-        day['protein'] ?? 0,
-        day['carbs'] ?? 0,
-        day['fat'] ?? 0,
-      ].reduce(math.max);
-      if (v > maxY) maxY = v;
-    }
+    double maxY = series.isEmpty ? 10 : series.reduce(math.max);
     maxY = math.max(maxY * 1.2, 50.0);
 
     return _SectionCard(
       title: 'Macro Trend',
-      subtitle: '7-day · grams per day',
+      subtitle: _subtitles[_range],
+      trailing: _RangeSelector(
+        value: _range,
+        onChanged: (r) => setState(() => _range = r),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            children: [
-              _legend('Protein', AppColors.primary, c),
-              const SizedBox(width: 12),
-              _legend('Carbs', AppColors.purple, c),
-              const SizedBox(width: 12),
-              _legend('Fat', AppColors.orange, c),
-            ],
+            children: _macros.map((m) {
+              final selected = m == _macro;
+              final mc = _colorFor(m);
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: GestureDetector(
+                  onTap: () => setState(() => _macro = m),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selected ? mc.withOpacity(0.15) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selected ? mc : c.border,
+                      ),
+                    ),
+                    child: Text(
+                      _macroLabels[m]!,
+                      style: GoogleFonts.inter(
+                        color: selected ? mc : c.muted,
+                        fontWeight:
+                            selected ? FontWeight.w600 : FontWeight.w400,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           SizedBox(
             height: 140,
             child: LineChart(
@@ -534,27 +635,24 @@ class _MacroTrendChart extends StatelessWidget {
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
+                      interval: 1,
                       getTitlesWidget: (v, _) {
                         final i = v.toInt();
-                        if (i < 0 || i >= days.length) {
+                        if (i < 0 || i >= labels.length) {
                           return const SizedBox.shrink();
                         }
                         return Text(
-                          days[i],
+                          labels[i],
                           style: GoogleFonts.inter(
                             color: c.inactive,
-                            fontSize: 10,
+                            fontSize: 9,
                           ),
                         );
                       },
                     ),
                   ),
                 ),
-                lineBarsData: [
-                  _line(spots('protein'), AppColors.primary),
-                  _line(spots('carbs'), AppColors.purple),
-                  _line(spots('fat'), AppColors.orange),
-                ],
+                lineBarsData: [_line(spots, color)],
               ),
             ),
           ),
@@ -574,36 +672,40 @@ class _MacroTrendChart extends StatelessWidget {
     ),
     belowBarData: BarAreaData(show: true, color: color.withOpacity(0.08)),
   );
-
-  Widget _legend(String label, Color color, AppColors c) => Row(
-    children: [
-      Container(
-        width: 10,
-        height: 10,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      ),
-      const SizedBox(width: 4),
-      Text(label, style: GoogleFonts.inter(color: c.muted, fontSize: 11)),
-    ],
-  );
 }
 
 // ─── WEIGHT SECTION ───────────────────────────────────────────────────────────
-class _WeightSection extends StatelessWidget {
+class _WeightSection extends StatefulWidget {
   final ProgressProvider prov;
   const _WeightSection({required this.prov});
 
   @override
+  State<_WeightSection> createState() => _WeightSectionState();
+}
+
+class _WeightSectionState extends State<_WeightSection> {
+  TrendRange _range = TrendRange.week;
+
+  @override
   Widget build(BuildContext context) {
+    final prov = widget.prov;
     final c = context.colors;
-    final logs = prov.weightLogs;
+    // Oldest → newest, filtered to the selected range.
+    final logs = prov.weightSeries(_range);
     final useImperial = prov.profile?.unitSystem == 'imperial';
 
     double kg(double kg) => useImperial ? kg * 2.20462 : kg;
     String unit() => useImperial ? 'lbs' : 'kg';
 
+    final startW = logs.isEmpty ? null : logs.first.weight;
+    final currentW = logs.isEmpty ? null : logs.last.weight;
+
     return _SectionCard(
       title: 'Weight',
+      trailing: _RangeSelector(
+        value: _range,
+        onChanged: (r) => setState(() => _range = r),
+      ),
       child: Column(
         children: [
           if (logs.length >= 2) ...[
@@ -647,8 +749,7 @@ class _WeightSection extends StatelessWidget {
                   ),
                   lineBarsData: [
                     LineChartBarData(
-                      spots: logs.reversed
-                          .toList()
+                      spots: logs
                           .asMap()
                           .entries
                           .map(
@@ -680,20 +781,20 @@ class _WeightSection extends StatelessWidget {
               children: [
                 _weightStat(
                   'Start',
-                  '${kg(prov.startWeight!).toStringAsFixed(1)} ${unit()}',
+                  '${kg(startW!).toStringAsFixed(1)} ${unit()}',
                   c.muted,
                   c,
                 ),
                 _weightStat(
                   'Current',
-                  '${kg(prov.latestWeight!).toStringAsFixed(1)} ${unit()}',
+                  '${kg(currentW!).toStringAsFixed(1)} ${unit()}',
                   AppColors.purple,
                   c,
                 ),
                 _weightStat(
                   'Change',
-                  '${(kg(prov.latestWeight!) - kg(prov.startWeight!)) >= 0 ? '+' : ''}${(kg(prov.latestWeight!) - kg(prov.startWeight!)).toStringAsFixed(1)} ${unit()}',
-                  (kg(prov.latestWeight!) - kg(prov.startWeight!)).abs() < 0.1
+                  '${(kg(currentW) - kg(startW)) >= 0 ? '+' : ''}${(kg(currentW) - kg(startW)).toStringAsFixed(1)} ${unit()}',
+                  (kg(currentW) - kg(startW)).abs() < 0.1
                       ? c.muted
                       : AppColors.primary,
                   c,
@@ -1001,17 +1102,78 @@ class _BadgeChip extends StatelessWidget {
 }
 
 // ─── SHARED WIDGETS ───────────────────────────────────────────────────────────
-class _SectionCard extends StatelessWidget {
-  final String title;
-  final String? subtitle;
-  final Widget child;
-  const _SectionCard({required this.title, this.subtitle, required this.child});
+
+/// Compact 3-segment Week / Month / Year pill toggle for a trend card header.
+class _RangeSelector extends StatelessWidget {
+  final TrendRange value;
+  final ValueChanged<TrendRange> onChanged;
+  const _RangeSelector({required this.value, required this.onChanged});
+
+  static const _labels = {
+    TrendRange.week: 'W',
+    TrendRange.month: 'M',
+    TrendRange.year: 'Y',
+  };
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: c.surfaceVariant,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: TrendRange.values.map((r) {
+          final selected = r == value;
+          return GestureDetector(
+            onTap: () => onChanged(r),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+              decoration: BoxDecoration(
+                color: selected ? AppColors.primary : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                _labels[r]!,
+                style: GoogleFonts.spaceGrotesk(
+                  color: selected ? Colors.black : c.muted,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final Widget child;
+  final Widget? trailing;
+  const _SectionCard({
+    required this.title,
+    this.subtitle,
+    required this.child,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      // Reduced right padding so the pill sits visually at the card edge.
+      padding: trailing != null
+          ? const EdgeInsets.fromLTRB(16, 14, 12, 16)
+          : const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: c.surface,
         borderRadius: BorderRadius.circular(16),
@@ -1021,21 +1183,39 @@ class _SectionCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Text(
-                title,
-                style: GoogleFonts.spaceGrotesk(
-                  color: c.onBackground,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
+              // Title + optional subtitle stack vertically and claim all width
+              // not taken by the trailing pill.
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.spaceGrotesk(
+                        color: c.onBackground,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        style: GoogleFonts.inter(
+                          color: c.inactive,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              if (subtitle != null) ...[
-                const SizedBox(width: 8),
-                Text(
-                  subtitle!,
-                  style: GoogleFonts.inter(color: c.inactive, fontSize: 11),
-                ),
+              if (trailing != null) ...[
+                const SizedBox(width: 10),
+                trailing!,
               ],
             ],
           ),

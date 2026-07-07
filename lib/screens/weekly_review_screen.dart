@@ -48,9 +48,7 @@ class _WeeklyReviewScreenState extends State<WeeklyReviewScreen>
     if (!mounted) return;
     setState(() {
       _current = results[0] as WeeklySummary?;
-      _history = (results[1] as List<WeeklySummary>)
-          .where((s) => s.weekId != weekId)
-          .toList();
+      _history = results[1] as List<WeeklySummary>;
       _loading = false;
     });
   }
@@ -178,6 +176,10 @@ class _HistoryRow extends StatelessWidget {
     final c = context.colors;
     final badge = summary.adjustmentBadge;
     final color = _badgeColor(badge);
+    final reviewedStart = summary.weekStart.subtract(const Duration(days: 7));
+    final reviewedEnd = summary.weekStart.subtract(const Duration(days: 1));
+    final isCurrentWeek =
+        summary.weekId == FirestoreService.weekIdFor(appNow());
     return Material(
       color: c.surface,
       borderRadius: BorderRadius.circular(14),
@@ -194,7 +196,7 @@ class _HistoryRow extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  _rangeLabel(summary.weekStart, summary.weekEnd),
+                  'Review: ${_rangeLabel(reviewedStart, reviewedEnd)}',
                   style: GoogleFonts.inter(
                     color: c.onBackground,
                     fontWeight: FontWeight.w600,
@@ -202,6 +204,10 @@ class _HistoryRow extends StatelessWidget {
                   ),
                 ),
               ),
+              if (isCurrentWeek) ...[
+                _BadgeChip(label: 'Current', color: AppColors.primary),
+                const SizedBox(width: 6),
+              ],
               _BadgeChip(label: badge, color: color),
               const SizedBox(width: 6),
               Icon(Icons.chevron_right_rounded, color: c.muted, size: 20),
@@ -264,7 +270,7 @@ class _SummaryDetailView extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                'Week of ${_rangeLabel(s.weekStart, s.weekEnd)}',
+                'Review: ${_rangeLabel(reviewedStart, reviewedEnd)}',
                 style: GoogleFonts.spaceGrotesk(
                   color: c.onBackground,
                   fontWeight: FontWeight.w700,
@@ -296,7 +302,12 @@ class _SummaryDetailView extends StatelessWidget {
               ),
           ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 4),
+        Text(
+          'Adjustments applied to ${_rangeLabel(s.weekStart, s.weekEnd)}',
+          style: GoogleFonts.inter(color: c.muted, fontSize: 12),
+        ),
+        const SizedBox(height: 14),
 
         _Card(
           title: 'Performance Summary',

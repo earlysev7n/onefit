@@ -390,6 +390,27 @@ class FirestoreService {
         .delete();
   }
 
+  /// Deletes every document from every user-history subcollection.
+  /// Used by the dev-mode "Reset to Day One" tool to wipe a test account clean.
+  Future<void> deleteAllUserData(String uid) async {
+    const subcollections = [
+      'food_logs',
+      'workout_logs',
+      'exercise_stats',
+      'weight_logs',
+      'workout_plans',
+      'weekly_summaries',
+      'saved_recipes',
+    ];
+    final user = _db.collection('users').doc(uid);
+    for (final col in subcollections) {
+      final snap = await user.collection(col).get();
+      for (final doc in snap.docs) {
+        await doc.reference.delete();
+      }
+    }
+  }
+
   /// Load the typed workout plan for a given ISO week. Returns null if not found.
   Future<List<WorkoutDay>?> loadWeeklyWorkoutPlan(
     String userId,

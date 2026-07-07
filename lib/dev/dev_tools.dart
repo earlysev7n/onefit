@@ -68,6 +68,34 @@ class DevTools {
     return 'Logged ${day.exercises.length} exercises for ${day.dayName}';
   }
 
+  /// Wipes all historical Firestore data for the current user, resets the
+  /// profile's stateful fields, and returns the dev clock to real-time so the
+  /// app behaves as if the user just completed onboarding.
+  static Future<String> resetAccount(BuildContext context) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return 'Not signed in';
+    final pp = context.read<ProfileProvider>();
+    final plan = context.read<PlanProvider>();
+    final profile = pp.profile;
+    if (profile == null) return 'Profile not loaded';
+
+    await _fs.deleteAllUserData(uid);
+
+    await pp.save(profile.copyWith(
+      calorieAdjustment: 0,
+      lastAdaptationWeekId: '',
+      pinnedExercises: {},
+      createdAt: appToday(),
+    ));
+
+    plan.setWorkoutPlan(const []);
+
+    debugDayOffset.value = 0;
+    devDayChangerEnabled.value = false;
+
+    return 'Account reset to Day One.';
+  }
+
   /// Seeds the current week with workout + food logs for every day (shaped by
   /// [scenario]) so it becomes a rich "last week", then jumps the clock forward
   /// 7 days. Opening the Plans tab afterwards fires the weekly adaptation.

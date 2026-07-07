@@ -20,6 +20,7 @@ class ProfileProvider extends ChangeNotifier {
   final _fs = FirestoreService();
 
   UserProfile? _profile;
+  String? _uid;
   bool _isLoading = false;
   double? _dailyEffectiveGoal;
   double? _weeklyEffectiveProtein;
@@ -55,12 +56,14 @@ class ProfileProvider extends ChangeNotifier {
   /// Loads the profile once and caches it. No-op if already loaded — safe to
   /// call from every screen's initState without triggering redundant reads.
   Future<void> load(String uid) async {
+    _uid = uid;
     if (_profile != null) return;
     await refresh(uid);
   }
 
   /// Force-fetches the profile from Firestore, replacing the cache.
   Future<void> refresh(String uid) async {
+    _uid = uid;
     _isLoading = true;
     notifyListeners();
     try {
@@ -154,6 +157,7 @@ class ProfileProvider extends ChangeNotifier {
   Future<void> save(UserProfile p) async {
     await _fs.saveUserProfile(p);
     _profile = p;
+    if (_uid != null) await _computeDailyGoal(_uid!);
     notifyListeners();
   }
 
