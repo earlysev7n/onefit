@@ -328,13 +328,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Demo Scenario',
-            style: GoogleFonts.inter(
-              color: c.onBackground,
-              fontWeight: FontWeight.w600,
-              fontSize: 15,
-            ),
+          Row(
+            children: [
+              Text(
+                'Demo Scenario',
+                style: GoogleFonts.inter(
+                  color: c.onBackground,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    backgroundColor: c.surface,
+                    title: Text(
+                      'Demo Scenarios',
+                      style: GoogleFonts.spaceGrotesk(
+                        color: c.onBackground,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _scenarioInfo(
+                          c,
+                          'Level Up',
+                          'Simulates a week where you ate under your calorie goal (80%) and found all workouts too easy (rating 1). '
+                          'Result: +100 kcal next week, difficulty stepped up.',
+                        ),
+                        const SizedBox(height: 16),
+                        _scenarioInfo(
+                          c,
+                          'Ease Off',
+                          'Simulates a week where workouts felt too hard (rating 5) and you only completed ~40% of them. '
+                          'Result: no calorie change, difficulty stepped down.',
+                        ),
+                        const SizedBox(height: 16),
+                        _scenarioInfo(
+                          c,
+                          'Realistic',
+                          'Simulates a typical week — mildly under calories (83%), neutral effort (rating 3), ~70% workout completion. '
+                          'Result: +100 kcal, difficulty held steady.',
+                        ),
+                      ],
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: Text('Got it',
+                            style: TextStyle(color: AppColors.primary)),
+                      ),
+                    ],
+                  ),
+                ),
+                child: Icon(Icons.info_outline,
+                    size: 18, color: c.muted),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           ValueListenableBuilder<DevScenario>(
@@ -365,6 +420,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _scenarioInfo(AppColors c, String title, String description) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: GoogleFonts.inter(
+            color: AppColors.primary,
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          description,
+          style: GoogleFonts.inter(color: c.muted, fontSize: 13),
+        ),
+      ],
     );
   }
 

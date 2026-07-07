@@ -272,6 +272,22 @@ class GreedyAlgorithm {
     return score;
   }
 
+  /// Public wrapper so callers (e.g. the exercise picker) can rank candidates
+  /// with the same formula used during plan generation.
+  double scoreExercise({
+    required Exercise exercise,
+    required UserProfile profile,
+    required List<String> targetMuscles,
+    required Map<String, int> weeklyHits,
+    required Map<String, int> dayHits,
+  }) => _scoreExercise(
+    exercise: exercise,
+    profile: profile,
+    targetMuscles: targetMuscles,
+    weeklyHits: weeklyHits,
+    dayHits: dayHits,
+  );
+
   //  Main:
   List<WorkoutDay> generatePlan({
     required List<Exercise> allExercises,

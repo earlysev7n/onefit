@@ -1183,17 +1183,41 @@ class _WorkoutTabState extends State<_WorkoutTab>
             ),
           ),
           const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: gifUrl != null
-                ? _gifImage(
-                    gifUrl,
-                    key: ValueKey('gif_warmup_${ex!.id}'),
-                    height: 200,
-                    width: double.infinity,
-                    loading: _gifPlaceholder(loading: true, height: 200),
-                  )
-                : _gifPlaceholder(height: 200),
+          GestureDetector(
+            onTap: gifUrl != null
+                ? () => _showGifDialog(context, gifUrl, m.label)
+                : null,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: gifUrl != null
+                      ? _gifImage(
+                          gifUrl,
+                          key: ValueKey('gif_warmup_${ex!.id}'),
+                          height: 200,
+                          width: double.infinity,
+                          loading: _gifPlaceholder(loading: true, height: 200),
+                        )
+                      : _gifPlaceholder(height: 200),
+                ),
+                if (gifUrl != null)
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: context.colors.shadow,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.fullscreen_rounded,
+                      color: context.colors.onBackground,
+                      size: 26,
+                    ),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
           Center(
@@ -1249,20 +1273,25 @@ class _WorkoutTabState extends State<_WorkoutTab>
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: hasGif
-                ? _gifImage(ex!.gifUrl!, width: 44, height: 44)
-                : Container(
-                    width: 44,
-                    height: 44,
-                    color: c.inputFill,
-                    child: Icon(
-                      Icons.directions_run_rounded,
-                      color: c.muted,
-                      size: 20,
+          GestureDetector(
+            onTap: hasGif
+                ? () => _showGifDialog(context, ex!.gifUrl!, label)
+                : null,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: hasGif
+                  ? _gifImage(ex!.gifUrl!, width: 44, height: 44)
+                  : Container(
+                      width: 44,
+                      height: 44,
+                      color: c.inputFill,
+                      child: Icon(
+                        Icons.directions_run_rounded,
+                        color: c.muted,
+                        size: 20,
+                      ),
                     ),
-                  ),
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -2599,10 +2628,48 @@ class _WorkoutTabState extends State<_WorkoutTab>
     // user lacks equipment for or that are above their tier — and surfaces any
     // restrictions as a warn-then-allow dialog on tap (see _restrictionsFor).
     final allEx = _allExercises;
+    // Build hit maps so the greedy scorer can penalise muscles already worked
+    // this week or on this day, giving the user relevant recommendations first.
+    final weeklyHits = <String, int>{};
+    for (final wd in _plan) {
+      for (final we in wd.exercises) {
+        for (final m in we.exercise.primaryMuscles) {
+          weeklyHits[m] = (weeklyHits[m] ?? 0) + 1;
+        }
+      }
+    }
+    final dayHits = <String, int>{};
+    for (final we in day.exercises) {
+      for (final m in we.exercise.primaryMuscles) {
+        dayHits[m] = (dayHits[m] ?? 0) + 1;
+      }
+    }
+    final profile = _profile;
+    final ga = profile != null ? GreedyAlgorithm() : null;
     final relevant = allEx.where((e) {
       if (targetMuscles.isEmpty) return true;
       return e.primaryMuscles.any((m) => targetMuscles.contains(m));
-    }).toList()..sort((a, b) => a.name.compareTo(b.name));
+    }).toList()
+      ..sort((a, b) {
+        if (ga == null || profile == null) return a.name.compareTo(b.name);
+        final sa = ga.scoreExercise(
+          exercise: a,
+          profile: profile,
+          targetMuscles: targetMuscles,
+          weeklyHits: weeklyHits,
+          dayHits: dayHits,
+        );
+        final sb = ga.scoreExercise(
+          exercise: b,
+          profile: profile,
+          targetMuscles: targetMuscles,
+          weeklyHits: weeklyHits,
+          dayHits: dayHits,
+        );
+        // Descending by score; break ties alphabetically.
+        final cmp = sb.compareTo(sa);
+        return cmp != 0 ? cmp : a.name.compareTo(b.name);
+      });
 
     final searchController = TextEditingController();
 
