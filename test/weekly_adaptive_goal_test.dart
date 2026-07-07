@@ -126,6 +126,51 @@ void main() {
       );
     });
 
+    // Regression: a brand-new account created mid-week must NOT be inflated.
+    // Before the fix, base×7/6 clamped to +10% (3079 → 3387). With daysElapsed:0
+    // the tracked budget is base×6, so today's target is exactly base.
+    test('new account mid-week (daysElapsed:0) returns base, not inflated', () {
+      expect(
+        WeeklyAdaptiveGoal.adjust(
+          base: 3079,
+          weekConsumed: 0,
+          daysLeft: 6,
+          daysElapsed: 0,
+        ),
+        3079.0,
+      );
+    });
+
+    // Back-compat: omitting daysElapsed reproduces the legacy full-week (base×7)
+    // budget, so existing callers/tests are unaffected.
+    test('omitting daysElapsed matches legacy base×7 behaviour', () {
+      // Legacy: base×7 − 0 over 6 days = 3592 → clamped to +10% = 2200 at base 2000.
+      final legacy =
+          WeeklyAdaptiveGoal.adjust(base: 2000, weekConsumed: 0, daysLeft: 6);
+      final explicit = WeeklyAdaptiveGoal.adjust(
+        base: 2000,
+        weekConsumed: 0,
+        daysLeft: 6,
+        daysElapsed: 7 - 6, // == default
+      );
+      expect(legacy, explicit);
+      expect(legacy, 2200.0);
+    });
+
+    // Active user part-way through a fully-tracked week still gets catch-up.
+    // 2 elapsed days, consumed 3500 (expected 4000), 5 left → target 2100 (+5%).
+    test('active user with daysElapsed still catches up correctly', () {
+      expect(
+        WeeklyAdaptiveGoal.adjust(
+          base: 2000,
+          weekConsumed: 3500,
+          daysLeft: 5,
+          daysElapsed: 2,
+        ),
+        closeTo(2100.0, 0.01),
+      );
+    });
+
     // Works correctly for macro-sized bases (protein grams, not kcal).
     test('formula works for macro gram targets (small base values)', () {
       // base=150g protein, consumed 200g in 2 days (over), 5 left.

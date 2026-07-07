@@ -429,7 +429,16 @@ class _WorkoutTabState extends State<_WorkoutTab>
       final lastWeekId = FirestoreService.weekIdFor(weekStart);
       final hadLastWeekPlan =
           await fs.loadWeeklyWorkoutPlan(uid, lastWeekId) != null;
-      final hasHistory = hadLastWeekPlan || lastWeekWorkouts > 0;
+      // Anchor the weekly engine to account creation too: a "last week" that
+      // ended on/before the account existed is not real history, so never adapt
+      // off it. (The plan/log check below already covers this in practice; this
+      // makes the "week starts at account creation" rule explicit and robust.)
+      final createdAt = profile.createdAt;
+      final reviewedWeekEnd = weekStart.add(const Duration(days: 7));
+      final weekStartedBeforeAccount =
+          createdAt != null && !reviewedWeekEnd.isAfter(createdAt);
+      final hasHistory =
+          (hadLastWeekPlan || lastWeekWorkouts > 0) && !weekStartedBeforeAccount;
 
       // Weight-trend signal — net change across last week's weigh-ins.
       final weightLogsRaw = await fs.getWeightLogs(uid);

@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../algorithms/weekly_adaptive_goal.dart';
 import '../app_clock.dart';
@@ -84,9 +85,22 @@ class ProfileProvider extends ChangeNotifier {
       final today = appToday();
       final monday = today.subtract(Duration(days: today.weekday - 1));
       final weekEnd = today; // exclude today's logs — goal is fixed for the current day
-      final logs = await _fs.getFoodLogsForDateRange(uid, monday, weekEnd);
+
+      // Anchor the tracked week to account creation so days *before* the account
+      // existed aren't read as under-eaten (which would inflate a new user's
+      // day-one goal by up to +10%). Fall back to Firebase auth creation time for
+      // legacy profiles with no stored createdAt, then to `monday` (legacy full
+      // calendar week).
+      final created = p.createdAt ??
+          FirebaseAuth.instance.currentUser?.metadata.creationTime?.toLocal();
+      final createdDay = created == null
+          ? monday
+          : DateTime(created.year, created.month, created.day);
+      final anchor = createdDay.isAfter(monday) ? createdDay : monday;
+      final logs = await _fs.getFoodLogsForDateRange(uid, anchor, weekEnd);
 
       final daysLeft = 8 - today.weekday; // Mon→7, Sun→1
+      final daysElapsed = today.difference(anchor).inDays.clamp(0, 6);
 
       double sumCals = 0, sumProt = 0, sumCarbs = 0, sumFat = 0;
       for (final f in logs) {
@@ -100,21 +114,25 @@ class ProfileProvider extends ChangeNotifier {
         base: p.calorieGoal.toDouble(),
         weekConsumed: sumCals,
         daysLeft: daysLeft,
+        daysElapsed: daysElapsed,
       );
       _weeklyEffectiveProtein = WeeklyAdaptiveGoal.adjust(
         base: p.macroGoals['protein']!.toDouble(),
         weekConsumed: sumProt,
         daysLeft: daysLeft,
+        daysElapsed: daysElapsed,
       );
       _weeklyEffectiveCarbs = WeeklyAdaptiveGoal.adjust(
         base: p.macroGoals['carbs']!.toDouble(),
         weekConsumed: sumCarbs,
         daysLeft: daysLeft,
+        daysElapsed: daysElapsed,
       );
       _weeklyEffectiveFat = WeeklyAdaptiveGoal.adjust(
         base: p.macroGoals['fat']!.toDouble(),
         weekConsumed: sumFat,
         daysLeft: daysLeft,
+        daysElapsed: daysElapsed,
       );
     } catch (_) {
       _dailyEffectiveGoal = null;

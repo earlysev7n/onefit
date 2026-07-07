@@ -107,7 +107,7 @@ class _OneFitAppState extends State<OneFitApp> {
           // Rebuilds only the day pill's label; the actual screen refresh on a
           // day change is driven by _onDayChanged re-pushing a fresh HomeScreen.
           builder: (context, offset, _) => Stack(
-            children: [child!, if (changerOn) const _DebugDayChanger()],
+            children: [child!, if (changerOn) _DebugDayChanger()],
           ),
         ),
       ),

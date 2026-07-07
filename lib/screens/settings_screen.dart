@@ -469,6 +469,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final newCtrl = TextEditingController();
     final confirmCtrl = TextEditingController();
     bool loading = false;
+    bool obscureCurrent = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
 
     showDialog(
       context: context,
@@ -490,7 +493,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               TextField(
                 controller: currentCtrl,
-                obscureText: true,
+                obscureText: obscureCurrent,
                 style: GoogleFonts.inter(color: c.onBackground),
                 decoration: InputDecoration(
                   hintText: 'Current password',
@@ -504,12 +507,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(color: c.borderLight),
                   ),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscureCurrent ? Icons.visibility_off : Icons.visibility,
+                      color: c.muted,
+                    ),
+                    onPressed: () => setDialogState(() => obscureCurrent = !obscureCurrent),
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: newCtrl,
-                obscureText: true,
+                obscureText: obscureNew,
                 style: GoogleFonts.inter(color: c.onBackground),
                 decoration: InputDecoration(
                   hintText: 'New password',
@@ -523,12 +533,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(color: c.borderLight),
                   ),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscureNew ? Icons.visibility_off : Icons.visibility,
+                      color: c.muted,
+                    ),
+                    onPressed: () => setDialogState(() => obscureNew = !obscureNew),
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: confirmCtrl,
-                obscureText: true,
+                obscureText: obscureConfirm,
                 style: GoogleFonts.inter(color: c.onBackground),
                 decoration: InputDecoration(
                   hintText: 'Confirm new password',
@@ -541,6 +558,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(color: c.borderLight),
+                  ),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscureConfirm ? Icons.visibility_off : Icons.visibility,
+                      color: c.muted,
+                    ),
+                    onPressed: () => setDialogState(() => obscureConfirm = !obscureConfirm),
                   ),
                 ),
               ),

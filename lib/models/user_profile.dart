@@ -38,6 +38,13 @@ class UserProfile {
   /// trackable. Defaults empty for backward-compatible Firestore reads.
   final Map<String, List<String>> pinnedExercises;
 
+  /// When the account was created. Anchors the adaptive "week" so days **before**
+  /// the account existed aren't read as under-eaten (which would inflate the
+  /// daily goal) or as a completed training week. Nullable for backward-compatible
+  /// Firestore reads — legacy profiles fall back to the calendar week / auth
+  /// creation time.
+  final DateTime? createdAt;
+
   UserProfile({
     required this.uid,
     required this.name,
@@ -58,6 +65,7 @@ class UserProfile {
     this.calorieAdjustment = 0,
     this.lastAdaptationWeekId = '',
     this.pinnedExercises = const {},
+    this.createdAt,
   });
 
   // Mifflin-St Jeor Formula
@@ -203,6 +211,9 @@ class UserProfile {
             (k, v) => MapEntry(k as String, List<String>.from(v ?? const [])),
           ) ??
           const {},
+      createdAt: map['createdAt'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['createdAt'])
+          : null,
     );
   }
 
@@ -227,6 +238,7 @@ class UserProfile {
       'calorieAdjustment': calorieAdjustment,
       'lastAdaptationWeekId': lastAdaptationWeekId,
       'pinnedExercises': pinnedExercises,
+      'createdAt': createdAt?.millisecondsSinceEpoch,
     };
   }
 
@@ -250,6 +262,7 @@ class UserProfile {
     int? calorieAdjustment,
     String? lastAdaptationWeekId,
     Map<String, List<String>>? pinnedExercises,
+    DateTime? createdAt,
   }) {
     return UserProfile(
       uid: uid ?? this.uid,
@@ -271,6 +284,7 @@ class UserProfile {
       calorieAdjustment: calorieAdjustment ?? this.calorieAdjustment,
       lastAdaptationWeekId: lastAdaptationWeekId ?? this.lastAdaptationWeekId,
       pinnedExercises: pinnedExercises ?? this.pinnedExercises,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 }

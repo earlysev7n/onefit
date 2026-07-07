@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
+import '../app_clock.dart';
 import '../models/user_profile.dart';
 import '../providers/profile_provider.dart';
 import '../theme/app_colors.dart';
@@ -390,6 +391,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               workoutDaysPerWeek: _workoutDays,
               sessionMinutes: _sessionMinutes,
               workoutSplit: _workoutSplit,
+              createdAt: appNow(),
             );
       await profileProvider.save(profile);
       if (mounted) {
