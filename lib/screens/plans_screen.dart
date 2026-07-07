@@ -979,8 +979,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
         cardio
             .where(
               (e) =>
-                  e.equipment.isEmpty ||
-                  e.equipment.any((q) => q.toLowerCase() == 'bodyweight'),
+                  e.gifUrl?.isNotEmpty == true &&
+                  (e.equipment.isEmpty ||
+                   e.equipment.any((q) => q.toLowerCase() == 'bodyweight')),
             )
             .toList()
           ..sort((a, b) => a.name.compareTo(b.name));
