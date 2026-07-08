@@ -259,9 +259,22 @@ class GreedyAlgorithm {
     //     but above isolation so the big lift is picked first.
     if (isStapleCompound(exercise)) score += 12;
 
-    // 3. Prefer exercises at exactly the user's tier (the gate already
-    //    excluded anything above it).
-    if (exercise.difficulty == profile.experienceLevel.toLowerCase()) {
+    // 2c. Foundational barbell/dumbbell compound (bench, squat, deadlift, row,
+    //     OHP, hip thrust, lunge) — staples at EVERY level, so give them a lead
+    //     bonus on top of the generic compound bonus. This makes a major lift
+    //     get selected first and open the session, independent of the inferred
+    //     difficulty label (our inference caps barbell lifts at 'intermediate').
+    //     Reuses the same predicate that already sorts these first (see
+    //     `ordered` in _selectExercisesForDay).
+    if (isHeavyCompound(exercise)) score += 8;
+
+    // 3. Experience COMPATIBILITY — not an exact-tier ranking. Any exercise at
+    //    or below the user's level is appropriate, so award the bonus for being
+    //    compatible (mirrors the difficultyAllowed gate). Exact-match previously
+    //    handed a +10 edge to advanced-labelled bodyweight/novelty moves over
+    //    foundational barbell compounds our inference caps at 'intermediate' —
+    //    the reason Advanced users saw mostly bodyweight work.
+    if (difficultyAllowed(exercise.difficulty, profile.experienceLevel)) {
       score += 10;
     }
 
@@ -379,12 +392,52 @@ class GreedyAlgorithm {
   /// True multi-joint barbell/dumbbell lift — squat, deadlift, bench press,
   /// row, OHP etc. Isolation exercises with barbell (french press, front raise,
   /// pullover) do not match [_bigLiftKeywords] and are correctly excluded.
-  bool _isHeavyCompound(Exercise e) =>
+  /// Public + static so scoring, ordering, and the interactive demo share one
+  /// definition of a "foundational compound".
+  static bool isHeavyCompound(Exercise e) =>
       _bigLiftKeywords.hasMatch(e.name.toLowerCase()) &&
       e.equipment.any((q) {
         final q2 = q.toLowerCase();
-        return q2 == 'barbell' || q2 == 'ez barbell' || q2 == 'dumbbell';
+        // `_normalizeEquipment` stores the plural 'Dumbbells' for real catalog
+        // data, so match both forms — otherwise dumbbell staples (dumbbell
+        // bench/press/row/lunge) would silently never count as heavy compounds.
+        return q2 == 'barbell' ||
+            q2 == 'ez barbell' ||
+            q2 == 'dumbbell' ||
+            q2 == 'dumbbells';
       });
+
+  // ── ACSM/NSCA 5-tier post-selection ordering ─────────────────────────────
+  // Haff & Triplett, "Program Design for Resistance Training," Essentials of
+  // S&C, 4th ed.: power/explosive first (peak CNS demand), then large
+  // multi-joint lifts, then secondary compounds, then isolations, accessories
+  // last. Applied after greedy selection so scores/selection are unchanged.
+
+  // Tier 1 — Olympic/plyometric movements. "jump" alone is omitted (would
+  // catch "jumping jack"); "swing" omitted (too broad across the catalog).
+  static final _powerKeywords = RegExp(
+    r'\b(clean|snatch|jerk|push press|thruster|'
+    r'box jump|broad jump|depth jump|jump squat|'
+    r'plyometric|plyo|explosive)\b',
+  );
+
+  // Tier 5 — Corrective, prehab, and joint-support exercises scheduled last.
+  // "plank" intentionally omitted (primary core exercise for beginners).
+  static final _accessoryKeywords = RegExp(
+    r'\b(face pull|reverse fly|pull.?apart|shrug|'
+    r'pallof|dead bug|bird dog|rotator)\b',
+  );
+
+  /// Returns the ACSM/NSCA ordering tier for [e] (1 = first, 5 = last).
+  /// Used only by the post-selection stable sort — not a scoring input.
+  static int _exerciseTier(Exercise e) {
+    final name = e.name.toLowerCase();
+    if (_powerKeywords.hasMatch(name)) return 1;
+    if (isHeavyCompound(e)) return 2;
+    if (isStapleCompound(e)) return 3;
+    if (_accessoryKeywords.hasMatch(name)) return 5;
+    return 4; // single-joint isolation (default)
+  }
 
   List<WorkoutExercise> _selectExercisesForDay({
     required List<Exercise> exercises,
@@ -518,14 +571,12 @@ class GreedyAlgorithm {
     if (selected.length < count) fill(primaryPool, false);
     if (selected.length < count) fill(assistPool, false);
 
-    // 3-tier compound-first sort: barbell/dumbbell compounds (squat, deadlift,
-    // bench, row) → bodyweight compounds (push-up, pull-up, dip) → isolations.
-    // Pure reorder — selection, counts, and muscle balance are unchanged.
-    final ordered = <Exercise>[
-      ...selected.where(_isHeavyCompound),
-      ...selected.where((e) => isStapleCompound(e) && !_isHeavyCompound(e)),
-      ...selected.where((e) => !isStapleCompound(e)),
-    ];
+    // 5-tier ACSM/NSCA sort (Haff & Triplett, Essentials of S&C, 4th ed.):
+    // Power → Primary compound → Secondary compound → Isolation → Accessory.
+    // Dart's List.sort is stable, so the greedy pick order is preserved within
+    // each tier — selection, scores, and muscle balance are completely unchanged.
+    selected.sort((a, b) => _exerciseTier(a).compareTo(_exerciseTier(b)));
+    final ordered = selected;
 
     // Sets and rest are profile-derived (NSCA goal loading) and constant for the
     // whole day; per-set reps/work-timer length vary per exercise (cardio vs lift).

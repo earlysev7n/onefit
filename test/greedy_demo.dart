@@ -8,8 +8,8 @@ import 'package:onefit/models/user_profile.dart';
 
 class _C {
   final Exercise exercise;
-  final double focus, goal, comp, diff, dayPen, wkPen, total;
-  _C(this.exercise, this.focus, this.goal, this.comp, this.diff,
+  final double focus, goal, comp, heavy, diff, dayPen, wkPen, total;
+  _C(this.exercise, this.focus, this.goal, this.comp, this.heavy, this.diff,
       this.dayPen, this.wkPen, this.total);
 }
 
@@ -94,7 +94,8 @@ void main() {
   print('+50  focus match    — primary muscle targets the day focus');
   print('+15  goal tag       — exercise tagged for "${_gk(fitnessGoal)}"');
   print('+12  compound bonus — multi-joint lift');
-  print('+10  difficulty     — exercise.difficulty == "${level.toLowerCase()}"');
+  print('+8   heavy compound — foundational barbell/dumbbell lift (opens session)');
+  print('+10  compatibility  — exercise.difficulty <= "${level.toLowerCase()}"');
   print('-25  day penalty    — per primary muscle already used this session');
   print('-15  weekly penalty — per primary muscle used earlier this week');
 
@@ -131,7 +132,8 @@ void main() {
       final f  = ex.primaryMuscles.any(targets.contains) ? 50.0 : 0.0;
       final g  = ex.goals.contains(_gk(fitnessGoal)) ? 15.0 : 0.0;
       final c  = GreedyAlgorithm.isStapleCompound(ex) ? 12.0 : 0.0;
-      final d  = ex.difficulty == level.toLowerCase() ? 10.0 : 0.0;
+      final h  = GreedyAlgorithm.isHeavyCompound(ex) ? 8.0 : 0.0;
+      final d  = GreedyAlgorithm.difficultyAllowed(ex.difficulty, level) ? 10.0 : 0.0;
       final dp = ex.primaryMuscles.fold(0.0, (s, m) => s + (dayHits[m]  ?? 0) * 25.0);
       final wp = ex.primaryMuscles.fold(0.0, (s, m) => s + (weeklyHits[m] ?? 0) * 15.0);
       // Use the public scoreExercise wrapper for the verified total
@@ -139,7 +141,7 @@ void main() {
         exercise: ex, profile: profile,
         targetMuscles: targets, weeklyHits: weeklyHits, dayHits: dayHits,
       );
-      return _C(ex, f, g, c, d, dp, wp, total);
+      return _C(ex, f, g, c, h, d, dp, wp, total);
     }).toList()
       ..sort((a, b) => b.total.compareTo(a.total));
 
@@ -153,8 +155,8 @@ void main() {
     print('');
     print('Pick ${pick + 1}  (session so far: $hStr)');
     print('');
-    print('  Rank  Exercise                    Focus  Goal  Cpnd  Diff  -Day  -Week  Score');
-    print('  ----  --------------------------  -----  ----  ----  ----  ----  -----  -----');
+    print('  Rank  Exercise                    Focus  Goal  Cpnd  Hvy  Comp  -Day  -Week  Score');
+    print('  ----  --------------------------  -----  ----  ----  ---  ----  ----  -----  -----');
 
     for (int ri = 0; ri < scored.length; ri++) {
       final c   = scored[ri];
@@ -162,10 +164,11 @@ void main() {
       final nm  = c.exercise.name.length > 26
           ? c.exercise.name.substring(0, 25) + '.'
           : c.exercise.name.padRight(26);
+      final hvStr = c.heavy > 0 ? '+${c.heavy.toInt()}'.padLeft(3) : '  0';
       final dpStr = c.dayPen > 0 ? '-${c.dayPen.toInt()}'.padLeft(4) : '   0';
       final wpStr = c.wkPen  > 0 ? '-${c.wkPen.toInt()}'.padLeft(5)  : '    0';
       print('  ${(ri + 1).toString().padLeft(4)}  $nm  '
-          '${_pts(c.focus)}  ${_pts(c.goal)}  ${_pts(c.comp)}  ${_pts(c.diff)}'
+          '${_pts(c.focus)}  ${_pts(c.goal)}  ${_pts(c.comp)}  $hvStr  ${_pts(c.diff)}'
           '  $dpStr  $wpStr  '
           '${c.total.toStringAsFixed(1).padLeft(5)}$tag');
     }
@@ -174,7 +177,8 @@ void main() {
     if (winner.focus > 0)  reasons.add('focus +50');
     if (winner.goal  > 0)  reasons.add('goal +15');
     if (winner.comp  > 0)  reasons.add('compound +12');
-    if (winner.diff  > 0)  reasons.add('tier match +10');
+    if (winner.heavy > 0)  reasons.add('heavy compound +8');
+    if (winner.diff  > 0)  reasons.add('compatible +10');
     if (winner.dayPen > 0) reasons.add('day penalty -${winner.dayPen.toInt()}');
 
     print('');
