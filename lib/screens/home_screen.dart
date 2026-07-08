@@ -496,7 +496,7 @@ class _HomeDashboard extends StatelessWidget {
     final profileProvider = context.watch<ProfileProvider>();
     final calorieGoal = profileProvider.dailyEffectiveGoal;
     final macros = profileProvider.effectiveMacroGoals;
-    final todayWorkout = planProvider.todayWorkout;
+    final todayWorkout = planProvider.todayWorkout(anchorWeekday: profileProvider.profile?.createdAt?.weekday ?? 1);
     final todayName = _getDayName();
 
     return SafeArea(

@@ -38,6 +38,11 @@ class UserProfile {
   /// trackable. Defaults empty for backward-compatible Firestore reads.
   final Map<String, List<String>> pinnedExercises;
 
+  /// Exercise IDs the user has opted to never see again. Filtered out of all
+  /// automatic plan generation and smart replacement candidates. Defaults
+  /// empty for backward-compatible Firestore reads.
+  final List<String> blockedExercises;
+
   /// When the account was created. Anchors the adaptive "week" so days **before**
   /// the account existed aren't read as under-eaten (which would inflate the
   /// daily goal) or as a completed training week. Nullable for backward-compatible
@@ -65,6 +70,7 @@ class UserProfile {
     this.calorieAdjustment = 0,
     this.lastAdaptationWeekId = '',
     this.pinnedExercises = const {},
+    this.blockedExercises = const [],
     this.createdAt,
   });
 
@@ -211,6 +217,7 @@ class UserProfile {
             (k, v) => MapEntry(k as String, List<String>.from(v ?? const [])),
           ) ??
           const {},
+      blockedExercises: List<String>.from(map['blockedExercises'] ?? const []),
       createdAt: map['createdAt'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['createdAt'])
           : null,
@@ -238,6 +245,7 @@ class UserProfile {
       'calorieAdjustment': calorieAdjustment,
       'lastAdaptationWeekId': lastAdaptationWeekId,
       'pinnedExercises': pinnedExercises,
+      'blockedExercises': blockedExercises,
       'createdAt': createdAt?.millisecondsSinceEpoch,
     };
   }
@@ -262,6 +270,7 @@ class UserProfile {
     int? calorieAdjustment,
     String? lastAdaptationWeekId,
     Map<String, List<String>>? pinnedExercises,
+    List<String>? blockedExercises,
     DateTime? createdAt,
   }) {
     return UserProfile(
@@ -284,6 +293,7 @@ class UserProfile {
       calorieAdjustment: calorieAdjustment ?? this.calorieAdjustment,
       lastAdaptationWeekId: lastAdaptationWeekId ?? this.lastAdaptationWeekId,
       pinnedExercises: pinnedExercises ?? this.pinnedExercises,
+      blockedExercises: blockedExercises ?? this.blockedExercises,
       createdAt: createdAt ?? this.createdAt,
     );
   }

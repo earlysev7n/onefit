@@ -47,7 +47,7 @@ class ExerciseDBService {
   ///      removed from DNS, so gifUrls are now resolved by name against the
   ///      jsDelivr-hosted ExerciseGymGifsDB (see _gifCdnBase). Cached docs hold
   ///      dead URLs and must be rebuilt once.
-  static const _cacheVersion = 9;
+  static const _cacheVersion = 10;
 
   final _db = FirebaseFirestore.instance;
 
@@ -353,7 +353,13 @@ class ExerciseDBService {
     final goals = <String>[];
     final bp = bodyParts.map((b) => b.toLowerCase()).toList();
 
-    if (bp.contains('cardio') || name.contains('run') || name.contains('jump')) {
+    // "jump" as a standalone movement (starts the name or follows a named
+    // plyometric pattern). Bare name.contains('jump') was too broad —
+    // "barbell incline jump" matched because the lowercased name contains the
+    // substring, even though the exercise is a strength move, not a cardio one.
+    final isJumpMove = name.startsWith('jump') ||
+        RegExp(r'\b(box|broad|depth|split|vertical|long)\s+jump\b').hasMatch(name);
+    if (bp.contains('cardio') || name.contains('run') || isJumpMove) {
       goals.add('weight_loss');
       goals.add('endurance');
     }

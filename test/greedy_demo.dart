@@ -1,10 +1,12 @@
 // Greedy Algorithm — Interactive Demo
 // Run: dart run test/greedy_demo.dart
 
+import 'dart:convert';
 import 'dart:io';
 import 'package:onefit/algorithms/greedy_algorithm.dart';
 import 'package:onefit/models/exercise.dart';
 import 'package:onefit/models/user_profile.dart';
+import 'package:onefit/services/difficulty_inference.dart';
 
 class _C {
   final Exercise exercise;
@@ -13,7 +15,7 @@ class _C {
       this.dayPen, this.wkPen, this.total);
 }
 
-void main() {
+Future<void> main() async {
   print('');
   print('GREEDY ALGORITHM — EXERCISE RECOMMENDATION DEMO');
   print('');
@@ -37,6 +39,12 @@ void main() {
     'Strength + Conditioning Split',
   ]);
 
+  final location = _menu('Workout location', const ['Gym', 'Home']);
+
+  stderr.write('Fetching exercises from ExerciseDB');
+  final pool = await _fetchExercises();
+  stderr.writeln(' — ${pool.length} exercises loaded.');
+
   final profile = UserProfile(
     uid: 'demo',
     name: 'Demo User',
@@ -46,15 +54,14 @@ void main() {
     height: 178.0,
     fitnessGoal: fitnessGoal,
     experienceLevel: level,
-    workoutLocation: 'Gym',
-    equipment: [],
+    workoutLocation: location,
+    equipment: location == 'Home' ? ['Bodyweight'] : [],
     dietaryRestrictions: [],
     workoutDaysPerWeek: 3,
     sessionMinutes: int.parse(durationStr),
     workoutSplit: split,
   );
 
-  final pool = _buildPool();
   final ga = GreedyAlgorithm();
 
   // Call generatePlan once to read Day 1 metadata: focus, exercise count, NSCA params.
@@ -81,7 +88,8 @@ void main() {
   print('Experience      : $level');
   print('Session Duration: $durationStr minutes');
   print('Workout Split   : $split');
-  print('Location        : Gym (all equipment available)');
+  print('Location        : $location'
+      '${location == 'Gym' ? ' (all equipment available)' : ' (bodyweight only)'}');
 
   print('');
   print('=== NSCA PRESCRIPTION ($fitnessGoal) ===');
@@ -196,140 +204,183 @@ void main() {
 
   print('');
   print('=== DAY 1 FINAL PLAN ===');
-  for (int i = 0; i < picked.length; i++) {
-    print('  ${i + 1}. ${picked[i].exercise.name.padRight(30)}'
-        '  $sampleSets x $sampleReps  @  ${sampleRest}s rest');
+  for (int i = 0; i < firstTraining.exercises.length; i++) {
+    final e = firstTraining.exercises[i];
+    print('  ${i + 1}. ${e.exercise.name.padRight(30)}'
+        '  ${e.sets} x ${e.reps}  @  ${e.restSeconds}s rest');
   }
   print('');
 }
 
-// ── EXERCISE POOL ─────────────────────────────────────────────────────────────
+// ── ExerciseDB fetch ──────────────────────────────────────────────────────────
 
-List<Exercise> _buildPool() => [
-      _ex(id: 'bench_press_bb', name: 'Barbell Bench Press',
-          category: 'strength', primary: ['pectorals'],
-          secondary: ['triceps', 'delts'], equipment: ['barbell'],
-          difficulty: 'intermediate', goals: ['muscle_gain']),
-      _ex(id: 'shoulder_press_db', name: 'Dumbbell Shoulder Press',
-          category: 'strength', primary: ['delts'],
-          secondary: ['triceps'], equipment: ['dumbbells'],
-          difficulty: 'beginner', goals: ['muscle_gain']),
-      _ex(id: 'incline_press_db', name: 'Incline Dumbbell Press',
-          category: 'strength', primary: ['pectorals'],
-          secondary: ['triceps', 'delts'], equipment: ['dumbbells'],
-          difficulty: 'intermediate', goals: ['muscle_gain']),
-      _ex(id: 'row_bb', name: 'Barbell Row',
-          category: 'strength', primary: ['lats'],
-          secondary: ['upper back', 'biceps'], equipment: ['barbell'],
-          difficulty: 'intermediate', goals: ['muscle_gain']),
-      _ex(id: 'overhead_press_bb', name: 'Overhead Press',
-          category: 'strength', primary: ['delts'],
-          secondary: ['triceps', 'upper back'], equipment: ['barbell'],
-          difficulty: 'intermediate', goals: ['muscle_gain']),
-      _ex(id: 'lat_pulldown', name: 'Lat Pulldown',
-          category: 'strength', primary: ['lats'],
-          secondary: ['biceps', 'upper back'], equipment: ['cable'],
-          difficulty: 'beginner', goals: ['muscle_gain']),
-      _ex(id: 'cable_row', name: 'Seated Cable Row',
-          category: 'strength', primary: ['lats'],
-          secondary: ['upper back', 'biceps'], equipment: ['cable'],
-          difficulty: 'beginner', goals: ['muscle_gain']),
-      _ex(id: 'pull_up', name: 'Pull-Up',
-          category: 'strength', primary: ['lats'],
-          secondary: ['biceps', 'upper back'], equipment: ['body weight'],
-          difficulty: 'intermediate', goals: ['muscle_gain']),
-      _ex(id: 'chest_fly_cable', name: 'Cable Chest Fly',
-          category: 'strength', primary: ['pectorals'],
-          secondary: ['biceps'], equipment: ['cable'],
-          difficulty: 'beginner', goals: ['muscle_gain', 'general']),
-      _ex(id: 'tricep_pushdown', name: 'Tricep Pushdown',
-          category: 'strength', primary: ['triceps'],
-          secondary: [], equipment: ['cable'],
-          difficulty: 'beginner', goals: ['weight_loss', 'general']),
-      _ex(id: 'lateral_raise', name: 'Lateral Raise',
-          category: 'strength', primary: ['delts'],
-          secondary: [], equipment: ['dumbbells'],
-          difficulty: 'beginner', goals: ['weight_loss']),
-      _ex(id: 'face_pull', name: 'Face Pull',
-          category: 'strength', primary: ['upper back'],
-          secondary: ['delts'], equipment: ['cable'],
-          difficulty: 'beginner', goals: ['general']),
-      _ex(id: 'dumbbell_curl', name: 'Dumbbell Curl',
-          category: 'strength', primary: ['biceps'],
-          secondary: ['forearms'], equipment: ['dumbbells'],
-          difficulty: 'beginner', goals: ['muscle_gain']),
-      _ex(id: 'hammer_curl', name: 'Hammer Curl',
-          category: 'strength', primary: ['biceps'],
-          secondary: [], equipment: ['dumbbells'],
-          difficulty: 'beginner', goals: ['general']),
-      _ex(id: 'push_up', name: 'Push-Up',
-          category: 'strength', primary: ['pectorals'],
-          secondary: ['triceps', 'delts'], equipment: ['body weight'],
-          difficulty: 'beginner', goals: ['general', 'weight_loss']),
-      _ex(id: 'tricep_overhead_ext', name: 'Overhead Tricep Extension',
-          category: 'strength', primary: ['triceps'],
-          secondary: [], equipment: ['dumbbells'],
-          difficulty: 'beginner', goals: ['muscle_gain']),
-      _ex(id: 'squat_bb', name: 'Barbell Back Squat',
-          category: 'strength', primary: ['quads'],
-          secondary: ['glutes', 'hamstrings'], equipment: ['barbell'],
-          difficulty: 'intermediate', goals: ['muscle_gain']),
-      _ex(id: 'rdl_bb', name: 'Romanian Deadlift',
-          category: 'strength', primary: ['hamstrings'],
-          secondary: ['glutes', 'lats'], equipment: ['barbell'],
-          difficulty: 'intermediate', goals: ['muscle_gain']),
-      _ex(id: 'lunge_db', name: 'Dumbbell Lunge',
-          category: 'strength', primary: ['quads'],
-          secondary: ['glutes', 'hamstrings'], equipment: ['dumbbells'],
-          difficulty: 'beginner', goals: ['weight_loss', 'general']),
-      _ex(id: 'hip_thrust_bb', name: 'Hip Thrust',
-          category: 'strength', primary: ['glutes'],
-          secondary: ['hamstrings'], equipment: ['barbell'],
-          difficulty: 'intermediate', goals: ['muscle_gain']),
-      _ex(id: 'leg_press', name: 'Leg Press',
-          category: 'strength', primary: ['quads'],
-          secondary: ['glutes', 'hamstrings'], equipment: ['leverage machine'],
-          difficulty: 'beginner', goals: ['muscle_gain', 'general']),
-      _ex(id: 'leg_curl', name: 'Leg Curl',
-          category: 'strength', primary: ['hamstrings'],
-          secondary: [], equipment: ['leverage machine'],
-          difficulty: 'beginner', goals: ['general']),
-      _ex(id: 'calf_raise', name: 'Calf Raise',
-          category: 'strength', primary: ['calves'],
-          secondary: [], equipment: ['leverage machine'],
-          difficulty: 'beginner', goals: ['general']),
-      _ex(id: 'deadlift_bb', name: 'Deadlift',
-          category: 'strength', primary: ['hamstrings'],
-          secondary: ['glutes', 'lats', 'upper back'], equipment: ['barbell'],
-          difficulty: 'intermediate', goals: ['muscle_gain']),
-      _ex(id: 'plank', name: 'Plank',
-          category: 'strength', primary: ['abs'],
-          secondary: ['spine'], equipment: ['body weight'],
-          difficulty: 'beginner', goals: ['general', 'weight_loss']),
-      _ex(id: 'burpee', name: 'Burpee',
-          category: 'cardio', primary: ['cardiovascular system'],
-          secondary: ['quads', 'abs'], equipment: ['body weight'],
-          difficulty: 'intermediate', goals: ['endurance', 'weight_loss']),
-    ];
+const _apiBase = 'https://oss.exercisedb.dev/api/v1';
 
-Exercise _ex({
-  required String id, required String name, required String category,
-  required List<String> primary, required List<String> secondary,
-  required List<String> equipment, required String difficulty,
-  required List<String> goals,
-}) =>
-    Exercise(
-      id: id, name: name, category: category,
-      primaryMuscles: primary, secondaryMuscles: secondary,
-      equipment: equipment, difficulty: difficulty,
-      goals: goals, locations: ['gym'], instructions: '',
-    );
+Future<List<Exercise>> _fetchExercises() async {
+  const maxPages = 100;
+  final exercises = <Exercise>[];
+  String? cursor;
+  final client = HttpClient();
+
+  try {
+    int retries = 0;
+    for (int page = 0; page < maxPages; page++) {
+      final query = cursor == null ? '' : '?after=$cursor';
+      final uri = Uri.parse('$_apiBase/exercises$query');
+      final req = await client.getUrl(uri);
+      req.headers.set('Content-Type', 'application/json');
+      final resp = await req.close().timeout(const Duration(seconds: 30));
+
+      if (resp.statusCode == 429 && retries < 4) {
+        retries++;
+        page--;
+        await Future.delayed(Duration(milliseconds: 1500 * retries));
+        continue;
+      }
+      if (resp.statusCode != 200) break;
+      retries = 0;
+
+      final body = await resp.transform(const Utf8Decoder()).join();
+      final json = jsonDecode(body) as Map<String, dynamic>;
+      final rawList = json['data'] as List? ?? [];
+      exercises.addAll(
+        rawList
+            .cast<Map<String, dynamic>>()
+            .map(_mapToExercise)
+            .where((e) => !_isLikelyAutoGenerated(e.name)),
+      );
+
+      final meta = json['meta'] as Map<String, dynamic>? ?? {};
+      final hasNext = meta['hasNextPage'] == true;
+      cursor = meta['nextCursor'] as String?;
+      stderr.write('.');
+      if (!hasNext || cursor == null || cursor.isEmpty) break;
+
+      await Future.delayed(const Duration(milliseconds: 350));
+    }
+  } catch (_) {
+    // Return whatever was gathered before the failure.
+  } finally {
+    client.close();
+  }
+
+  return exercises;
+}
+
+// ── Mapping helpers (mirrored from ExerciseDBService) ────────────────────────
+
+Exercise _mapToExercise(Map<String, dynamic> raw) {
+  final bodyParts = List<String>.from(
+      raw['bodyParts'] ?? (raw['bodyPart'] is String ? [raw['bodyPart']] : []));
+  final equipments = List<String>.from(
+      raw['equipments'] ?? (raw['equipment'] is String ? [raw['equipment']] : []));
+  final targetMuscles = List<String>.from(
+      raw['targetMuscles'] ?? (raw['target'] is String ? [raw['target']] : []));
+  final secondaryMuscles = List<String>.from(raw['secondaryMuscles'] ?? []);
+  final instructions = raw['instructions'] is List
+      ? (raw['instructions'] as List).cast<String>().join('\n')
+      : (raw['instructions'] as String? ?? '');
+  final name = (raw['name'] as String? ?? '').toLowerCase();
+
+  return Exercise(
+    id: raw['exerciseId']?.toString() ??
+        raw['id']?.toString() ??
+        name.hashCode.toString(),
+    name: _titleCase(name),
+    category: bodyParts.isNotEmpty ? bodyParts.first : 'Other',
+    primaryMuscles: targetMuscles,
+    secondaryMuscles: secondaryMuscles,
+    equipment: _normalizeEquipment(equipments),
+    difficulty: inferExerciseDifficulty(name, equipments),
+    goals: _inferGoals(bodyParts, name),
+    locations: _inferLocations(equipments),
+    instructions: instructions,
+  );
+}
+
+List<String> _normalizeEquipment(List<String> raw) {
+  const map = {
+    'body weight': 'Bodyweight',
+    'dumbbell': 'Dumbbells',
+    'barbell': 'Barbell',
+    'ez barbell': 'Barbell',
+    'kettlebell': 'Kettlebells',
+    'resistance band': 'Resistance Bands',
+    'pull-up bar': 'Pull-up Bar',
+    'cable': 'Cable Machine',
+    'machine': 'Machine',
+    'band': 'Resistance Bands',
+    'assisted': 'Machine',
+  };
+  final normalized = raw.map((e) => map[e.toLowerCase()] ?? _titleCase(e)).toList();
+  return normalized.isEmpty ? ['Bodyweight'] : normalized;
+}
+
+List<String> _inferGoals(List<String> bodyParts, String name) {
+  final goals = <String>[];
+  final bp = bodyParts.map((b) => b.toLowerCase()).toList();
+  final isJumpMove = name.startsWith('jump') ||
+      RegExp(r'\b(box|broad|depth|split|vertical|long)\s+jump\b').hasMatch(name);
+  if (bp.contains('cardio') || name.contains('run') || isJumpMove) {
+    goals.add('weight_loss');
+    goals.add('endurance');
+  }
+  if (bp.any((b) =>
+      ['chest', 'back', 'shoulders', 'upper arms', 'upper legs'].contains(b))) {
+    goals.add('muscle_gain');
+    goals.add('general');
+  }
+  if (bp.contains('waist') || bp.contains('lower legs')) {
+    goals.add('weight_loss');
+    goals.add('general');
+  }
+  if (goals.isEmpty) goals.addAll(['general', 'muscle_gain']);
+  return goals.toSet().toList();
+}
+
+List<String> _inferLocations(List<String> raw) {
+  const gymOnly = {
+    'cable', 'machine', 'assisted', 'smith machine', 'leverage machine'
+  };
+  return raw.any((e) => gymOnly.contains(e.toLowerCase()))
+      ? ['gym']
+      : ['home', 'gym'];
+}
+
+final _stylePrefix = RegExp(r'\b[a-z-]+ style ');
+final _gentleWord = RegExp(r'\bgentle\b');
+const _danglingWithAdjectives = {
+  'classic', 'simple', 'basic', 'intensified', 'declined', 'elevated',
+  'extended', 'advanced', 'dynamic', 'narrow', 'targeted', 'traditional',
+  'mega', 'horizontal', 'vertical', 'fierce', 'sharp', 'firm', 'precision',
+  'complete', 'athletic', 'endurance', 'macro', 'high', 'triple', 'single',
+  'inverted', 'stability',
+};
+
+bool _isLikelyAutoGenerated(String name) {
+  final n = name.toLowerCase();
+  if (_stylePrefix.hasMatch(n)) return true;
+  if (_gentleWord.hasMatch(n)) return true;
+  final withIdx = n.lastIndexOf(' with ');
+  if (withIdx != -1) {
+    final tail = n.substring(withIdx + ' with '.length).trim();
+    if (_danglingWithAdjectives.contains(tail)) return true;
+  }
+  return false;
+}
+
+String _titleCase(String s) => s
+    .split(' ')
+    .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+    .join(' ');
+
+// ── Misc helpers ──────────────────────────────────────────────────────────────
 
 String _gk(String g) => switch (g) {
       'Muscle Gain' => 'muscle_gain',
       'Weight Loss' => 'weight_loss',
-      'Endurance'   => 'endurance',
-      _             => 'general',
+      'Endurance' => 'endurance',
+      _ => 'general',
     };
 
 String _pts(double v) => v > 0 ? '+${v.toInt()}'.padLeft(4) : '   0';

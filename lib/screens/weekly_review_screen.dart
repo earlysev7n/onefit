@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import '../models/weekly_summary.dart';
+import '../providers/profile_provider.dart';
 import '../services/firestore_service.dart';
 import '../theme/app_colors.dart';
 import '../app_clock.dart';
@@ -40,7 +42,8 @@ class _WeeklyReviewScreenState extends State<WeeklyReviewScreen>
       setState(() => _loading = false);
       return;
     }
-    final weekId = FirestoreService.weekIdFor(appNow());
+    final anchorWeekday = context.read<ProfileProvider>().profile?.createdAt?.weekday ?? 1;
+    final weekId = FirestoreService.weekIdFor(appNow(), anchorWeekday: anchorWeekday);
     final results = await Future.wait([
       _fs.getWeeklySummary(uid, weekId),
       _fs.getWeeklySummaries(uid),
@@ -179,7 +182,7 @@ class _HistoryRow extends StatelessWidget {
     final reviewedStart = summary.weekStart.subtract(const Duration(days: 7));
     final reviewedEnd = summary.weekStart.subtract(const Duration(days: 1));
     final isCurrentWeek =
-        summary.weekId == FirestoreService.weekIdFor(appNow());
+        summary.weekId == FirestoreService.weekIdFor(appNow(), anchorWeekday: context.read<ProfileProvider>().profile?.createdAt?.weekday ?? 1);
     return Material(
       color: c.surface,
       borderRadius: BorderRadius.circular(14),

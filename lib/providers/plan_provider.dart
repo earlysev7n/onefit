@@ -26,11 +26,9 @@ class PlanProvider extends ChangeNotifier {
   Meal? get dinner => _dinner;
   Meal? get snack => _snack;
 
-  // Get today's workout day
-  WorkoutDay? get todayWorkout {
+  WorkoutDay? todayWorkout({int anchorWeekday = 1}) {
     if (_workoutPlan.isEmpty) return null;
-    final weekday = appNow().weekday;
-    final index = weekday - 1;
+    final index = (appNow().weekday - anchorWeekday + 7) % 7;
     if (index >= _workoutPlan.length) return null;
     return _workoutPlan[index];
   }

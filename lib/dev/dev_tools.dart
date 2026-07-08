@@ -53,18 +53,19 @@ class DevTools {
     final profile = context.read<ProfileProvider>().profile;
     var plan = context.read<PlanProvider>().workoutPlan;
 
-    final weekId = FirestoreService.weekIdFor(appToday());
+    final anchorWeekday = profile?.createdAt?.weekday ?? 1;
+    final weekId = FirestoreService.weekIdFor(appToday(), anchorWeekday: anchorWeekday);
     if (plan.isEmpty) {
       plan = await _fs.loadWeeklyWorkoutPlan(uid, weekId) ?? const [];
     }
     if (plan.isEmpty) return 'No plan yet — open Plans first';
 
-    final idx = (appNow().weekday - 1).clamp(0, plan.length - 1);
+    final idx = ((appNow().weekday - anchorWeekday + 7) % 7).clamp(0, plan.length - 1);
     final day = plan[idx];
     if (day.isRest || day.exercises.isEmpty) {
       return 'No workout scheduled today (${day.dayName})';
     }
-    await _logWorkout(uid, profile, day, appToday(), rating: 1, skip: false);
+    await _logWorkout(uid, profile, day, appToday(), rating: 1, skip: false, anchorWeekday: anchorWeekday);
     return 'Logged ${day.exercises.length} exercises for ${day.dayName}';
   }
 
@@ -111,8 +112,9 @@ class DevTools {
 
     // The week that is about to become "last week".
     final today = appToday();
-    final monday = today.subtract(Duration(days: today.weekday - 1));
-    final weekId = FirestoreService.weekIdFor(monday);
+    final anchorWeekday = profile.createdAt?.weekday ?? 1;
+    final weekStart = FirestoreService.weekStartFor(today, anchorWeekday: anchorWeekday);
+    final weekId = FirestoreService.weekIdFor(weekStart, anchorWeekday: anchorWeekday);
 
     if (plan.isEmpty) {
       plan = await _fs.loadWeeklyWorkoutPlan(uid, weekId) ?? const [];
@@ -156,12 +158,12 @@ class DevTools {
 
     // Food for all 7 days (≥4 logged days is required for adherence to count).
     for (var i = 0; i < 7; i++) {
-      await _logFood(uid, profile, monday.add(Duration(days: i)), calFactor);
+      await _logFood(uid, profile, weekStart.add(Duration(days: i)), calFactor);
     }
 
     // Workouts for the chosen number of training days.
     for (final di in trainingDays.take(workoutsToLog)) {
-      final date = monday.add(Duration(days: di));
+      final date = weekStart.add(Duration(days: di));
       final day = hasRealPlan
           ? plan[di]
           : WorkoutDay(
@@ -169,7 +171,7 @@ class DevTools {
               focus: 'Full Body',
               exercises: const [],
             );
-      await _logWorkout(uid, profile, day, date, rating: rating, skip: false);
+      await _logWorkout(uid, profile, day, date, rating: rating, skip: false, anchorWeekday: anchorWeekday);
     }
 
     // Jump one week forward so the Plans tab regenerates and adapts.
@@ -189,6 +191,7 @@ class DevTools {
     DateTime date, {
     required int rating,
     required bool skip,
+    int anchorWeekday = 1,
   }) async {
     final logged = <WorkoutLogExercise>[];
     final statWrites = <Future<void>>[];
@@ -231,7 +234,7 @@ class DevTools {
       id: '',
       userId: uid,
       date: DateTime(date.year, date.month, date.day),
-      weekId: FirestoreService.weekIdFor(date),
+      weekId: FirestoreService.weekIdFor(date, anchorWeekday: anchorWeekday),
       dayName: day.dayName,
       focus: day.focus,
       durationMinutes: profile?.sessionMinutes ?? 45,

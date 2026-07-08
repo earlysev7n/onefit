@@ -449,11 +449,19 @@ class FirestoreService {
   // WORKOUT LOG METHODS
   // ========================================
 
-  static String weekIdFor(DateTime date) {
-    final monday = date.subtract(Duration(days: date.weekday - 1));
-    final y = monday.year;
-    final week = ((monday.difference(DateTime(y)).inDays) / 7).ceil() + 1;
+  static String weekIdFor(DateTime date, {int anchorWeekday = 1}) {
+    final offset = (date.weekday - anchorWeekday + 7) % 7;
+    final weekStart = date.subtract(Duration(days: offset));
+    final y = weekStart.year;
+    final week = ((weekStart.difference(DateTime(y)).inDays) / 7).ceil() + 1;
     return 'week_${y}_$week';
+  }
+
+  /// Returns the start of the week containing [date], anchored to
+  /// [anchorWeekday] (1 = Monday … 7 = Sunday). Defaults to Monday.
+  static DateTime weekStartFor(DateTime date, {int anchorWeekday = 1}) {
+    final offset = (date.weekday - anchorWeekday + 7) % 7;
+    return date.subtract(Duration(days: offset));
   }
 
   Future<String> saveWorkoutLog(WorkoutLog log) async {

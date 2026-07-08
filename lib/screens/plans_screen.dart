@@ -28,6 +28,9 @@ import '../models/food_item.dart';
 import '../app_clock.dart';
 import '../theme/app_colors.dart';
 
+enum _RemoveAction { cancel, delete, regenerate }
+enum _RemoveReason { noEquipment, dislike, justToday, block }
+
 class PlansScreen extends StatefulWidget {
   const PlansScreen({Key? key}) : super(key: key);
 
@@ -225,7 +228,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
   void initState() {
     super.initState();
     final provider = context.read<PlanProvider>();
-    final currentDayIndex = appNow().weekday - 1;
+    final anchorWeekday = context.read<ProfileProvider>().profile?.createdAt?.weekday ?? 1;
+    final currentDayIndex = (appNow().weekday - anchorWeekday + 7) % 7;
     if (provider.workoutPlan.isNotEmpty) {
       setState(() {
         _plan = provider.workoutPlan;
@@ -286,7 +290,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final now = appNow();
     // Floor to midnight so the range aligns with midnight-stored log dates.
     final today = DateTime(now.year, now.month, now.day);
-    final weekStart = today.subtract(Duration(days: today.weekday - 1));
+    final anchorWeekday = context.read<ProfileProvider>().profile?.createdAt?.weekday ?? 1;
+    final weekStart = FirestoreService.weekStartFor(today, anchorWeekday: anchorWeekday);
     final weekEnd = weekStart.add(const Duration(days: 7));
     try {
       final logs = await FirestoreService().getWorkoutLogsForDateRange(
@@ -326,10 +331,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
       final now = appNow();
       // Floor to midnight so weekly date ranges line up with logs (stored at
-      // midnight). Using the timed `now` would drop a boundary day's Monday
-      // log and leak this week's Monday into last week's aggregates.
+      // midnight). Using the timed `now` would drop a boundary day's anchor-day
+      // log and leak this week's start into last week's aggregates.
       final today = DateTime(now.year, now.month, now.day);
-      final weekId = FirestoreService.weekIdFor(now);
+      final anchor = profile.createdAt?.weekday ?? 1;
+      final weekId = FirestoreService.weekIdFor(now, anchorWeekday: anchor);
       if (!mounted) return;
       final planProvider = context.read<PlanProvider>();
 
@@ -383,7 +389,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
           await planProvider.persistWorkoutPlan(uid, weekId);
         }
 
-        final thisWeekStart = today.subtract(Duration(days: today.weekday - 1));
+        final thisWeekStart = FirestoreService.weekStartFor(today, anchorWeekday: anchor);
         final thisWeekEnd = thisWeekStart.add(const Duration(days: 7));
         final weekLogs = await fs.getWorkoutLogsForDateRange(
           uid,
@@ -404,7 +410,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
       // ── No persisted plan — generate a fresh one ─────────────────────────────
 
-      final weekStart = today.subtract(Duration(days: today.weekday - 1 + 7));
+      final weekStart = FirestoreService.weekStartFor(today, anchorWeekday: anchor).subtract(const Duration(days: 7));
       final lastWeekNutrition = await fs.getWeeklyNutritionSummary(
         uid,
         weekStart,
@@ -427,7 +433,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
       // Adaptation only applies when last week actually happened in the app —
       // a plan existed or at least one workout was logged. Without this guard
       // a brand-new user reads as 0% completion and gets a reduced first plan.
-      final lastWeekId = FirestoreService.weekIdFor(weekStart);
+      final lastWeekId = FirestoreService.weekIdFor(weekStart, anchorWeekday: anchor);
       final hadLastWeekPlan =
           await fs.loadWeeklyWorkoutPlan(uid, lastWeekId) != null;
       // Anchor the weekly engine to account creation too: a "last week" that
@@ -500,6 +506,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         allExercises: exercises,
         profile: profile,
         difficultyBias: adaptation.difficultyBias,
+        anchorWeekday: anchor,
       );
 
       // W2: an 'up'/'down' that the NSCA set-range clamp fully absorbs makes no
@@ -563,9 +570,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         // Persist a snapshot of this week's adaptation for the Weekly Review
         // screen (current week + history). Same guard as the calorie bias, so
         // exactly one snapshot per weekId — no stacking on force-regenerate.
-        final activeWeekStart = today.subtract(
-          Duration(days: today.weekday - 1),
-        );
+        final activeWeekStart = FirestoreService.weekStartFor(today, anchorWeekday: anchor);
         final summary = WeeklySummary(
           weekId: weekId,
           generatedAt: appNow(),
@@ -593,7 +598,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         await fs.saveWeeklySummary(uid, summary);
       }
 
-      final thisWeekStart = today.subtract(Duration(days: today.weekday - 1));
+      final thisWeekStart = FirestoreService.weekStartFor(today, anchorWeekday: anchor);
       final thisWeekEnd = thisWeekStart.add(const Duration(days: 7));
       final weekLogs = await fs.getWorkoutLogsForDateRange(
         uid,
@@ -1367,7 +1372,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
       id: '',
       userId: uid,
       date: DateTime(now.year, now.month, now.day),
-      weekId: FirestoreService.weekIdFor(now),
+      weekId: FirestoreService.weekIdFor(now, anchorWeekday: _profile?.createdAt?.weekday ?? 1),
       dayName: day.dayName,
       focus: day.focus,
       durationMinutes: durationMinutes,
@@ -1683,7 +1688,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
       id: '',
       userId: uid,
       date: DateTime(now.year, now.month, now.day),
-      weekId: FirestoreService.weekIdFor(now),
+      weekId: FirestoreService.weekIdFor(now, anchorWeekday: _profile?.createdAt?.weekday ?? 1),
       dayName: day.dayName,
       focus: day.focus,
       durationMinutes: profile?.sessionMinutes ?? 45,
@@ -1874,7 +1879,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
   // ── Edit-mode helpers ──────────────────────────────────────────────────────
 
-  String get _currentWeekId => FirestoreService.weekIdFor(appNow());
+  String get _currentWeekId => FirestoreService.weekIdFor(appNow(), anchorWeekday: _profile?.createdAt?.weekday ?? 1);
 
   /// Enter / exit edit mode. On exit, guards against 0 exercises and prompts
   /// the user if they removed exercises without replacing them.
@@ -2270,7 +2275,6 @@ class _WorkoutTabState extends State<_WorkoutTab>
   ) {
     final c = context.colors;
     final dayIdx = _selectedDay;
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -2280,35 +2284,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
           top: 4,
           right: 4,
           child: GestureDetector(
-            onTap: () async {
-              // 50% removal cap: can't go below half of the original count
-              final currentCount = day.exercises.length;
-              final minAllowed = (_editModeOriginalCount / 2).ceil();
-              if (currentCount <= minAllowed) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'You can only remove up to 50% of exercises. '
-                      'Add a replacement before removing more.',
-                      style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                    ),
-                    backgroundColor: Colors.redAccent,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                );
-                return;
-              }
-              await context.read<PlanProvider>().removeExercise(
-                uid,
-                _currentWeekId,
-                dayIdx,
-                exIdx,
-              );
-              setState(() => _plan = context.read<PlanProvider>().workoutPlan);
-            },
+            onTap: () => _showRemoveDialog(day, exIdx, we),
             child: Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
@@ -2349,6 +2325,298 @@ class _WorkoutTabState extends State<_WorkoutTab>
         ),
       ],
     );
+  }
+
+  Future<void> _showRemoveDialog(
+    WorkoutDay day,
+    int exIdx,
+    WorkoutExercise we,
+  ) async {
+    final action = await showDialog<_RemoveAction>(
+      context: context,
+      builder: (ctx) {
+        final c = context.colors;
+        return AlertDialog(
+          backgroundColor: c.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            'Remove "${we.exercise.name}"?',
+            style: GoogleFonts.spaceGrotesk(
+              color: c.onBackground,
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+            ),
+          ),
+          content: Text(
+            'Would you like to swap it with a better fit, or remove it entirely?',
+            style: GoogleFonts.inter(color: c.muted, fontSize: 14, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, _RemoveAction.cancel),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.inter(
+                  color: c.muted,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, _RemoveAction.delete),
+              child: Text(
+                'Delete',
+                style: GoogleFonts.inter(
+                  color: Colors.redAccent,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, _RemoveAction.regenerate),
+              child: Text(
+                'Regenerate',
+                style: GoogleFonts.inter(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || action == null || action == _RemoveAction.cancel) return;
+
+    if (action == _RemoveAction.delete) {
+      // Re-read live day so the cap reflects any earlier removals this session.
+      final liveDay = _plan[_selectedDay];
+      final minAllowed = (_editModeOriginalCount / 2).ceil();
+      if (liveDay.exercises.length <= minAllowed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'You can only remove up to 50% of exercises. '
+              'Add a replacement before removing more.',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+        return;
+      }
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      await context.read<PlanProvider>().removeExercise(
+            uid, _currentWeekId, _selectedDay, exIdx);
+      if (mounted) {
+        setState(() => _plan = context.read<PlanProvider>().workoutPlan);
+      }
+      return;
+    }
+
+    // action == _RemoveAction.regenerate
+    await _showReasonDialog(exIdx, we);
+  }
+
+  Future<void> _showReasonDialog(int exIdx, WorkoutExercise we) async {
+    final reason = await showDialog<_RemoveReason>(
+      context: context,
+      builder: (ctx) {
+        final c = context.colors;
+
+        Widget tile(String label, IconData icon, _RemoveReason value) {
+          return InkWell(
+            onTap: () => Navigator.pop(ctx, value),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              child: Row(
+                children: [
+                  Icon(icon, size: 20, color: AppColors.primary),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: GoogleFonts.inter(
+                        color: c.onBackground,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return AlertDialog(
+          backgroundColor: c.surface,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          title: Text(
+            'Why are you replacing it?',
+            style: GoogleFonts.spaceGrotesk(
+              color: c.onBackground,
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Divider(color: c.borderLight, height: 1),
+              tile('No equipment', Icons.fitness_center_outlined,
+                  _RemoveReason.noEquipment),
+              Divider(color: c.borderLight, height: 1, indent: 20),
+              tile("Don't like this exercise", Icons.thumb_down_alt_outlined,
+                  _RemoveReason.dislike),
+              Divider(color: c.borderLight, height: 1, indent: 20),
+              tile('Just for today', Icons.today_outlined,
+                  _RemoveReason.justToday),
+              Divider(color: c.borderLight, height: 1, indent: 20),
+              tile('Remove from future recommendations', Icons.block_outlined,
+                  _RemoveReason.block),
+              Divider(color: c.borderLight, height: 1),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.inter(
+                  color: c.muted,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || reason == null) return;
+
+    if (reason == _RemoveReason.block) {
+      final profile = _profile;
+      if (profile != null &&
+          !profile.blockedExercises.contains(we.exercise.id)) {
+        final updated = profile.copyWith(
+          blockedExercises: [...profile.blockedExercises, we.exercise.id],
+        );
+        // Update in local state immediately so _replaceWithBest sees the new
+        // block before Firestore responds.
+        setState(() => _profile = updated);
+        // Fire-and-forget — low-stakes preference write.
+        context.read<ProfileProvider>().save(updated).ignore();
+      }
+    }
+
+    await _replaceWithBest(exIdx, we);
+  }
+
+  Future<void> _replaceWithBest(int exIdx, WorkoutExercise we) async {
+    final profile = _profile;
+    if (profile == null || _allExercises.isEmpty) return;
+
+    final liveDay = _plan[_selectedDay];
+    final targetMuscles = _focusToMuscles(liveDay.focus);
+
+    // All IDs currently on the day except the one being replaced.
+    final excludedIds = {
+      we.exercise.id,
+      for (final e in liveDay.exercises)
+        if (e.exercise.id != we.exercise.id) e.exercise.id,
+    };
+    final blocked = profile.blockedExercises.toSet();
+
+    // dayHits: muscles of exercises that will remain after the swap.
+    final dayHits = <String, int>{};
+    for (final e in liveDay.exercises) {
+      if (e.exercise.id == we.exercise.id) continue;
+      for (final m in e.exercise.primaryMuscles) {
+        dayHits[m] = (dayHits[m] ?? 0) + 1;
+      }
+    }
+
+    // weeklyHits: all exercises across the whole plan.
+    final weeklyHits = <String, int>{};
+    for (final wd in _plan) {
+      for (final e in wd.exercises) {
+        for (final m in e.exercise.primaryMuscles) {
+          weeklyHits[m] = (weeklyHits[m] ?? 0) + 1;
+        }
+      }
+    }
+
+    final ga = GreedyAlgorithm();
+    final candidates = _allExercises.where((e) {
+      if (excludedIds.contains(e.id)) return false;
+      if (blocked.contains(e.id)) return false;
+      if (!_usableByUser(e)) return false;
+      // Hard focus constraint — same as generatePlan's primaryPool filter.
+      return targetMuscles.isEmpty ||
+          e.primaryMuscles.any(targetMuscles.contains);
+    }).toList();
+
+    if (candidates.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'No suitable replacement found. The original exercise was kept.',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: context.colors.surface,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
+
+    // Pick the highest-scoring candidate using the same formula as the
+    // greedy algorithm's own selection pass.
+    Exercise best = candidates.first;
+    double bestScore = double.negativeInfinity;
+    for (final candidate in candidates) {
+      final score = ga.scoreExercise(
+        exercise: candidate,
+        profile: profile,
+        targetMuscles: targetMuscles,
+        weeklyHits: weeklyHits,
+        dayHits: dayHits,
+      );
+      if (score > bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
+    }
+
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    await context.read<PlanProvider>().replaceExercise(
+      uid,
+      _currentWeekId,
+      _selectedDay,
+      exIdx,
+      best,
+      sets: we.sets,
+      reps: we.reps,
+      restSeconds: we.restSeconds,
+    );
+    if (mounted) {
+      setState(() => _plan = context.read<PlanProvider>().workoutPlan);
+    }
   }
 
   Widget _buildReorderableExerciseList(WorkoutDay day) {
@@ -2959,7 +3227,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
   Widget _buildWorkoutDay(WorkoutDay day) {
     final c = context.colors;
-    final isToday = _selectedDay == appNow().weekday - 1;
+    final isToday = _selectedDay == (appNow().weekday - (_profile?.createdAt?.weekday ?? 1) + 7) % 7;
     final isCompleted = _todayLog != null && isToday;
     // The session covers the warm-up phase + the lifts; exercises stay locked
     // until the warm-up finishes/skips.

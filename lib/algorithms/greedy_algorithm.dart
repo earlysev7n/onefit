@@ -309,13 +309,15 @@ class GreedyAlgorithm {
     required List<Exercise> allExercises,
     required UserProfile profile,
     String difficultyBias = 'same', // 'up' | 'down' | 'same'
+    int anchorWeekday = 1,
   }) {
     // Hard constraints: gender variant + location + equipment + bench (what
     // the user can physically do). Goal is a scoring signal, not a gate —
     // gating on it collapses the candidate pool (e.g. a Weight-Loss user
     // would be excluded from all chest/back/arm work).
+    final _blocked = profile.blockedExercises.toSet();
     final filtered = allExercises
-        .where((e) => isEligibleForUser(e, profile))
+        .where((e) => isEligibleForUser(e, profile) && !_blocked.contains(e.id))
         .toList();
 
     // Build 7-day schedule from user's chosen split + available days.
@@ -325,11 +327,15 @@ class GreedyAlgorithm {
     final schedule = _getSchedule(profile);
 
     final List<WorkoutDay> plan = [];
-    final muscleHitCount = <String, int>{};
+    // Per-focus hit tracker. The weekly muscle penalty is scoped to
+    // DIFFERENT-focus days so Upper/PPL repeat days (Upper 2, Push 2) are
+    // not penalised for training the same muscles as their first instance —
+    // that repetition is intentional in structured splits.
+    final hitsByFocus = <String, Map<String, int>>{};
 
     for (int i = 0; i < 7; i++) {
       final focus = schedule[i];
-      final dayName = _dayName(i);
+      final dayName = _dayName(i, anchorWeekday: anchorWeekday);
 
       if (focus == 'Rest') {
         plan.add(
@@ -343,6 +349,16 @@ class GreedyAlgorithm {
         continue;
       }
 
+      // Build weeklyHits from all focuses except today's — same-focus
+      // repetition carries no penalty (Upper day 2 sees no penalty for chest).
+      final weeklyHits = <String, int>{};
+      for (final entry in hitsByFocus.entries) {
+        if (entry.key == focus) continue;
+        for (final h in entry.value.entries) {
+          weeklyHits[h.key] = (weeklyHits[h.key] ?? 0) + h.value;
+        }
+      }
+
       final targetMuscles = musclesForFocus(focus);
       // Session duration drives the exercise COUNT; NSCA goal loading drives the
       // per-set sets/reps/rest (computed inside _selectExercisesForDay).
@@ -353,7 +369,7 @@ class GreedyAlgorithm {
         exercises: filtered,
         targetMuscles: targetMuscles,
         profile: profile,
-        muscleHitCount: muscleHitCount,
+        muscleHitCount: weeklyHits,
         count: _fitExerciseCount(
           profile: profile,
           sets: daySets,
@@ -365,9 +381,10 @@ class GreedyAlgorithm {
         dayFocus: focus,
       );
 
+      final focusHits = hitsByFocus.putIfAbsent(focus, () => {});
       for (final we in dayExercises) {
         for (final m in we.exercise.primaryMuscles) {
-          muscleHitCount[m] = (muscleHitCount[m] ?? 0) + 1;
+          focusHits[m] = (focusHits[m] ?? 0) + 1;
         }
       }
 
@@ -650,22 +667,32 @@ class GreedyAlgorithm {
   List<String> _getSchedule(UserProfile profile) {
     final trainDays = profile.workoutDaysPerWeek.clamp(1, 7);
     final focusSequence = _splitFocusSequence(profile.workoutSplit);
-
-    // Build positions (0–6) for training days, spread as evenly as possible.
-    final trainPositions = <int>{};
-    for (int i = 0; i < trainDays; i++) {
-      trainPositions.add((i * 7 / trainDays).floor());
-    }
-
-    // Fill 7-day schedule
-    int focusIdx = 0;
     final schedule = List<String>.filled(7, 'Rest');
-    for (int i = 0; i < 7; i++) {
-      if (trainPositions.contains(i)) {
-        schedule[i] = focusSequence[focusIdx % focusSequence.length];
-        focusIdx++;
+
+    if (focusSequence.length >= 3) {
+      // Multi-focus splits (PPL, Bro Split) — pack training days consecutively
+      // so rest days fall after the full cycle, not inside it.
+      // Each day in the cycle targets different muscles, so consecutive days
+      // are safe from a recovery standpoint (Push ≠ Pull ≠ Legs).
+      for (int i = 0; i < trainDays; i++) {
+        schedule[i] = focusSequence[i % focusSequence.length];
+      }
+    } else {
+      // Single/dual-focus splits (Full Body, Upper/Lower, S+C) — spread days
+      // evenly so the same muscle groups get adequate mid-week recovery.
+      final trainPositions = <int>{};
+      for (int i = 0; i < trainDays; i++) {
+        trainPositions.add((i * 7 / trainDays).floor());
+      }
+      int focusIdx = 0;
+      for (int i = 0; i < 7; i++) {
+        if (trainPositions.contains(i)) {
+          schedule[i] = focusSequence[focusIdx % focusSequence.length];
+          focusIdx++;
+        }
       }
     }
+
     return schedule;
   }
 
@@ -838,7 +865,7 @@ class GreedyAlgorithm {
     return 60; // general
   }
 
-  String _dayName(int index) {
+  String _dayName(int index, {int anchorWeekday = 1}) {
     const days = [
       'Monday',
       'Tuesday',
@@ -848,6 +875,6 @@ class GreedyAlgorithm {
       'Saturday',
       'Sunday',
     ];
-    return days[index];
+    return days[(anchorWeekday - 1 + index) % 7];
   }
 }
