@@ -439,7 +439,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
       final weekStartedBeforeAccount =
           createdAt != null && !reviewedWeekEnd.isAfter(createdAt);
       final hasHistory =
-          (hadLastWeekPlan || lastWeekWorkouts > 0) && !weekStartedBeforeAccount;
+          (hadLastWeekPlan || lastWeekWorkouts > 0) &&
+          !weekStartedBeforeAccount;
 
       // Weight-trend signal — net change across last week's weigh-ins.
       final weightLogsRaw = await fs.getWeightLogs(uid);
@@ -981,7 +982,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
               (e) =>
                   e.gifUrl?.isNotEmpty == true &&
                   (e.equipment.isEmpty ||
-                   e.equipment.any((q) => q.toLowerCase() == 'bodyweight')),
+                      e.equipment.any((q) => q.toLowerCase() == 'bodyweight')),
             )
             .toList()
           ..sort((a, b) => a.name.compareTo(b.name));
@@ -2158,11 +2159,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
       if (kept.length < originalCount) {
         final targets = _focusToMuscles(day.focus);
         final existingIds = kept.map((e) => e.exercise.id).toSet();
-        final candidates = _gifPreferred(_allExercises.where((e) {
-          if (existingIds.contains(e.id)) return false;
-          if (!eligible(e)) return false;
-          return targets.isEmpty || e.primaryMuscles.any(targets.contains);
-        }).toList());
+        final candidates = _gifPreferred(
+          _allExercises.where((e) {
+            if (existingIds.contains(e.id)) return false;
+            if (!eligible(e)) return false;
+            return targets.isEmpty || e.primaryMuscles.any(targets.contains);
+          }).toList(),
+        );
 
         for (final ex in candidates) {
           if (kept.length >= originalCount) break;
@@ -2198,11 +2201,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final targets = _focusToMuscles(day.focus);
     final existingIds = day.exercises.map((e) => e.exercise.id).toSet();
 
-    final candidates = _gifPreferred(_allExercises.where((e) {
-      if (existingIds.contains(e.id)) return false;
-      if (!_usableByUser(e)) return false;
-      return targets.isEmpty || e.primaryMuscles.any(targets.contains);
-    }).toList());
+    final candidates = _gifPreferred(
+      _allExercises.where((e) {
+        if (existingIds.contains(e.id)) return false;
+        if (!_usableByUser(e)) return false;
+        return targets.isEmpty || e.primaryMuscles.any(targets.contains);
+      }).toList(),
+    );
 
     int added = 0;
     for (final ex in candidates) {
@@ -2230,11 +2235,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
       final targets = _focusToMuscles(nextDay.focus);
       final existingIds = nextDay.exercises.map((e) => e.exercise.id).toSet();
-      final candidates = _gifPreferred(_allExercises.where((e) {
-        if (existingIds.contains(e.id)) return false;
-        if (!_usableByUser(e)) return false;
-        return targets.isEmpty || e.primaryMuscles.any(targets.contains);
-      }).toList());
+      final candidates = _gifPreferred(
+        _allExercises.where((e) {
+          if (existingIds.contains(e.id)) return false;
+          if (!_usableByUser(e)) return false;
+          return targets.isEmpty || e.primaryMuscles.any(targets.contains);
+        }).toList(),
+      );
 
       if (candidates.isNotEmpty) {
         final ex = candidates.first;
@@ -2647,30 +2654,30 @@ class _WorkoutTabState extends State<_WorkoutTab>
     }
     final profile = _profile;
     final ga = profile != null ? GreedyAlgorithm() : null;
-    final relevant = allEx.where((e) {
-      if (targetMuscles.isEmpty) return true;
-      return e.primaryMuscles.any((m) => targetMuscles.contains(m));
-    }).toList()
-      ..sort((a, b) {
-        if (ga == null || profile == null) return a.name.compareTo(b.name);
-        final sa = ga.scoreExercise(
-          exercise: a,
-          profile: profile,
-          targetMuscles: targetMuscles,
-          weeklyHits: weeklyHits,
-          dayHits: dayHits,
-        );
-        final sb = ga.scoreExercise(
-          exercise: b,
-          profile: profile,
-          targetMuscles: targetMuscles,
-          weeklyHits: weeklyHits,
-          dayHits: dayHits,
-        );
-        // Descending by score; break ties alphabetically.
-        final cmp = sb.compareTo(sa);
-        return cmp != 0 ? cmp : a.name.compareTo(b.name);
-      });
+    final relevant =
+        allEx.where((e) {
+          if (targetMuscles.isEmpty) return true;
+          return e.primaryMuscles.any((m) => targetMuscles.contains(m));
+        }).toList()..sort((a, b) {
+          if (ga == null || profile == null) return a.name.compareTo(b.name);
+          final sa = ga.scoreExercise(
+            exercise: a,
+            profile: profile,
+            targetMuscles: targetMuscles,
+            weeklyHits: weeklyHits,
+            dayHits: dayHits,
+          );
+          final sb = ga.scoreExercise(
+            exercise: b,
+            profile: profile,
+            targetMuscles: targetMuscles,
+            weeklyHits: weeklyHits,
+            dayHits: dayHits,
+          );
+          // Descending by score; break ties alphabetically.
+          final cmp = sb.compareTo(sa);
+          return cmp != 0 ? cmp : a.name.compareTo(b.name);
+        });
 
     final searchController = TextEditingController();
 
@@ -3777,8 +3784,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
       useOldImageOnUrlChange: true, // gaplessPlayback-like: hold prior GIF
       placeholder: (_, _) =>
           loading ?? _gifPlaceholder(loading: true, height: height ?? 160),
-      errorWidget: (_, _, _) =>
-          error ?? _gifPlaceholder(height: height ?? 160),
+      errorWidget: (_, _, _) => error ?? _gifPlaceholder(height: height ?? 160),
     );
   }
 
@@ -4282,7 +4288,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                   ),
                 ),
                 subtitle: Text(
-                  'AI picks foods and amounts from the ingredient database',
+                  'AI picks the ingredients and amounts',
                   style: GoogleFonts.inter(fontSize: 12, color: c.muted),
                 ),
                 onTap: () => Navigator.pop(sheetCtx, 'auto'),

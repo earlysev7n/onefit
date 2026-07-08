@@ -36,7 +36,8 @@ class WorkoutExercise {
   final int sets;
   final String reps; // e.g. "10-12" or "30 sec"
   final int restSeconds;
-  final int timePerSetSeconds; // work-timer duration per set (session-budget fit)
+  final int
+  timePerSetSeconds; // work-timer duration per set (session-budget fit)
 
   WorkoutExercise({
     required this.exercise,
@@ -80,7 +81,10 @@ class GreedyAlgorithm {
   // eligible on a bare 'Barbell' chip without a rack.
   static final _rackTag = RegExp(r'\b(squat|bench press)\b');
   // Pull-up/chin-up moves are bodyweight-powered but still need a bar.
-  static final _pullupTag = RegExp(r'\b(pull.?up|chin.?up)\b', caseSensitive: false);
+  static final _pullupTag = RegExp(
+    r'\b(pull.?up|chin.?up)\b',
+    caseSensitive: false,
+  );
   static const _freeWeights = {
     'dumbbells',
     'barbell',
@@ -179,8 +183,7 @@ class GreedyAlgorithm {
     final isBodyweight = exEquip.contains('bodyweight');
     if (isBodyweight) {
       if (_pullupTag.hasMatch(name)) {
-        final hasBar =
-            p.equipment.any((x) => x.toLowerCase() == 'pull-up bar');
+        final hasBar = p.equipment.any((x) => x.toLowerCase() == 'pull-up bar');
         if (!hasBar) reasons.add('Needs a Pull-up Bar you don\'t have.');
       }
       return reasons;
@@ -194,7 +197,9 @@ class GreedyAlgorithm {
 
     final owns = exEquip.any(userEquip.contains) || (usesBarbell && hasBarbell);
     if (!owns) {
-      reasons.add('Needs equipment you don\'t have (${e.equipment.join(', ')}).');
+      reasons.add(
+        'Needs equipment you don\'t have (${e.equipment.join(', ')}).',
+      );
     }
     if (usesBarbell && _rackTag.hasMatch(name) && !hasRack) {
       reasons.add('Needs a squat/bench rack (Home Gym) you don\'t have.');
@@ -242,12 +247,10 @@ class GreedyAlgorithm {
   }) {
     double score = 0;
 
-    // 1. Day focus dominates — a Chest day must stay a chest day.
+    // 1. Day focus
     if (exercise.primaryMuscles.any(targetMuscles.contains)) score += 50;
 
-    // 2. Goal tag is a soft nudge only. At its old weight (+40) it buried the
-    //    focus bonus and let one goal-tagged muscle (abs, for weight loss)
-    //    sweep every slot of a day.
+    // 2. Goal tag
     if (exercise.goals.contains(_goalKey(profile.fitnessGoal))) score += 15;
 
     // 2b. Compound (multi-joint) bonus — staples like squat/bench/row recruit
