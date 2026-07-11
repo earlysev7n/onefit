@@ -54,11 +54,11 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
 
   // Activity levels + descriptions (shown in the "?" help sheet)
   final Map<String, String> _activityLevels = {
-    'Sedentary': 'Little or no exercise, desk job.',
-    'Lightly Active': 'Light exercise 1–3 days/week.',
-    'Moderately Active': 'Moderate exercise 3–5 days/week.',
-    'Very Active': 'Hard exercise 6–7 days/week.',
-    'Extra Active': 'Very hard exercise + a physical job.',
+    'Sedentary': 'Mostly sitting with very little daily movement.',
+    'Lightly Active': 'Some walking and light daily activities.',
+    'Moderately Active': 'Regular movement throughout the day.',
+    'Very Active': 'A physically active lifestyle or job.',
+    'Extra Active': 'Very physically demanding daily work or lifestyle.',
   };
 
   // 5 weekly split styles + one-line descriptions (shown on the cards).
