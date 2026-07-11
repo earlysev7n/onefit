@@ -541,11 +541,35 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                 .map(
                   (u) => Expanded(
                     child: GestureDetector(
-                      onTap: () => setState(() {
-                        _unitSystem = u;
-                        _weightController.clear();
-                        _heightController.clear();
-                      }),
+                      onTap: () {
+                        if (_unitSystem == u) return;
+                        setState(() {
+                          final currentWeight =
+                              double.tryParse(_weightController.text);
+                          final currentHeight =
+                              double.tryParse(_heightController.text);
+                          if (u == 'imperial') {
+                            if (currentWeight != null) {
+                              _weightController.text =
+                                  (currentWeight * 2.20462).toStringAsFixed(1);
+                            }
+                            if (currentHeight != null) {
+                              _heightController.text =
+                                  (currentHeight / 2.54).toStringAsFixed(1);
+                            }
+                          } else {
+                            if (currentWeight != null) {
+                              _weightController.text =
+                                  (currentWeight * 0.453592).toStringAsFixed(1);
+                            }
+                            if (currentHeight != null) {
+                              _heightController.text =
+                                  (currentHeight * 2.54).toStringAsFixed(1);
+                            }
+                          }
+                          _unitSystem = u;
+                        });
+                      },
                       child: Container(
                         margin: EdgeInsets.only(right: u == 'metric' ? 8 : 0),
                         padding: const EdgeInsets.symmetric(vertical: 12),
