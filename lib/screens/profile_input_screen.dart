@@ -51,6 +51,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
 
   // Step 3 — Diet. Defaults to the Balanced style (no macro override).
   List<String> _dietaryRestrictions = ['Balanced'];
+  List<String> _foodAllergies = [];
 
   // Activity levels + descriptions (shown in the "?" help sheet)
   final Map<String, String> _activityLevels = {
@@ -101,21 +102,32 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     'Bench',
     'Home Gym',
   ];
-  // Only options the meal generator actually honours are offered. Restrictions
-  // are multi-select; diet styles are single-select (they reshape macro
-  // targets, so they cannot be combined).
   final List<String> _restrictionOptions = [
     'None',
     'Vegetarian',
     'Vegan',
+    'Pescatarian',
     'Halal',
-    'Lactose-intolerant',
-    'Nut-free',
+    'Kosher',
+    'Gluten-Free',
+    'Dairy-Free',
+    'Low Carb',
+    'Keto',
+    'Paleo',
   ];
   final List<String> _dietStyleOptions = [
     'High-protein',
     'Low-carb',
     'Balanced',
+  ];
+  final List<String> _allergyOptions = [
+    'Peanuts',
+    'Tree Nuts',
+    'Eggs',
+    'Soy',
+    'Fish',
+    'Shellfish',
+    'Sesame',
   ];
 
   @override
@@ -141,8 +153,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
       _workoutSplit = _splitOptions.containsKey(p.workoutSplit)
           ? p.workoutSplit
           : 'Full Body Training';
-      // Drop options no longer offered (e.g. Keto/Gluten-free from older
-      // profiles); they would otherwise show no selected chip and confuse edits.
+      // Drop options no longer offered so the edit UI only shows current chips.
       _dietaryRestrictions = p.dietaryRestrictions
           .where(
             (r) =>
@@ -154,6 +165,9 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
       if (!_dietaryRestrictions.any(_dietStyleOptions.contains)) {
         _dietaryRestrictions.add('Balanced');
       }
+      _foodAllergies = p.foodAllergies
+          .where(_allergyOptions.contains)
+          .toList();
       // Weight/height are stored in metric; show in the user's unit system.
       final imperial = p.unitSystem == 'imperial';
       _weightController.text = (imperial ? p.weight / 0.453592 : p.weight)
@@ -369,6 +383,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               workoutLocation: _workoutLocation,
               equipment: equipment,
               dietaryRestrictions: _dietaryRestrictions,
+              foodAllergies: _foodAllergies,
               unitSystem: _unitSystem,
               activityLevel: _activityLevel,
               workoutDaysPerWeek: _workoutDays,
@@ -387,6 +402,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               workoutLocation: _workoutLocation,
               equipment: equipment,
               dietaryRestrictions: _dietaryRestrictions,
+              foodAllergies: _foodAllergies,
               unitSystem: _unitSystem,
               activityLevel: _activityLevel,
               workoutDaysPerWeek: _workoutDays,
@@ -1014,7 +1030,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Any dietary restrictions?',
+            'Any dietary restrictions or food allergies?',
             style: GoogleFonts.inter(color: c.muted),
           ),
           const SizedBox(height: 24),
@@ -1035,7 +1051,19 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               }
             }),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
+          _buildLabel('Food Allergies'),
+          const SizedBox(height: 8),
+          _buildMultiChipGroup(
+            _allergyOptions,
+            _foodAllergies,
+            (v) => setState(() {
+              _foodAllergies.contains(v)
+                  ? _foodAllergies.remove(v)
+                  : _foodAllergies.add(v);
+            }),
+          ),
+          const SizedBox(height: 20),
           _buildLabel('Diet Style'),
           const SizedBox(height: 8),
           // Single-select: picking one style clears the others (styles reshape

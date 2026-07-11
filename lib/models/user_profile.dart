@@ -10,6 +10,7 @@ class UserProfile {
   final String workoutLocation;
   final List<String> equipment;
   final List<String> dietaryRestrictions;
+  final List<String> foodAllergies;
   final String unitSystem; // 'metric' or 'imperial'
 
   // Profiling — workload, recovery & scheduling inputs
@@ -62,6 +63,7 @@ class UserProfile {
     required this.workoutLocation,
     required this.equipment,
     required this.dietaryRestrictions,
+    this.foodAllergies = const [],
     this.unitSystem = 'metric',
     this.activityLevel = 'Moderately Active',
     this.workoutDaysPerWeek = 3,
@@ -205,6 +207,7 @@ class UserProfile {
       workoutLocation: map['workoutLocation'] ?? 'Home',
       equipment: List<String>.from(map['equipment'] ?? []),
       dietaryRestrictions: List<String>.from(map['dietaryRestrictions'] ?? []),
+      foodAllergies: List<String>.from(map['foodAllergies'] ?? []),
       unitSystem: map['unitSystem'] ?? 'metric',
       activityLevel: map['activityLevel'] ?? 'Moderately Active',
       workoutDaysPerWeek: map['workoutDaysPerWeek'] ?? 3,
@@ -237,6 +240,7 @@ class UserProfile {
       'workoutLocation': workoutLocation,
       'equipment': equipment,
       'dietaryRestrictions': dietaryRestrictions,
+      'foodAllergies': foodAllergies,
       'unitSystem': unitSystem,
       'activityLevel': activityLevel,
       'workoutDaysPerWeek': workoutDaysPerWeek,
@@ -262,6 +266,7 @@ class UserProfile {
     String? workoutLocation,
     List<String>? equipment,
     List<String>? dietaryRestrictions,
+    List<String>? foodAllergies,
     String? unitSystem,
     String? activityLevel,
     int? workoutDaysPerWeek,
@@ -285,6 +290,7 @@ class UserProfile {
       workoutLocation: workoutLocation ?? this.workoutLocation,
       equipment: equipment ?? this.equipment,
       dietaryRestrictions: dietaryRestrictions ?? this.dietaryRestrictions,
+      foodAllergies: foodAllergies ?? this.foodAllergies,
       unitSystem: unitSystem ?? this.unitSystem,
       activityLevel: activityLevel ?? this.activityLevel,
       workoutDaysPerWeek: workoutDaysPerWeek ?? this.workoutDaysPerWeek,

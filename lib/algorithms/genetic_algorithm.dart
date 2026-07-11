@@ -1,6 +1,7 @@
 import 'dart:math';
 import '../models/meal_ingredient.dart';
 import '../models/user_profile.dart';
+import '../services/dietary_filter.dart';
 
 class GeneticAlgorithm {
   final Random _random;
@@ -72,9 +73,8 @@ class GeneticAlgorithm {
 
   /// Diet-style restrictions that reshape macro targets instead of filtering.
   static const Set<String> _macroStyles = {
-    'high-protein',
-    'low-carb',
-    'balanced',
+    'high-protein', 'low-carb', 'balanced', // legacy
+    'low carb', 'keto', 'paleo',            // new
   };
 
   /// True when [ing] satisfies every dietary restriction on [profile]. Inclusion
@@ -89,8 +89,14 @@ class GeneticAlgorithm {
         if (!tags.contains(r)) return false;
       } else if (_exclusionAllergens.containsKey(r)) {
         if (allergens.contains(_exclusionAllergens[r])) return false;
+      } else if (!_macroStyles.contains(r) && r != 'none') {
+        // Delegate new restriction types (pescatarian, kosher, gluten-free, …)
+        // to keyword-based filtering.
+        if (DietaryFilter.violates(ing.name, [raw])) return false;
       }
-      // macro styles / unknown → no filtering
+    }
+    if (DietaryFilter.violatesAllergies(ing.name, profile.foodAllergies)) {
+      return false;
     }
     return true;
   }
@@ -112,13 +118,13 @@ class GeneticAlgorithm {
     final kcal = profile.calorieGoal.toDouble();
     double? p, c, f; // ratios of total calories
     if (styles.contains('high-protein')) {
-      p = 0.40;
-      c = 0.35;
-      f = 0.25;
-    } else if (styles.contains('low-carb')) {
-      p = 0.35;
-      c = 0.20;
-      f = 0.45;
+      p = 0.40; c = 0.35; f = 0.25;
+    } else if (styles.contains('low-carb') || styles.contains('low carb')) {
+      p = 0.35; c = 0.20; f = 0.45;
+    } else if (styles.contains('keto')) {
+      p = 0.25; c = 0.05; f = 0.70;
+    } else if (styles.contains('paleo')) {
+      p = 0.30; c = 0.35; f = 0.35;
     }
     if (p == null) {
       // Balanced or no style → keep the fitnessGoal-derived targets.
@@ -903,6 +909,9 @@ class GeneticAlgorithm {
     for (final raw in profile.dietaryRestrictions) {
       final mapped = _exclusionAllergens[raw.toLowerCase()];
       if (mapped != null && allergens.contains(mapped)) return false;
+    }
+    if (DietaryFilter.violatesAllergies(ing.name, profile.foodAllergies)) {
+      return false;
     }
     return true;
   }

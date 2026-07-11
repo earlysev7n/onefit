@@ -229,6 +229,13 @@ class ProfileScreen extends StatelessWidget {
                     'Balanced',
               ),
               _infoRow(context, 'Restrictions', _restrictionsLabel(profile)),
+              _infoRow(
+                context,
+                'Allergies',
+                (profile?.foodAllergies.isEmpty ?? true)
+                    ? 'None'
+                    : profile!.foodAllergies.join(', '),
+              ),
             ]),
             const SizedBox(height: 24),
 

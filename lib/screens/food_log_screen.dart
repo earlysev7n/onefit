@@ -153,10 +153,11 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   /// restricted foods are never pickable), dedupe by id, then add to the
   /// basket.
   void _addPicked(MealIngredient ing) {
-    final restrictions =
-        context.read<ProfileProvider>().profile?.dietaryRestrictions ??
-        const <String>[];
-    if (DietaryFilter.violates(ing.name, restrictions)) {
+    final profile = context.read<ProfileProvider>().profile;
+    final restrictions = profile?.dietaryRestrictions ?? const <String>[];
+    final allergies = profile?.foodAllergies ?? const <String>[];
+    if (DietaryFilter.violates(ing.name, restrictions) ||
+        DietaryFilter.violatesAllergies(ing.name, allergies)) {
       _showPickerBlockedSnackbar(ing.name);
       return;
     }
@@ -219,9 +220,10 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
 
   Future<void> _scanBarcode() async {
     // Capture before the async gaps — don't touch context after an await.
+    final barcodeProfile = context.read<ProfileProvider>().profile;
     final restrictions =
-        context.read<ProfileProvider>().profile?.dietaryRestrictions ??
-        const <String>[];
+        barcodeProfile?.dietaryRestrictions ?? const <String>[];
+    final barcodeAllergies = barcodeProfile?.foodAllergies ?? const <String>[];
     final barcode = await Navigator.push<String>(
       context,
       MaterialPageRoute(builder: (_) => const BarcodeScanScreen()),
@@ -259,7 +261,8 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
       if (widget.pickerMode) {
         // Picker: restriction check up front (blocking), then confirm without
         // a quantity slider — the GA decides grams, not the user.
-        if (DietaryFilter.violates(foodItem.name, restrictions)) {
+        if (DietaryFilter.violates(foodItem.name, restrictions) ||
+            DietaryFilter.violatesAllergies(foodItem.name, barcodeAllergies)) {
           _showPickerBlockedSnackbar(foodItem.name);
           return;
         }
@@ -437,9 +440,9 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   Future<void> _search(String query) async {
     if (query.trim().isEmpty) return;
     // Capture before the async gap — don't touch context after an await.
-    final restrictions =
-        context.read<ProfileProvider>().profile?.dietaryRestrictions ??
-            const <String>[];
+    final searchProfile = context.read<ProfileProvider>().profile;
+    final restrictions = searchProfile?.dietaryRestrictions ?? const <String>[];
+    final allergies = searchProfile?.foodAllergies ?? const <String>[];
     final cacheKey = query.trim().toLowerCase();
     _lastQuery = query;
     _searchPage = 1;
@@ -494,6 +497,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
         results,
         restrictions,
         (f) => '${f.name} ${f.brandOwner}',
+        allergies: allergies,
       );
 
       if (!mounted) return;
@@ -519,9 +523,9 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
 
   Future<void> _loadMore() async {
     if (_isLoadingMore || _searchPage >= _totalPages) return;
-    final restrictions =
-        context.read<ProfileProvider>().profile?.dietaryRestrictions ??
-            const <String>[];
+    final moreProfile = context.read<ProfileProvider>().profile;
+    final restrictions = moreProfile?.dietaryRestrictions ?? const <String>[];
+    final moreAllergies = moreProfile?.foodAllergies ?? const <String>[];
     setState(() => _isLoadingMore = true);
     try {
       final nextPage = _searchPage + 1;
@@ -544,6 +548,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
         more,
         restrictions,
         (f) => '${f.name} ${f.brandOwner}',
+        allergies: moreAllergies,
       );
       if (!mounted) return;
       setState(() {
@@ -986,12 +991,13 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
     final c = context.colors;
     // In picker mode restricted past foods are hidden outright — the picker
     // must never offer a food that conflicts with the profile's restrictions.
+    final historyProfile = context.read<ProfileProvider>().profile;
     final visibleHistory = widget.pickerMode
         ? DietaryFilter.filter(
             _history,
-            context.read<ProfileProvider>().profile?.dietaryRestrictions ??
-                const <String>[],
+            historyProfile?.dietaryRestrictions ?? const <String>[],
             (f) => f.name,
+            allergies: historyProfile?.foodAllergies ?? const <String>[],
           )
         : _history;
     return ListView(

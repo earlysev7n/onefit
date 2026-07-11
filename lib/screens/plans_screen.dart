@@ -4448,8 +4448,13 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
       // Defense in depth: the picker already blocks restricted foods, but the
       // pool must never reach the GA with a violating name.
       final restrictions = _profile!.dietaryRestrictions;
+      final allergies = _profile!.foodAllergies;
       pickedPool = pickedPool
-          .where((i) => !DietaryFilter.violates(i.name, restrictions))
+          .where(
+            (i) =>
+                !DietaryFilter.violates(i.name, restrictions) &&
+                !DietaryFilter.violatesAllergies(i.name, allergies),
+          )
           .toList();
       if (pickedPool.isEmpty) {
         _showNoMatchMessage();
