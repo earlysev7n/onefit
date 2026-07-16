@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -30,6 +31,26 @@ import '../theme/app_colors.dart';
 
 enum _RemoveAction { cancel, delete, regenerate }
 enum _RemoveReason { noEquipment, dislike, justToday, block }
+
+String _friendlyMuscle(String m) {
+  const _map = {
+    'pectorals': 'chest',
+    'lats': 'back (lats)',
+    'delts': 'shoulders',
+    'cardiovascular system': 'cardio',
+    'spine': 'lower back',
+    'abductors': 'outer thighs',
+    'adductors': 'inner thighs',
+    'serratus anterior': 'side chest',
+    'trapezius': 'traps',
+    'upper back': 'upper back',
+    'abs': 'core (abs)',
+  };
+  return _map[m] ?? m;
+}
+
+String _friendlyMuscles(List<String> muscles) =>
+    muscles.map(_friendlyMuscle).join(', ');
 
 class PlansScreen extends StatefulWidget {
   const PlansScreen({Key? key}) : super(key: key);
@@ -158,6 +179,17 @@ class _WorkoutTabState extends State<_WorkoutTab>
   WorkoutLog? _todayLog;
   Map<String, bool> _weekDone = {};
 
+  // ── Date browsing (read-only) ────────────────────────────────────────────────
+  // `_selectedDate` is the single source of truth for what day is shown. When it
+  // equals today the live plan + full interactive workout flow renders; any other
+  // day loads read-only — NONE of the generate/adapt/persist/log paths are
+  // reachable there (they all live behind the `selectedDate == today` branch).
+  DateTime _selectedDate = DateTime(2000);
+  List<WorkoutDay> _historyPlan = [];
+  Map<String, WorkoutLog> _historyLogByDay = {};
+  int _historyDayIndex = 0;
+  bool _historyLoading = false;
+
   // ── Workout flow ───────────────────────────────────────────────────────────
   int _activeExerciseIndex = -1;
   int _activeSetNumber = 0;
@@ -227,9 +259,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
   @override
   void initState() {
     super.initState();
+    final now = appNow();
+    _selectedDate = DateTime(now.year, now.month, now.day);
     final provider = context.read<PlanProvider>();
     final anchorWeekday = context.read<ProfileProvider>().profile?.createdAt?.weekday ?? 1;
-    final currentDayIndex = (appNow().weekday - anchorWeekday + 7) % 7;
+    final currentDayIndex = (now.weekday - anchorWeekday + 7) % 7;
     if (provider.workoutPlan.isNotEmpty) {
       setState(() {
         _plan = provider.workoutPlan;
@@ -316,6 +350,92 @@ class _WorkoutTabState extends State<_WorkoutTab>
     _generate();
   }
 
+  // ── Date browsing (read-only) ────────────────────────────────────────────────
+
+  DateTime _todayDate() {
+    final now = appNow();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  bool _isToday(DateTime d) => d == _todayDate();
+
+  /// Move to [date]. Today → the live plan (no load). Any other day → read-only
+  /// load of that day's week + logs. Never touches generation/adaptation.
+  void _onWorkoutDateChanged(DateTime date) {
+    final d = DateTime(date.year, date.month, date.day);
+    setState(() {
+      _selectedDate = d;
+      _resetWorkoutState();
+    });
+    if (!_isToday(d)) _loadWorkoutDay(d);
+  }
+
+  Future<void> _loadWorkoutDay(DateTime date) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    setState(() => _historyLoading = true);
+    final anchor = _profile?.createdAt?.weekday ?? 1;
+    final weekStart = FirestoreService.weekStartFor(date, anchorWeekday: anchor);
+    final dayIndex = date.difference(weekStart).inDays;
+    final thisWeekStart = FirestoreService.weekStartFor(
+      _todayDate(),
+      anchorWeekday: anchor,
+    );
+    try {
+      final fs = FirestoreService();
+      // Current week's plan is already in memory; only past/future weeks fetch.
+      final plan = weekStart == thisWeekStart
+          ? _plan
+          : (await fs.loadWeeklyWorkoutPlan(
+                  uid,
+                  FirestoreService.weekIdFor(weekStart, anchorWeekday: anchor),
+                ) ??
+                <WorkoutDay>[]);
+      final logs = await fs.getWorkoutLogsForDateRange(
+        uid,
+        weekStart,
+        weekStart.add(const Duration(days: 7)),
+      );
+      if (!mounted) return;
+      setState(() {
+        _historyPlan = plan;
+        _historyLogByDay = {for (final l in logs) l.dayName: l};
+        _historyDayIndex = dayIndex.clamp(0, 6);
+        _historyLoading = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _historyLoading = false;
+          _historyPlan = [];
+          _historyLogByDay = {};
+        });
+      }
+    }
+  }
+
+  Future<void> _pickWorkoutDate() async {
+    final today = _todayDate();
+    final minDate = _profile?.createdAt != null
+        ? DateTime(
+            _profile!.createdAt!.year,
+            _profile!.createdAt!.month,
+            _profile!.createdAt!.day,
+          )
+        : DateTime(today.year - 2);
+    final initial = _selectedDate.isBefore(minDate)
+        ? minDate
+        : (_selectedDate.isAfter(today) ? today : _selectedDate);
+    final picked = await _showWeekDatePicker(
+      context,
+      initial: initial,
+      minimum: minDate,
+      maximum: today,
+    );
+    if (picked == null || !mounted) return;
+    _onWorkoutDateChanged(picked);
+  }
+
   Future<void> _generate() async {
     setState(() {
       _isLoading = true;
@@ -400,8 +520,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
           _profile = profile;
           _plan = planProvider.workoutPlan;
           _isLoading = false;
-          _selectedDay = _plan.indexWhere((d) => !d.isRest);
-          if (_selectedDay == -1) _selectedDay = 0;
+          // Open on today (the interactive day), clamped into range.
+          _selectedDay = ((now.weekday - anchor + 7) % 7).clamp(
+            0,
+            _plan.isEmpty ? 0 : _plan.length - 1,
+          );
           _weekDone = {for (final l in weekLogs) l.dayName: true};
         });
         _loadExerciseStats();
@@ -610,8 +733,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
         _profile = profile;
         _plan = plan;
         _isLoading = false;
-        _selectedDay = plan.indexWhere((d) => !d.isRest);
-        if (_selectedDay == -1) _selectedDay = 0;
+        // Open on today (the interactive day), clamped into range.
+        _selectedDay = ((now.weekday - anchor + 7) % 7).clamp(
+          0,
+          plan.isEmpty ? 0 : plan.length - 1,
+        );
         _weekDone = {for (final l in weekLogs) l.dayName: true};
       });
       _loadExerciseStats();
@@ -1756,14 +1882,133 @@ class _WorkoutTabState extends State<_WorkoutTab>
     return _buildPlan();
   }
 
-  Widget _buildPlan() {
+  Widget _buildWeekDayStrip() {
     final c = context.colors;
-    final day = _plan.isNotEmpty ? _plan[_selectedDay] : null;
-    // Fall back to the provider profile so the chips never vanish even if the
-    // local _profile hasn't been populated on this code path yet.
+    final anchor = _profile?.createdAt?.weekday ?? 1;
+    final today = _todayDate();
+    final weekStart = FirestoreService.weekStartFor(
+      _selectedDate,
+      anchorWeekday: anchor,
+    );
+    final currentWeekStart = FirestoreService.weekStartFor(
+      today,
+      anchorWeekday: anchor,
+    );
+    final isCurrentWeek = weekStart == currentWeekStart;
+    // Use in-memory plan for the current week, history plan for past/future weeks.
+    final plan = isCurrentWeek ? _plan : _historyPlan;
+
+    const abbrevs = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(
+        children: List.generate(7, (i) {
+          final dayDate = weekStart.add(Duration(days: i));
+          final isSelected = dayDate == _selectedDate;
+          final WorkoutDay? dayPlan = i < plan.length ? plan[i] : null;
+          final isRest = dayPlan?.isRest ?? false;
+          final dayName = dayPlan?.dayName ?? '';
+
+          final bool isCompleted = isCurrentWeek
+              ? (_weekDone[dayName] == true)
+              : _historyLogByDay.containsKey(dayName);
+
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => _onWorkoutDateChanged(dayDate),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AppColors.primary.withOpacity(0.15)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  border: isSelected
+                      ? Border.all(
+                          color: AppColors.primary.withOpacity(0.4),
+                        )
+                      : null,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      abbrevs[dayDate.weekday - 1],
+                      style: GoogleFonts.inter(
+                        color: isSelected
+                            ? AppColors.primary
+                            : isRest
+                                ? c.inactive
+                                : c.muted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${dayDate.day}',
+                      style: GoogleFonts.inter(
+                        color: isSelected
+                            ? AppColors.primary
+                            : isRest
+                                ? c.inactive
+                                : c.onBackground,
+                        fontSize: 13,
+                        fontWeight:
+                            isSelected ? FontWeight.w700 : FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      width: 4,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isRest
+                            ? Colors.transparent
+                            : isCompleted
+                                ? AppColors.primary
+                                : c.subtle,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildPlan() {
+    final today = _todayDate();
+    final isToday = _isToday(_selectedDate);
     final headerProfile = _profile ?? context.watch<ProfileProvider>().profile;
-    return Column(
-      children: [
+
+    final children = <Widget>[
+      _buildDateNavigator(
+        context,
+        date: _selectedDate,
+        today: today,
+        onOlder: () => _onWorkoutDateChanged(
+          _selectedDate.subtract(const Duration(days: 1)),
+        ),
+        onNewer: () =>
+            _onWorkoutDateChanged(_selectedDate.add(const Duration(days: 1))),
+        onTapDate: _pickWorkoutDate,
+      ),
+      const SizedBox(height: 4),
+      _buildWeekDayStrip(),
+      const SizedBox(height: 4),
+    ];
+
+    // ── Today → the live, interactive plan (unchanged behavior) ───────────────
+    if (isToday) {
+      children.add(
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
@@ -1785,87 +2030,12 @@ class _WorkoutTabState extends State<_WorkoutTab>
             ],
           ),
         ),
-        const SizedBox(height: 8),
-        // Day selector with completion dots
-        SizedBox(
-          height: 70,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: _plan.length,
-            itemBuilder: (context, i) {
-              final d = _plan[i];
-              final isSelected = i == _selectedDay;
-              final isRest = d.isRest;
-              return GestureDetector(
-                onTap: () {
-                  if (i != _selectedDay) {
-                    setState(() {
-                      _resetWorkoutState();
-                      _selectedDay = i;
-                    });
-                  }
-                },
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Container(
-                      width: 56,
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? (isRest ? c.subtle : AppColors.primary)
-                            : c.surface,
-                        borderRadius: BorderRadius.circular(14),
-                        border: isSelected ? null : Border.all(color: c.border),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            d.dayName.substring(0, 3),
-                            style: GoogleFonts.spaceGrotesk(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: isSelected
-                                  ? (isRest ? c.onBackground : c.onPrimary)
-                                  : c.onBackground,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Icon(
-                            isRest
-                                ? Icons.bedtime_rounded
-                                : Icons.fitness_center_rounded,
-                            size: 14,
-                            color: isSelected
-                                ? (isRest ? Colors.white70 : c.shadow)
-                                : c.muted,
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (_weekDone[d.dayName] == true)
-                      Positioned(
-                        top: -3,
-                        right: 5,
-                        child: Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: c.onPrimary, width: 1.5),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 8),
+      );
+      children.add(const SizedBox(height: 8));
+      final day = (_plan.isNotEmpty && _selectedDay < _plan.length)
+          ? _plan[_selectedDay]
+          : null;
+      children.add(
         Expanded(
           child: day == null
               ? const SizedBox()
@@ -1873,9 +2043,289 @@ class _WorkoutTabState extends State<_WorkoutTab>
               ? _buildRestDay()
               : _buildWorkoutDay(day),
         ),
-      ],
+      );
+      return Column(children: children);
+    }
+
+    // ── Any other day → read-only ─────────────────────────────────────────────
+    if (_historyLoading) {
+      children.add(
+        Expanded(
+          child: Center(
+            child: CircularProgressIndicator(color: AppColors.primary),
+          ),
+        ),
+      );
+      return Column(children: children);
+    }
+    final histDay =
+        (_historyPlan.isNotEmpty && _historyDayIndex < _historyPlan.length)
+        ? _historyPlan[_historyDayIndex]
+        : null;
+    children.add(
+      Expanded(
+        child: histDay == null
+            ? _buildHistoryEmpty(
+                Icons.event_busy_rounded,
+                'No workout plan for this day.',
+              )
+            : histDay.isRest
+            ? _buildRestDay()
+            : _buildWorkoutHistoryDay(histDay),
+      ),
+    );
+    return Column(children: children);
+  }
+
+  Widget _buildHistoryEmpty(IconData icon, String message) {
+    final c = context.colors;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 56, color: c.subtle),
+            const SizedBox(height: 14),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(color: c.muted, fontSize: 14),
+            ),
+          ],
+        ),
+      ),
     );
   }
+
+  /// Read-only per-day history: day header + each exercise with its GIF,
+  /// prescribed sets/reps, and an expandable list of the sets actually logged
+  /// that day (from [WorkoutLogExercise.loggedSets]). No action buttons.
+  Widget _buildWorkoutHistoryDay(WorkoutDay day) {
+    final c = context.colors;
+    final log = _historyLogByDay[day.dayName];
+    final done = log != null;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      day.dayName,
+                      style: GoogleFonts.spaceGrotesk(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: c.onBackground,
+                      ),
+                    ),
+                    Text(
+                      day.focus,
+                      style: GoogleFonts.inter(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: done
+                      ? AppColors.primary.withOpacity(0.15)
+                      : c.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: done
+                      ? Border.all(color: AppColors.primary.withOpacity(0.4))
+                      : null,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (done) ...[
+                      Icon(
+                        Icons.check_circle_rounded,
+                        color: AppColors.primary,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    Text(
+                      log != null
+                          ? 'Completed · ${log.durationMinutes} min'
+                          : 'Not completed',
+                      style: GoogleFonts.inter(
+                        color: done ? AppColors.primary : c.muted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          for (int i = 0; i < day.exercises.length; i++)
+            _buildHistoryExerciseCard(day.exercises[i], i + 1, log),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHistoryExerciseCard(
+    WorkoutExercise we,
+    int number,
+    WorkoutLog? log,
+  ) {
+    final c = context.colors;
+    final ex = we.exercise;
+    // Match the logged exercise by name (WorkoutLogExercise stores only the
+    // name). loggedSets is what the user actually performed that day.
+    WorkoutLogExercise? logged;
+    if (log != null) {
+      for (final le in log.exercises) {
+        if (le.name.toLowerCase() == ex.name.toLowerCase()) {
+          logged = le;
+          break;
+        }
+      }
+    }
+    final sets = logged?.loggedSets ?? const <SetEntry>[];
+    final skipped = logged?.skipped == true;
+    final String? gifUrl = (ex.gifUrl != null && ex.gifUrl!.isNotEmpty)
+        ? ex.gifUrl
+        : null;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    '$number',
+                    style: GoogleFonts.spaceGrotesk(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      ex.name,
+                      style: GoogleFonts.inter(
+                        color: c.onBackground,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                    Text(
+                      '${we.sets} × ${we.reps}',
+                      style: GoogleFonts.inter(color: c.muted, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              if (skipped)
+                Text(
+                  'Skipped',
+                  style: GoogleFonts.inter(
+                    color: c.muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
+          ),
+          if (gifUrl != null) ...[
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () => _showGifDialog(context, gifUrl, ex.name),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: _gifImage(
+                  gifUrl,
+                  key: ValueKey('gif_hist_${ex.id}'),
+                  height: 150,
+                  width: double.infinity,
+                  loading: _gifPlaceholder(loading: true, height: 150),
+                ),
+              ),
+            ),
+          ],
+          if (sets.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            for (int s = 0; s < sets.length; s++)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Set ${s + 1}',
+                      style: GoogleFonts.inter(color: c.muted, fontSize: 12),
+                    ),
+                    Text(
+                      _setEntryLabel(sets[s]),
+                      style: GoogleFonts.inter(
+                        color: c.onBackground,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ] else if (!skipped) ...[
+            const SizedBox(height: 10),
+            Text(
+              'No sets were logged.',
+              style: GoogleFonts.inter(color: c.subtle, fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _setEntryLabel(SetEntry e) {
+    if (e.seconds != null && e.seconds! > 0) return '${e.seconds}s';
+    final reps = e.reps ?? 0;
+    if (e.weightKg != null && e.weightKg! > 0) {
+      return '${_trimNum(e.weightKg!)} kg × $reps';
+    }
+    return 'BW × $reps';
+  }
+
+  String _trimNum(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 
   // ── Edit-mode helpers ──────────────────────────────────────────────────────
 
@@ -3071,7 +3521,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                                   children: [
                                     Flexible(
                                       child: Text(
-                                        ex.primaryMuscles.join(', '),
+                                        _friendlyMuscles(ex.primaryMuscles),
                                         overflow: TextOverflow.ellipsis,
                                         style: GoogleFonts.inter(
                                           color: c.muted,
@@ -3538,7 +3988,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             ),
           ),
           Text(
-            '${ex.primaryMuscles.join(', ')} · ${we.sets} sets · ${we.reps} reps · ${we.restSeconds}s rest · ${we.timePerSetSeconds}s/set',
+            '${_friendlyMuscles(ex.primaryMuscles)} · ${we.sets} sets · ${we.reps} reps · ${we.restSeconds}s rest · ${we.timePerSetSeconds}s/set',
             style: GoogleFonts.inter(color: c.muted, fontSize: 13),
           ),
           const SizedBox(height: 12),
@@ -3803,7 +4253,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                         ),
                       ),
                       Text(
-                        ex.primaryMuscles.join(', '),
+                        _friendlyMuscles(ex.primaryMuscles),
                         style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                       ),
                     ],
@@ -4224,6 +4674,19 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
   bool _isInitializing = true;
   String _cuisine = 'any';
 
+  // ── Date browsing (read-only) ────────────────────────────────────────────────
+  // Interactive logging/generation only ever happens for *today*. Any other day
+  // is loaded read-only. `_selectedDate` is the single source of truth.
+  DateTime _selectedDate = DateTime(2000);
+  bool _mealDaySet = false; // has _selectedDate been initialised to today?
+  bool _mealHistoryLoading = false;
+  Map<String, List<FoodItem>> _historyDayFoods = {
+    'breakfast': [],
+    'lunch': [],
+    'dinner': [],
+    'snack': [],
+  };
+
   Map<String, List<FoodItem>> _loggedFoods = {
     'breakfast': [],
     'lunch': [],
@@ -4287,6 +4750,11 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
           _profile = profileProvider.profile;
           _allIngredients = ingredients;
           _isInitializing = false;
+          if (!_mealDaySet) {
+            final now = appNow();
+            _selectedDate = DateTime(now.year, now.month, now.day);
+            _mealDaySet = true;
+          }
         });
     } catch (e) {
       if (mounted) setState(() => _isInitializing = false);
@@ -4308,6 +4776,71 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
       }
       if (mounted) setState(() => _loggedFoods = grouped);
     } catch (_) {}
+  }
+
+  // ── Date browsing (read-only) ────────────────────────────────────────────────
+
+  DateTime _mealToday() {
+    final now = appNow();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  /// True when the selected day is genuinely today — the only day whose meals
+  /// stay interactive (generate/log/delete). Every other day is read-only.
+  bool _isInteractiveDay() => _selectedDate == _mealToday();
+
+  void _onMealDateChanged(DateTime date) {
+    final d = DateTime(date.year, date.month, date.day);
+    setState(() => _selectedDate = d);
+    if (!_isInteractiveDay()) _loadDayMeals(d);
+  }
+
+  Future<void> _loadDayMeals(DateTime date) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    setState(() => _mealHistoryLoading = true);
+    try {
+      final logs = await FirestoreService().getFoodLogsForDate(uid, date);
+      final grouped = <String, List<FoodItem>>{
+        'breakfast': [],
+        'lunch': [],
+        'dinner': [],
+        'snack': [],
+      };
+      for (final log in logs) {
+        grouped[log.mealType.toLowerCase()]?.add(log);
+      }
+      if (mounted) {
+        setState(() {
+          _historyDayFoods = grouped;
+          _mealHistoryLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _mealHistoryLoading = false);
+    }
+  }
+
+  Future<void> _pickMealDate() async {
+    final today = _mealToday();
+    final minDate = _profile?.createdAt != null
+        ? DateTime(
+            _profile!.createdAt!.year,
+            _profile!.createdAt!.month,
+            _profile!.createdAt!.day,
+          )
+        : DateTime(today.year - 2);
+    final initial = _selectedDate.isBefore(minDate)
+        ? minDate
+        : (_selectedDate.isAfter(today) ? today : _selectedDate);
+    final picked = await _showWeekDatePicker(
+      context,
+      initial: initial,
+      minimum: minDate,
+      maximum: today,
+    );
+    if (picked == null || !mounted) return;
+    _onMealDateChanged(picked);
   }
 
   double _totalCals() {
@@ -4779,10 +5312,42 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
   }
 
   Widget _buildPlan() {
+    final children = <Widget>[
+      _buildDateNavigator(
+        context,
+        date: _selectedDate,
+        today: _mealToday(),
+        onOlder: () =>
+            _onMealDateChanged(_selectedDate.subtract(const Duration(days: 1))),
+        onNewer: () =>
+            _onMealDateChanged(_selectedDate.add(const Duration(days: 1))),
+        onTapDate: _pickMealDate,
+      ),
+      const SizedBox(height: 12),
+    ];
+
+    if (_isInteractiveDay()) {
+      children.add(Expanded(child: _buildInteractiveMeals()));
+    } else {
+      children.add(
+        Expanded(
+          child: _mealHistoryLoading
+              ? Center(
+                  child: CircularProgressIndicator(color: AppColors.primary),
+                )
+              : _buildReadOnlyMeals(),
+        ),
+      );
+    }
+    return Column(children: children);
+  }
+
+  /// The live, interactive today view — chips, cuisine + Generate All, calorie
+  /// progress, and the editable meal cards. Only ever built for today.
+  Widget _buildInteractiveMeals() {
     final c = context.colors;
     final totalCals = _totalCals();
     final targetCal = context.watch<ProfileProvider>().dailyEffectiveGoal;
-
     return Column(
       children: [
         Padding(
@@ -4882,7 +5447,6 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               child: Column(
                 children: [
-                  // Each card receives its GlobalKey so _scrollToMeal can find it.
                   _buildMealCard(
                     'breakfast',
                     '🌅',
@@ -4916,6 +5480,137 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _mealHistoryEmpty(String message) {
+    final c = context.colors;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.no_meals_rounded, size: 56, color: c.subtle),
+            const SizedBox(height: 14),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(color: c.muted, fontSize: 14),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyMeals() {
+    final anyLogged = _historyDayFoods.values.any((l) => l.isNotEmpty);
+    if (!anyLogged) {
+      return _mealHistoryEmpty('No meals were logged this day.');
+    }
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      child: Column(
+        children: [
+          _buildReadOnlyMealCard('breakfast', '🌅', 'Breakfast'),
+          const SizedBox(height: 12),
+          _buildReadOnlyMealCard('lunch', '☀️', 'Lunch'),
+          const SizedBox(height: 12),
+          _buildReadOnlyMealCard('dinner', '🌙', 'Dinner'),
+          const SizedBox(height: 12),
+          _buildReadOnlyMealCard('snack', '🍎', 'Snack'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyMealCard(String mealType, String emoji, String label) {
+    final c = context.colors;
+    final foods = _historyDayFoods[mealType] ?? [];
+    final cals = foods.fold(0.0, (s, f) => s + f.totalCalories);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: GoogleFonts.spaceGrotesk(
+                  color: c.onBackground,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              const Spacer(),
+              if (foods.isNotEmpty)
+                Text(
+                  '${cals.round()} kcal',
+                  style: GoogleFonts.inter(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Divider(color: c.border, height: 1),
+          const SizedBox(height: 12),
+          if (foods.isEmpty)
+            Text(
+              'Nothing logged.',
+              style: GoogleFonts.inter(color: c.subtle, fontSize: 13),
+            )
+          else
+            ...foods.map(
+              (food) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: AppColors.orange,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        food.name,
+                        style: GoogleFonts.inter(
+                          color: c.onBackground,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      food.servingSizeUnit == 'g'
+                          ? '${(food.servingSize * food.quantity).round()}g'
+                          : '${food.quantity.toStringAsFixed(1)}× ${food.servingSize.round()}${food.servingSizeUnit}',
+                      style: GoogleFonts.inter(color: c.muted, fontSize: 12),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${food.totalCalories.round()} kcal',
+                      style: GoogleFonts.inter(color: c.subtle, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -5761,3 +6456,160 @@ Widget _chip(String label, Color color) => Container(
     ),
   ),
 );
+
+// ─── Date-history navigation shared by the Workout + Meal tabs ────────────────
+
+const List<String> _shortMonths = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+const List<String> _shortWeekdays = [
+  'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun',
+];
+
+/// Relative day label: Today / Yesterday / Tomorrow, else "Sat, 18 Jul".
+String _dayLabel(DateTime date, DateTime today) {
+  final d = DateTime(date.year, date.month, date.day);
+  final t = DateTime(today.year, today.month, today.day);
+  final diff = d.difference(t).inDays;
+  if (diff == 0) return 'Today';
+  if (diff == -1) return 'Yesterday';
+  if (diff == 1) return 'Tomorrow';
+  return '${_shortWeekdays[d.weekday - 1]}, ${d.day} ${_shortMonths[d.month - 1]}';
+}
+
+/// Per-day header: ‹ · pressable date label (opens picker) · ›. Stepping moves
+/// one day; both arrows are always enabled (future days simply read empty).
+Widget _buildDateNavigator(
+  BuildContext context, {
+  required DateTime date,
+  required DateTime today,
+  required VoidCallback onOlder,
+  required VoidCallback onNewer,
+  required VoidCallback onTapDate,
+}) {
+  final c = context.colors;
+  Widget arrow(IconData icon, VoidCallback onTap) => IconButton(
+    onPressed: onTap,
+    icon: Icon(icon, size: 26, color: c.muted),
+    splashRadius: 22,
+  );
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 8),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        arrow(Icons.chevron_left_rounded, onOlder),
+        InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTapDate,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _dayLabel(date, today),
+                  style: GoogleFonts.spaceGrotesk(
+                    color: c.onBackground,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.arrow_drop_down, size: 22, color: c.muted),
+              ],
+            ),
+          ),
+        ),
+        arrow(Icons.chevron_right_rounded, onNewer),
+      ],
+    ),
+  );
+}
+
+/// Wheel date picker (day/month/year) in a themed bottom sheet. Returns the
+/// picked date, or null if cancelled. Read-only affordance — the caller maps
+/// the date to a week offset; nothing is written.
+Future<DateTime?> _showWeekDatePicker(
+  BuildContext context, {
+  required DateTime initial,
+  required DateTime minimum,
+  required DateTime maximum,
+}) {
+  final c = context.colors;
+  final brightness = Theme.of(context).brightness;
+  DateTime temp = initial;
+  return showModalBottomSheet<DateTime>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => Container(
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: c.border)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(ctx),
+                    child: Icon(Icons.close_rounded, color: c.muted, size: 22),
+                  ),
+                  Text(
+                    'Change date',
+                    style: GoogleFonts.spaceGrotesk(
+                      color: c.onBackground,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(ctx, temp),
+                    child: Icon(
+                      Icons.check_rounded,
+                      color: AppColors.primary,
+                      size: 22,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 216,
+              child: CupertinoTheme(
+                data: CupertinoThemeData(
+                  brightness: brightness,
+                  primaryColor: AppColors.primary,
+                  textTheme: CupertinoTextThemeData(
+                    dateTimePickerTextStyle: GoogleFonts.inter(
+                      color: c.onBackground,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+                child: CupertinoDatePicker(
+                  mode: CupertinoDatePickerMode.date,
+                  initialDateTime: initial,
+                  minimumDate: minimum,
+                  maximumDate: maximum,
+                  onDateTimeChanged: (d) => temp = d,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
