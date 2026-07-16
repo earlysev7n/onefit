@@ -1025,15 +1025,52 @@ class _WorkoutTabState extends State<_WorkoutTab>
               '${stat.lastReps != null ? ' × ${stat.lastReps}' : ''}'
               '   ·   PR ${_fmtWeight(stat.bestWeightKg)}'
         : 'Log your working weight to track progress';
-    InputDecoration deco(String h) => InputDecoration(
+    InputDecoration deco(String h, {String? suffix}) => InputDecoration(
       hintText: h,
       hintStyle: GoogleFonts.inter(color: c.disabled, fontSize: 13),
+      suffixText: suffix,
+      suffixStyle: GoogleFonts.inter(
+        color: c.muted,
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+      ),
       filled: true,
       fillColor: c.inputFill,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
+      ),
+    );
+    Widget fieldLabel(String t) => Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 5),
+      child: Text(
+        t,
+        style: GoogleFonts.inter(
+          color: c.muted,
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+    void stepReps(int delta) {
+      final cur = int.tryParse(_repsController.text.trim()) ?? 0;
+      final next = (cur + delta).clamp(0, 999);
+      setState(() {
+        _repsController.text = next == 0 ? '' : next.toString();
+        _repsController.selection = TextSelection.collapsed(
+          offset: _repsController.text.length,
+        );
+      });
+    }
+    Widget stepButton(IconData icon, VoidCallback onTap) => InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: 40,
+        height: 48,
+        child: Icon(icon, color: AppColors.primary, size: 20),
       ),
     );
     final target = _targetFor(we);
@@ -1064,33 +1101,73 @@ class _WorkoutTabState extends State<_WorkoutTab>
             ],
           ),
         ],
-        const SizedBox(height: 6),
+        const SizedBox(height: 10),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Expanded(
-              child: TextField(
-                controller: _weightController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                style: GoogleFonts.spaceGrotesk(
-                  color: c.onBackground,
-                  fontWeight: FontWeight.w600,
-                ),
-                decoration: deco('Weight ($_weightUnit)'),
+              flex: 3,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  fieldLabel('WEIGHT'),
+                  TextField(
+                    controller: _weightController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    style: GoogleFonts.spaceGrotesk(
+                      color: c.onBackground,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    decoration: deco('0', suffix: _weightUnit),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 88,
-              child: TextField(
-                controller: _repsController,
-                keyboardType: TextInputType.number,
-                style: GoogleFonts.spaceGrotesk(
-                  color: c.onBackground,
-                  fontWeight: FontWeight.w600,
-                ),
-                decoration: deco('Reps'),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  fieldLabel('REPS'),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: c.inputFill,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        stepButton(Icons.remove_rounded, () => stepReps(-1)),
+                        Expanded(
+                          child: TextField(
+                            controller: _repsController,
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.spaceGrotesk(
+                              color: c.onBackground,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: '0',
+                              hintStyle: GoogleFonts.inter(
+                                color: c.disabled,
+                                fontSize: 13,
+                              ),
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 14,
+                              ),
+                              border: InputBorder.none,
+                            ),
+                          ),
+                        ),
+                        stepButton(Icons.add_rounded, () => stepReps(1)),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

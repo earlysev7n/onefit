@@ -70,6 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted) return;
     final increased = adjusted > base;
+    final diff = (adjusted - base).abs();
     final c = context.colors;
     showDialog(
       context: context,
@@ -77,17 +78,20 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: c.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
-          'Daily Goal Updated',
+          "Today's Goal Adjusted",
           style: GoogleFonts.spaceGrotesk(
             color: c.onBackground,
             fontWeight: FontWeight.w700,
           ),
         ),
         content: Text(
-          '${increased ? "You under-ate" : "You over-ate"} earlier this week, '
-          'so your calorie goal has been '
-          '${increased ? "increased to" : "reduced to"} $adjusted kcal today '
-          'to keep you on track for your weekly target.',
+          increased
+              ? "You've been slightly below your calorie target earlier this week — "
+                "that's okay. We've nudged today's goal up to $adjusted kcal "
+                "($diff kcal above your usual) so your weekly total stays balanced."
+              : "You've been slightly above your calorie target earlier this week — "
+                "no problem. We've nudged today's goal down to $adjusted kcal "
+                "($diff kcal below your usual) so your weekly total stays on track.",
           style: GoogleFonts.inter(color: c.muted),
         ),
         actions: [
