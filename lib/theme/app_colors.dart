@@ -8,6 +8,7 @@ class AppColors {
   final Color border;
   final Color borderLight;
   final Color muted;
+  final Color bodyText;
   final Color inactive;
   final Color subtle;
   final Color disabled;
@@ -25,6 +26,7 @@ class AppColors {
     required this.border,
     required this.borderLight,
     required this.muted,
+    required this.bodyText,
     required this.inactive,
     required this.subtle,
     required this.disabled,
@@ -50,6 +52,7 @@ class AppColors {
     border: Color(0xFF2E2E2E),
     borderLight: Color(0xFF333333),
     muted: Color(0xFF888888),
+    bodyText: Color(0xFFE8E8E8),
     inactive: Color(0xFF555555),
     subtle: Color(0xFF444444),
     disabled: Color(0xFF666666),
@@ -68,6 +71,7 @@ class AppColors {
     border: Color(0xFFE0E0DB),
     borderLight: Color(0xFFD5D5D0),
     muted: Color(0xFF717171),
+    bodyText: Color(0xFF717171),
     inactive: Color(0xFF9E9E9E),
     subtle: Color(0xFFBBBBBB),
     disabled: Color(0xFFA0A0A0),

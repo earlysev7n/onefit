@@ -4179,7 +4179,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             child: Text(
               ex.instructions,
               style: GoogleFonts.inter(
-                color: c.muted,
+                color: c.bodyText,
                 fontSize: 13,
                 height: 1.5,
               ),
