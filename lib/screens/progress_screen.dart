@@ -7,6 +7,7 @@ import 'dart:math' as math;
 import '../providers/progress_provider.dart';
 import '../providers/profile_provider.dart';
 import '../theme/app_colors.dart';
+import '../theme/responsive.dart';
 import 'weekly_review_screen.dart';
 
 class ProgressScreen extends StatefulWidget {
@@ -56,7 +57,8 @@ class _ProgressScreenState extends State<ProgressScreen> {
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-              child: Column(
+              child: ResponsiveBody(
+                child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Header
@@ -100,6 +102,7 @@ class _ProgressScreenState extends State<ProgressScreen> {
                     _MilestonesSection(prov: prov),
                   ],
                 ],
+                ),
               ),
             ),
           );
@@ -354,12 +357,15 @@ class _WeeklyAchievementsState extends State<_WeeklyAchievements> {
         onChanged: (r) => setState(() => _range = r),
       ),
       child: GridView.count(
-        crossAxisCount: 2,
+        crossAxisCount: context.responsiveColumns(phone: 2, tablet: 4, large: 4),
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
-        childAspectRatio: 2.0,
+        childAspectRatio:
+            context.responsiveColumns(phone: 2, tablet: 4, large: 4) >= 4
+                ? 1.6
+                : 2.0,
         children: [
           _StatTile(
             label: 'Calorie Adherence',

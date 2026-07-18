@@ -28,6 +28,7 @@ import '../providers/profile_provider.dart';
 import '../models/food_item.dart';
 import '../app_clock.dart';
 import '../theme/app_colors.dart';
+import '../theme/responsive.dart';
 
 enum _RemoveAction { cancel, delete, regenerate }
 enum _RemoveReason { noEquipment, dislike, justToday, block }
@@ -146,8 +147,8 @@ class PlansScreenState extends State<PlansScreen>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  const _WorkoutTab(),
-                  _MealTab(focusMealType: focusMealType),
+                  const ResponsiveBody(child: _WorkoutTab()),
+                  ResponsiveBody(child: _MealTab(focusMealType: focusMealType)),
                 ],
               ),
             ),

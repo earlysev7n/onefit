@@ -11,6 +11,7 @@ import '../models/workout_log.dart';
 import '../providers/plan_provider.dart';
 import '../providers/profile_provider.dart';
 import '../theme/app_colors.dart';
+import '../theme/responsive.dart';
 import '../app_clock.dart';
 import 'plans_screen.dart';
 import 'progress_screen.dart';
@@ -504,10 +505,11 @@ class _HomeDashboard extends StatelessWidget {
     final todayName = _getDayName();
 
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: StreamBuilder<List<FoodItem>>(
-          stream: FirestoreService().streamTodayFoodLogs(user.uid),
+      child: ResponsiveBody(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: StreamBuilder<List<FoodItem>>(
+            stream: FirestoreService().streamTodayFoodLogs(user.uid),
           builder: (context, snapshot) {
             final foodLogs = snapshot.data ?? [];
 
@@ -1005,6 +1007,7 @@ class _HomeDashboard extends StatelessWidget {
               ],
             );
           },
+        ),
         ),
       ),
     );

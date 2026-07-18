@@ -44,6 +44,10 @@ class AppColors {
   static const yellow = Color(0xFFFFD60A);
   static const amber = Color(0xFFFFA726);
 
+  /// Semantic "over target" warning (e.g. calories/macros past the goal).
+  /// Reads correctly on both dark and light surfaces.
+  static const overTarget = Color(0xFFFF4D4D);
+
   static const dark = AppColors._(
     background: Color(0xFF0D0D0D),
     surface: Color(0xFF1A1A1A),

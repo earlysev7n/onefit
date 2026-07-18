@@ -8,6 +8,7 @@ import '../providers/profile_provider.dart';
 import '../models/food_item.dart';
 import '../app_clock.dart';
 import '../theme/app_colors.dart';
+import '../theme/responsive.dart';
 import 'food_log_screen.dart';
 
 class NutritionScreen extends StatefulWidget {
@@ -269,7 +270,8 @@ class _CaloriesTabState extends State<_CaloriesTab>
         final eaten = totals['calories'] ?? 0;
         final remaining = calorieGoal - eaten;
 
-        return SingleChildScrollView(
+        return ResponsiveBody(
+          child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
@@ -354,7 +356,8 @@ class _CaloriesTabState extends State<_CaloriesTab>
                   ),
                 ],
               ),
-            );
+            ),
+          );
       },
     );
   }
@@ -617,7 +620,8 @@ class _NutrientsTabState extends State<_NutrientsTab>
         int macroGoal(String key, int rdaFallback) =>
             macroGoals[key] ?? rdaFallback;
 
-        return SingleChildScrollView(
+        return ResponsiveBody(
+          child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -820,7 +824,8 @@ class _NutrientsTabState extends State<_NutrientsTab>
                   ),
                 ],
               ),
-            );
+            ),
+          );
       },
     );
   }
@@ -913,7 +918,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
     final c = context.colors;
     final progress = goal > 0 ? (current / goal).clamp(0.0, 1.0) : 0.0;
     final isOver = isLimit && current > goal;
-    final barColor = isOver ? const Color(0xFFFF4D4D) : color;
+    final barColor = isOver ? AppColors.overTarget : color;
 
     String statusText;
     if (isLimit) {
@@ -972,7 +977,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
                           text: _fmt(current, unit),
                           style: GoogleFonts.spaceGrotesk(
                             color: isOver
-                                ? const Color(0xFFFF4D4D)
+                                ? AppColors.overTarget
                                 : c.onBackground,
                             fontWeight: FontWeight.w700,
                             fontSize: 15,
@@ -992,7 +997,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
                   Text(
                     statusText,
                     style: GoogleFonts.inter(
-                      color: isOver ? const Color(0xFFFF4D4D) : barColor,
+                      color: isOver ? AppColors.overTarget : barColor,
                       fontSize: 10,
                     ),
                   ),

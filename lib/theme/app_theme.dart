@@ -3,9 +3,46 @@ import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
 class AppTheme {
+  /// Shared type scale. Space Grotesk (w700) for display/headline/title,
+  /// Inter for body/label. Colors are left to the widget / ColorScheme so
+  /// this stays additive — inline `GoogleFonts.*` call sites still override.
+  static TextTheme _textTheme(TextTheme base) {
+    final heading = GoogleFonts.spaceGroteskTextTheme(base);
+    final body = GoogleFonts.interTextTheme(base);
+    return base.copyWith(
+      displayLarge: heading.displayLarge?.copyWith(fontWeight: FontWeight.w700),
+      displayMedium: heading.displayMedium?.copyWith(fontWeight: FontWeight.w700),
+      displaySmall: heading.displaySmall?.copyWith(fontWeight: FontWeight.w700),
+      headlineLarge: heading.headlineLarge?.copyWith(fontWeight: FontWeight.w700),
+      headlineMedium: heading.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
+      headlineSmall: heading.headlineSmall
+          ?.copyWith(fontSize: 24, fontWeight: FontWeight.w700),
+      titleLarge:
+          heading.titleLarge?.copyWith(fontSize: 20, fontWeight: FontWeight.w700),
+      titleMedium:
+          heading.titleMedium?.copyWith(fontSize: 16, fontWeight: FontWeight.w600),
+      titleSmall:
+          heading.titleSmall?.copyWith(fontSize: 14, fontWeight: FontWeight.w600),
+      bodyLarge:
+          body.bodyLarge?.copyWith(fontSize: 15, fontWeight: FontWeight.w500),
+      bodyMedium:
+          body.bodyMedium?.copyWith(fontSize: 14, fontWeight: FontWeight.w400),
+      bodySmall:
+          body.bodySmall?.copyWith(fontSize: 13, fontWeight: FontWeight.w400),
+      labelLarge:
+          body.labelLarge?.copyWith(fontSize: 14, fontWeight: FontWeight.w500),
+      labelMedium:
+          body.labelMedium?.copyWith(fontSize: 12, fontWeight: FontWeight.w500),
+      labelSmall:
+          body.labelSmall?.copyWith(fontSize: 12, fontWeight: FontWeight.w500),
+    );
+  }
+
   static ThemeData dark() {
     const c = AppColors.dark;
-    return ThemeData.dark().copyWith(
+    final base = ThemeData.dark();
+    return base.copyWith(
+      textTheme: _textTheme(base.textTheme),
       scaffoldBackgroundColor: c.background,
       colorScheme: const ColorScheme.dark(
         primary: AppColors.primary,
@@ -53,7 +90,9 @@ class AppTheme {
 
   static ThemeData light() {
     const c = AppColors.light;
-    return ThemeData.light().copyWith(
+    final base = ThemeData.light();
+    return base.copyWith(
+      textTheme: _textTheme(base.textTheme),
       scaffoldBackgroundColor: c.background,
       colorScheme: const ColorScheme.light(
         primary: AppColors.primary,
