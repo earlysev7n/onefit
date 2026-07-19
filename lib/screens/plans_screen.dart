@@ -208,6 +208,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
   bool _setRunning = false;
   int _setRemaining = 0;
   int _setTotal = 0;
+  // Bodyweight exercises hide the weight field by default; tapping "Add weight"
+  // reveals it. Reset per exercise in _prefillTargetFor.
+  bool _showBodyweightWeight = false;
   Timer? _setTimer;
 
   // ── Warm-up phase ──────────────────────────────────────────────────────────
@@ -820,6 +823,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
   /// exercise. Called on every "Done Set", so each set is recorded as performed
   /// (a missed rep = a lower logged number; no separate prompt needed). Weight
   /// is omitted for bodyweight moves.
+  /// True when [we] is a bodyweight move (no equipment, or equipment tagged
+  /// 'bodyweight') — mirrors the check used in _resolveWarmupMoves.
+  bool _isBodyweight(WorkoutExercise we) {
+    final eq = we.exercise.equipment;
+    return eq.isEmpty || eq.any((q) => q.toLowerCase() == 'bodyweight');
+  }
+
   void _captureActiveInput() {
     if (_activeExerciseIndex < 0) return;
     final w = double.tryParse(_weightController.text.trim());
@@ -855,6 +865,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
   /// exercise at [exIdx] (display units), so the user just confirms. Clears when
   /// there is no target.
   void _prefillTargetFor(int exIdx) {
+    _showBodyweightWeight = false;
     if (_selectedDay < 0 || _selectedDay >= _plan.length) return;
     final day = _plan[_selectedDay];
     if (exIdx < 0 || exIdx >= day.exercises.length) return;
@@ -1074,12 +1085,92 @@ class _WorkoutTabState extends State<_WorkoutTab>
         child: Icon(icon, color: AppColors.primary, size: 20),
       ),
     );
+    // Bodyweight moves show reps only until the user taps "Add weight".
+    final showWeight = !_isBodyweight(we) || _showBodyweightWeight;
     final target = _targetFor(we);
+
+    final weightCol = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        fieldLabel('WEIGHT'),
+        TextField(
+          controller: _weightController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: GoogleFonts.spaceGrotesk(
+            color: c.onBackground,
+            fontWeight: FontWeight.w600,
+          ),
+          decoration: deco('0', suffix: _weightUnit),
+        ),
+      ],
+    );
+
+    final repsCol = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        fieldLabel('REPS'),
+        Container(
+          decoration: BoxDecoration(
+            color: c.inputFill,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              stepButton(Icons.remove_rounded, () => stepReps(-1)),
+              Expanded(
+                child: TextField(
+                  controller: _repsController,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.spaceGrotesk(
+                    color: c.onBackground,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: '0',
+                    hintStyle: GoogleFonts.inter(
+                      color: c.disabled,
+                      fontSize: 13,
+                    ),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+              stepButton(Icons.add_rounded, () => stepReps(1)),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    final addWeightButton = SizedBox(
+      height: 48,
+      child: OutlinedButton.icon(
+        onPressed: () => setState(() => _showBodyweightWeight = true),
+        icon: const Icon(Icons.add_rounded, size: 18),
+        label: Text(
+          'Add weight',
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          side: BorderSide(color: AppColors.primary.withOpacity(0.5)),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(hint, style: GoogleFonts.inter(color: c.muted, fontSize: 12)),
-        if (target != null) ...[
+        if (target != null && showWeight) ...[
           const SizedBox(height: 4),
           Row(
             children: [
@@ -1103,76 +1194,24 @@ class _WorkoutTabState extends State<_WorkoutTab>
           ),
         ],
         const SizedBox(height: 10),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              flex: 3,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  fieldLabel('WEIGHT'),
-                  TextField(
-                    controller: _weightController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    style: GoogleFonts.spaceGrotesk(
-                      color: c.onBackground,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    decoration: deco('0', suffix: _weightUnit),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              flex: 2,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  fieldLabel('REPS'),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: c.inputFill,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        stepButton(Icons.remove_rounded, () => stepReps(-1)),
-                        Expanded(
-                          child: TextField(
-                            controller: _repsController,
-                            keyboardType: TextInputType.number,
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.spaceGrotesk(
-                              color: c.onBackground,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            decoration: InputDecoration(
-                              hintText: '0',
-                              hintStyle: GoogleFonts.inter(
-                                color: c.disabled,
-                                fontSize: 13,
-                              ),
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 14,
-                              ),
-                              border: InputBorder.none,
-                            ),
-                          ),
-                        ),
-                        stepButton(Icons.add_rounded, () => stepReps(1)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+        if (showWeight)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(flex: 3, child: weightCol),
+              const SizedBox(width: 10),
+              Expanded(flex: 2, child: repsCol),
+            ],
+          )
+        else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(flex: 2, child: repsCol),
+              const SizedBox(width: 10),
+              Expanded(flex: 3, child: addWeightButton),
+            ],
+          ),
       ],
     );
   }
@@ -2040,17 +2079,14 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Container(
-                      width: 4,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isRest
-                            ? Colors.transparent
-                            : isCompleted
-                                ? AppColors.primary
-                                : c.subtle,
-                      ),
+                    Icon(
+                      isRest
+                          ? Icons.bedtime_rounded
+                          : Icons.fitness_center_rounded,
+                      size: 13,
+                      color: isRest
+                          ? c.subtle
+                          : (isCompleted ? AppColors.primary : c.subtle),
                     ),
                   ],
                 ),
