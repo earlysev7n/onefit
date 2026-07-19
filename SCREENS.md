@@ -135,6 +135,7 @@ Navigation uses `navigatorKey` (a global `GlobalKey<NavigatorState>`) with `push
 | Workout days/week | 1–7 number chips | Exact number of training days placed in the 7-day schedule |
 | Time per session | Chip group 30/45/60/90 min | Drives exercises-per-day in the greedy algorithm |
 | Workout split | **5 selectable description cards** | Full Body, Upper/Lower, PPL, Functional, Strength + Conditioning — determines the weekly focus cycle. (Reduced from 10; profiles holding a removed split fall back to Full Body on edit/generation.) |
+| Physical limitations | Multi-chip (optional) | Asthma, Knee injury/pain, Lower-back pain, Shoulder injury, High blood pressure (from `kPhysicalLimitations`). Saved to `UserProfile.physicalLimitations`; the generator hard-excludes contraindicated exercises via `exerciseBlockedByLimitations` in `isEligibleForUser`. A muted disclaimer ("not medical advice — consult a professional") sits under the chips. Empty by default → no filtering. |
 
 **"?" help-hint pattern:** every complex field has a small `Icons.help_outline` button beside its label. Tapping opens a styled bottom sheet listing each option with a plain-English description. Implemented via `_buildLabelWithHelp(title, Map<String,String> helpMap)`.
 
@@ -381,7 +382,7 @@ Calorie split: Breakfast 25%, Lunch 35%, Dinner 30%, Snack 10% of the daily effe
 - Avatar + name + email.
 - **Daily Targets card** — calorie goal (big number), macro targets (protein/carbs/fat/fiber), BMR, TDEE, BMI.
 - **Biometrics card** — age, weight (unit-aware), height, gender, unit system, avg sleep.
-- **Fitness card** — goal, experience level, activity level, location, workout split, days/week, session length, equipment.
+- **Fitness card** — goal, experience level, activity level, location, workout split, days/week, session length, equipment, physical limitations (shown only when any are set).
 - **Diet card** — dietary restrictions, sugar limit, sodium limit.
 - **Edit Profile** button → `Navigator.push(ProfileInputScreen(existing: profile))` (disabled while the profile is null).
 - **Sign Out** button.

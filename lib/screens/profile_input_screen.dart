@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import '../app_clock.dart';
+import '../data/physical_limitations.dart';
 import '../models/user_profile.dart';
 import '../providers/profile_provider.dart';
 import '../theme/app_colors.dart';
@@ -48,6 +49,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   int _workoutDays = 3;
   int _sessionMinutes = 45;
   String _workoutSplit = 'Full Body Training';
+  // Common physical limitations that hard-exclude contraindicated exercises.
+  List<String> _physicalLimitations = [];
 
   // Step 3 — Diet. Defaults to the Balanced style (no macro override).
   List<String> _dietaryRestrictions = ['Balanced'];
@@ -129,6 +132,11 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     'Shellfish',
     'Sesame',
   ];
+  // Physical-limitation options come from the single source of truth so the
+  // chips and the generator's exclusion rules can never drift.
+  final List<String> _limitationOptions = kPhysicalLimitations
+      .map((l) => l.id)
+      .toList();
 
   @override
   void initState() {
@@ -167,6 +175,9 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
       }
       _foodAllergies = p.foodAllergies
           .where(_allergyOptions.contains)
+          .toList();
+      _physicalLimitations = p.physicalLimitations
+          .where(_limitationOptions.contains)
           .toList();
       // Weight/height are stored in metric; show in the user's unit system.
       final imperial = p.unitSystem == 'imperial';
@@ -384,6 +395,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               equipment: equipment,
               dietaryRestrictions: _dietaryRestrictions,
               foodAllergies: _foodAllergies,
+              physicalLimitations: _physicalLimitations,
               unitSystem: _unitSystem,
               activityLevel: _activityLevel,
               workoutDaysPerWeek: _workoutDays,
@@ -403,6 +415,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               equipment: equipment,
               dietaryRestrictions: _dietaryRestrictions,
               foodAllergies: _foodAllergies,
+              physicalLimitations: _physicalLimitations,
               unitSystem: _unitSystem,
               activityLevel: _activityLevel,
               workoutDaysPerWeek: _workoutDays,
@@ -1008,6 +1021,28 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               ),
             ),
           ],
+          const SizedBox(height: 20),
+          _buildLabel('Physical Limitations'),
+          const SizedBox(height: 8),
+          _buildMultiChipGroup(
+            _limitationOptions,
+            _physicalLimitations,
+            (v) => setState(() {
+              _physicalLimitations.contains(v)
+                  ? _physicalLimitations.remove(v)
+                  : _physicalLimitations.add(v);
+            }),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'We avoid recommending higher-risk exercises for what you select. '
+            'This is not medical advice — consult a healthcare professional.',
+            style: GoogleFonts.inter(
+              color: c.muted,
+              fontSize: 12,
+              height: 1.5,
+            ),
+          ),
         ],
       ),
     );

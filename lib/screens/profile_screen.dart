@@ -215,6 +215,12 @@ class ProfileScreen extends StatelessWidget {
               ),
               if (profile?.equipment.isNotEmpty == true)
                 _infoRow(context, 'Equipment', profile!.equipment.join(', ')),
+              if (profile?.physicalLimitations.isNotEmpty == true)
+                _infoRow(
+                  context,
+                  'Limitations',
+                  profile!.physicalLimitations.join(', '),
+                ),
             ]),
             const SizedBox(height: 12),
 

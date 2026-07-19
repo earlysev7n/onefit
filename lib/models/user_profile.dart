@@ -11,6 +11,14 @@ class UserProfile {
   final List<String> equipment;
   final List<String> dietaryRestrictions;
   final List<String> foodAllergies;
+
+  /// Common physical limitations the user reports (e.g. 'Asthma', 'Knee
+  /// injury/pain'). Each maps to a set of contraindicated exercise patterns in
+  /// [kPhysicalLimitations]; the greedy generator hard-excludes matching moves
+  /// via [exerciseBlockedByLimitations]. Defaults empty for backward-compatible
+  /// Firestore reads. This is a conservative auto-filter, not medical advice.
+  final List<String> physicalLimitations;
+
   final String unitSystem; // 'metric' or 'imperial'
 
   // Profiling — workload, recovery & scheduling inputs
@@ -64,6 +72,7 @@ class UserProfile {
     required this.equipment,
     required this.dietaryRestrictions,
     this.foodAllergies = const [],
+    this.physicalLimitations = const [],
     this.unitSystem = 'metric',
     this.activityLevel = 'Moderately Active',
     this.workoutDaysPerWeek = 3,
@@ -208,6 +217,9 @@ class UserProfile {
       equipment: List<String>.from(map['equipment'] ?? []),
       dietaryRestrictions: List<String>.from(map['dietaryRestrictions'] ?? []),
       foodAllergies: List<String>.from(map['foodAllergies'] ?? []),
+      physicalLimitations: List<String>.from(
+        map['physicalLimitations'] ?? [],
+      ),
       unitSystem: map['unitSystem'] ?? 'metric',
       activityLevel: map['activityLevel'] ?? 'Moderately Active',
       workoutDaysPerWeek: map['workoutDaysPerWeek'] ?? 3,
@@ -241,6 +253,7 @@ class UserProfile {
       'equipment': equipment,
       'dietaryRestrictions': dietaryRestrictions,
       'foodAllergies': foodAllergies,
+      'physicalLimitations': physicalLimitations,
       'unitSystem': unitSystem,
       'activityLevel': activityLevel,
       'workoutDaysPerWeek': workoutDaysPerWeek,
@@ -267,6 +280,7 @@ class UserProfile {
     List<String>? equipment,
     List<String>? dietaryRestrictions,
     List<String>? foodAllergies,
+    List<String>? physicalLimitations,
     String? unitSystem,
     String? activityLevel,
     int? workoutDaysPerWeek,
@@ -291,6 +305,7 @@ class UserProfile {
       equipment: equipment ?? this.equipment,
       dietaryRestrictions: dietaryRestrictions ?? this.dietaryRestrictions,
       foodAllergies: foodAllergies ?? this.foodAllergies,
+      physicalLimitations: physicalLimitations ?? this.physicalLimitations,
       unitSystem: unitSystem ?? this.unitSystem,
       activityLevel: activityLevel ?? this.activityLevel,
       workoutDaysPerWeek: workoutDaysPerWeek ?? this.workoutDaysPerWeek,

@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../data/physical_limitations.dart';
 import '../models/meal_ingredient.dart';
 import '../models/user_profile.dart';
 import '../models/exercise.dart';
@@ -1092,7 +1093,26 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final weightCol = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        fieldLabel('WEIGHT'),
+        if (_isBodyweight(we) && _showBodyweightWeight)
+          Row(
+            children: [
+              Expanded(child: fieldLabel('WEIGHT')),
+              SizedBox(
+                width: 24,
+                height: 20,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  icon: Icon(Icons.close_rounded, size: 16, color: c.muted),
+                  onPressed: () => setState(() {
+                    _showBodyweightWeight = false;
+                    _weightController.clear();
+                  }),
+                ),
+              ),
+            ],
+          )
+        else
+          fieldLabel('WEIGHT'),
         TextField(
           controller: _weightController,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -3488,6 +3508,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final ga = profile != null ? GreedyAlgorithm() : null;
     final relevant =
         allEx.where((e) {
+          // Physical limitations are a hard safety exclude — never offer a
+          // contraindicated move in the picker (equipment/tier stay warn-then-
+          // allow via _restrictionsFor, but limitations are not overridable).
+          if (profile != null &&
+              exerciseBlockedByLimitations(e, profile.physicalLimitations)) {
+            return false;
+          }
           if (targetMuscles.isEmpty) return true;
           return e.primaryMuscles.any((m) => targetMuscles.contains(m));
         }).toList()..sort((a, b) {
