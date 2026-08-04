@@ -215,15 +215,18 @@ class ProfileScreen extends StatelessWidget {
               ),
               if (profile?.equipment.isNotEmpty == true)
                 _infoRow(context, 'Equipment', profile!.equipment.join(', ')),
-              if (profile?.physicalLimitations.isNotEmpty == true)
-                _infoRow(
-                  context,
-                  'Limitations',
-                  profile!.physicalLimitations.join(', ') +
-                      (profile.avoidedMovements.isNotEmpty
-                          ? ' (+${profile.avoidedMovements.length} avoided)'
-                          : ''),
-                ),
+              // Always shown — 'None' when the user selected no limitations
+              // (mirrors the Diet card's Restrictions/Allergies rows).
+              _infoRow(
+                context,
+                'Limitations',
+                (profile?.physicalLimitations.isEmpty ?? true)
+                    ? 'None'
+                    : profile!.physicalLimitations.join(', ') +
+                          (profile.avoidedMovements.isNotEmpty
+                              ? ' (+${profile.avoidedMovements.length} avoided)'
+                              : ''),
+              ),
             ]),
             const SizedBox(height: 12),
 
