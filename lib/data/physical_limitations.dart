@@ -27,13 +27,10 @@ class AvoidableMovement {
 /// primary muscle, or name keyword) so selecting a limitation never empties a
 /// whole training day — it removes higher-risk moves, not entire muscle groups.
 ///
-/// This is a conservative auto-filter, **not medical advice**. Each entry cites
-/// a review-of-related-literature (RRL) source in [rrlUrl] for traceability; the
-/// links are reference-only and are not shown in the app.
+/// This is a conservative auto-filter, **not medical advice**.
 class PhysicalLimitation {
   final String id; // stored value + chip label, e.g. 'Shoulder Pain'
   final String note; // short rationale (reference only)
-  final String rrlUrl; // research citation (reference only, not displayed)
   final Set<String> categories; // exercise.category values to block (lowercase)
   final Set<String> muscles; // primaryMuscle strings to block (lowercase)
   final List<String> keywords; // auto-block exercise-name substrings (lowercase)
@@ -42,7 +39,6 @@ class PhysicalLimitation {
   const PhysicalLimitation({
     required this.id,
     required this.note,
-    required this.rrlUrl,
     this.categories = const {},
     this.muscles = const {},
     this.keywords = const [],
@@ -57,7 +53,6 @@ const List<PhysicalLimitation> kPhysicalLimitations = [
     note:
         'Avoids sustained high-intensity cardio, which can trigger '
         'exercise-induced bronchoconstriction.',
-    rrlUrl: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC12186601/',
     categories: {'cardio'},
     muscles: {'cardiovascular system'},
     keywords: [
@@ -78,7 +73,6 @@ const List<PhysicalLimitation> kPhysicalLimitations = [
     note:
         'Avoids sustained isometric holds and max-effort straining that spike '
         'blood pressure (Valsalva).',
-    rrlUrl: 'https://www.ahajournals.org/doi/10.1161/01.cir.101.7.828',
     keywords: [
       'isometric',
       'plank',
@@ -100,7 +94,6 @@ const List<PhysicalLimitation> kPhysicalLimitations = [
   PhysicalLimitation(
     id: 'Shoulder Pain',
     note: 'Avoids overhead pressing and impingement-prone positions.',
-    rrlUrl: 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10880378/',
     keywords: [
       'overhead press',
       'military press',
@@ -131,7 +124,6 @@ const List<PhysicalLimitation> kPhysicalLimitations = [
     id: 'Knee Pain',
     note:
         'Avoids high-impact and deep-knee-flexion moves that spike joint load.',
-    rrlUrl: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC3635671/',
     keywords: [
       'jump',
       'plyo',
@@ -159,7 +151,6 @@ const List<PhysicalLimitation> kPhysicalLimitations = [
   PhysicalLimitation(
     id: 'Lower Back Pain',
     note: 'Avoids heavy axial spinal loading and end-range flexion.',
-    rrlUrl: 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10687566/',
     keywords: [
       'sit-up',
       'situp',
@@ -181,7 +172,6 @@ const List<PhysicalLimitation> kPhysicalLimitations = [
   PhysicalLimitation(
     id: 'Wrist Pain',
     note: 'Avoids loaded wrist extension and weight-bearing on the hands.',
-    rrlUrl: 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7359471/',
     movements: [
       AvoidableMovement('Push-Up', ['push-up', 'push up'], common: true),
       AvoidableMovement('Barbell Curl', ['barbell curl'], common: true),
@@ -194,7 +184,6 @@ const List<PhysicalLimitation> kPhysicalLimitations = [
   PhysicalLimitation(
     id: 'Elbow Pain',
     note: 'Avoids repeated elbow flexion/extension under load (epicondylitis).',
-    rrlUrl: 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5364068/',
     movements: [
       AvoidableMovement('Skullcrusher', ['skullcrusher', 'skull crusher'],
           common: true),
@@ -208,7 +197,6 @@ const List<PhysicalLimitation> kPhysicalLimitations = [
   PhysicalLimitation(
     id: 'Hip Pain',
     note: 'Avoids deep hip flexion and heavy hinge loading.',
-    rrlUrl: 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7020184/',
     movements: [
       AvoidableMovement('Deep Squat', ['deep squat'], common: true),
       AvoidableMovement('Deadlift', ['deadlift'], common: true),
@@ -221,7 +209,6 @@ const List<PhysicalLimitation> kPhysicalLimitations = [
   PhysicalLimitation(
     id: 'Ankle Pain',
     note: 'Avoids high-impact landing and loaded plantarflexion.',
-    rrlUrl: 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5867440/',
     keywords: [
       'jump',
       'plyo',
@@ -237,7 +224,6 @@ const List<PhysicalLimitation> kPhysicalLimitations = [
   PhysicalLimitation(
     id: 'Neck Pain',
     note: 'Avoids loaded neck extension/shrugging and overhead compression.',
-    rrlUrl: 'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5537382/',
     movements: [
       AvoidableMovement('Barbell Shrug', ['shrug'], common: true),
       AvoidableMovement('Upright Row', ['upright row'], common: true),

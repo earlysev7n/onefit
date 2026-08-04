@@ -175,9 +175,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
       if (!_dietaryRestrictions.any(_dietStyleOptions.contains)) {
         _dietaryRestrictions.add('Balanced');
       }
-      _foodAllergies = p.foodAllergies
-          .where(_allergyOptions.contains)
-          .toList();
+      _foodAllergies = p.foodAllergies.where(_allergyOptions.contains).toList();
       _physicalLimitations = p.physicalLimitations
           .where(_limitationOptions.contains)
           .toList();
@@ -580,18 +578,20 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                       onTap: () {
                         if (_unitSystem == u) return;
                         setState(() {
-                          final currentWeight =
-                              double.tryParse(_weightController.text);
-                          final currentHeight =
-                              double.tryParse(_heightController.text);
+                          final currentWeight = double.tryParse(
+                            _weightController.text,
+                          );
+                          final currentHeight = double.tryParse(
+                            _heightController.text,
+                          );
                           if (u == 'imperial') {
                             if (currentWeight != null) {
-                              _weightController.text =
-                                  (currentWeight * 2.20462).toStringAsFixed(1);
+                              _weightController.text = (currentWeight * 2.20462)
+                                  .toStringAsFixed(1);
                             }
                             if (currentHeight != null) {
-                              _heightController.text =
-                                  (currentHeight / 2.54).toStringAsFixed(1);
+                              _heightController.text = (currentHeight / 2.54)
+                                  .toStringAsFixed(1);
                             }
                           } else {
                             if (currentWeight != null) {
@@ -599,8 +599,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                                   (currentWeight * 0.453592).toStringAsFixed(1);
                             }
                             if (currentHeight != null) {
-                              _heightController.text =
-                                  (currentHeight * 2.54).toStringAsFixed(1);
+                              _heightController.text = (currentHeight * 2.54)
+                                  .toStringAsFixed(1);
                             }
                           }
                           _unitSystem = u;
@@ -1040,12 +1040,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           const SizedBox(height: 8),
           Text(
             'We avoid recommending higher-risk exercises for what you select. '
-            'This is not medical advice — consult a healthcare professional.',
-            style: GoogleFonts.inter(
-              color: c.muted,
-              fontSize: 12,
-              height: 1.5,
-            ),
+            'This is not medical advice, consult a healthcare professional.',
+            style: GoogleFonts.inter(color: c.muted, fontSize: 12, height: 1.5),
           ),
         ],
       ),
@@ -1291,8 +1287,9 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
       runSpacing: 8,
       children: kPhysicalLimitations.map((lim) {
         final selected = _physicalLimitations.contains(lim.id);
-        final count =
-            lim.movements.where((m) => _avoidedMovements.contains(m.id)).length;
+        final count = lim.movements
+            .where((m) => _avoidedMovements.contains(m.id))
+            .length;
         return GestureDetector(
           onTap: () => _openLimitationSheet(lim),
           child: Container(
