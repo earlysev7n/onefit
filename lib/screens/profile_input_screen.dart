@@ -51,6 +51,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   String _workoutSplit = 'Full Body Training';
   // Common physical limitations that hard-exclude contraindicated exercises.
   List<String> _physicalLimitations = [];
+  // Specific movements the user opted to avoid within a selected area.
+  List<String> _avoidedMovements = [];
 
   // Step 3 — Diet. Defaults to the Balanced style (no macro override).
   List<String> _dietaryRestrictions = ['Balanced'];
@@ -178,6 +180,9 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           .toList();
       _physicalLimitations = p.physicalLimitations
           .where(_limitationOptions.contains)
+          .toList();
+      _avoidedMovements = p.avoidedMovements
+          .where((id) => movementById(id) != null)
           .toList();
       // Weight/height are stored in metric; show in the user's unit system.
       final imperial = p.unitSystem == 'imperial';
@@ -396,6 +401,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               dietaryRestrictions: _dietaryRestrictions,
               foodAllergies: _foodAllergies,
               physicalLimitations: _physicalLimitations,
+              avoidedMovements: _avoidedMovements,
               unitSystem: _unitSystem,
               activityLevel: _activityLevel,
               workoutDaysPerWeek: _workoutDays,
@@ -416,6 +422,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               dietaryRestrictions: _dietaryRestrictions,
               foodAllergies: _foodAllergies,
               physicalLimitations: _physicalLimitations,
+              avoidedMovements: _avoidedMovements,
               unitSystem: _unitSystem,
               activityLevel: _activityLevel,
               workoutDaysPerWeek: _workoutDays,
@@ -1023,16 +1030,13 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           ],
           const SizedBox(height: 20),
           _buildLabel('Physical Limitations'),
-          const SizedBox(height: 8),
-          _buildMultiChipGroup(
-            _limitationOptions,
-            _physicalLimitations,
-            (v) => setState(() {
-              _physicalLimitations.contains(v)
-                  ? _physicalLimitations.remove(v)
-                  : _physicalLimitations.add(v);
-            }),
+          const SizedBox(height: 4),
+          Text(
+            'Tap an affected area to choose exercises to avoid.',
+            style: GoogleFonts.inter(color: c.muted, fontSize: 12),
           ),
+          const SizedBox(height: 8),
+          _buildLimitationChips(),
           const SizedBox(height: 8),
           Text(
             'We avoid recommending higher-risk exercises for what you select. '
@@ -1276,6 +1280,226 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           )
           .toList(),
     );
+  }
+
+  /// Affected-area chips. Tapping one opens the configuration sheet (which
+  /// selects the area's auto-block and lets the user opt into extra movements).
+  Widget _buildLimitationChips() {
+    final c = context.colors;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: kPhysicalLimitations.map((lim) {
+        final selected = _physicalLimitations.contains(lim.id);
+        final count =
+            lim.movements.where((m) => _avoidedMovements.contains(m.id)).length;
+        return GestureDetector(
+          onTap: () => _openLimitationSheet(lim),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: selected ? AppColors.primary : c.inputFill,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              count > 0 ? '${lim.id}  ·  $count' : lim.id,
+              style: GoogleFonts.inter(
+                color: selected ? c.onPrimary : c.onBackground,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  /// Per-area "Exercises to Avoid" sheet. Opening it selects the area (auto-block
+  /// on); the checkboxes add optional movements to [_avoidedMovements]. Common
+  /// movements show first; the rest sit behind a "Show All Exercises" toggle.
+  Future<void> _openLimitationSheet(PhysicalLimitation lim) async {
+    final c = context.colors;
+    if (!_physicalLimitations.contains(lim.id)) {
+      _physicalLimitations.add(lim.id);
+    }
+    bool showAll = false;
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          final common = lim.movements.where((m) => m.common).toList();
+          final more = lim.movements.where((m) => !m.common).toList();
+
+          Widget checkRow(AvoidableMovement m) {
+            final checked = _avoidedMovements.contains(m.id);
+            return InkWell(
+              onTap: () => setModalState(() {
+                checked
+                    ? _avoidedMovements.remove(m.id)
+                    : _avoidedMovements.add(m.id);
+              }),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Icon(
+                      checked
+                          ? Icons.check_box_rounded
+                          : Icons.check_box_outline_blank_rounded,
+                      color: checked ? AppColors.primary : c.muted,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        m.id,
+                        style: GoogleFonts.inter(
+                          color: c.onBackground,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return SingleChildScrollView(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                24,
+                24,
+                24,
+                MediaQuery.of(ctx).viewInsets.bottom + 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    lim.id,
+                    style: GoogleFonts.spaceGrotesk(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: c.onBackground,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Exercises to Avoid (Optional)',
+                    style: GoogleFonts.inter(color: c.muted, fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  if (common.isNotEmpty) ...[
+                    Text(
+                      'Commonly Affected',
+                      style: GoogleFonts.inter(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    ...common.map(checkRow),
+                  ],
+                  // Short "more" lists (< 5) show inline; longer ones stay
+                  // behind the "Show All Exercises" expander to avoid a wall of
+                  // checkboxes.
+                  if (more.isNotEmpty)
+                    if (more.length < 5 || showAll) ...[
+                      const SizedBox(height: 4),
+                      ...more.map(checkRow),
+                    ] else
+                      GestureDetector(
+                        onTap: () => setModalState(() => showAll = true),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Show All Exercises',
+                                style: GoogleFonts.inter(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: AppColors.primary,
+                                size: 20,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  const SizedBox(height: 12),
+                  Text(
+                    "Excluded exercises won't appear in your workout plan. "
+                    'Similar alternatives will be used when available.',
+                    style: GoogleFonts.inter(
+                      color: c.muted,
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          setModalState(() {
+                            _physicalLimitations.remove(lim.id);
+                            // Drop this area's movements unless another still-
+                            // selected area also lists them (shared ids stay).
+                            _avoidedMovements.removeWhere((id) {
+                              if (!lim.movements.any((m) => m.id == id)) {
+                                return false;
+                              }
+                              final elsewhere = _physicalLimitations
+                                  .map(limitationById)
+                                  .whereType<PhysicalLimitation>()
+                                  .any(
+                                    (a) => a.movements.any((m) => m.id == id),
+                                  );
+                              return !elsewhere;
+                            });
+                          });
+                          Navigator.pop(ctx);
+                        },
+                        child: Text(
+                          'Remove limitation',
+                          style: GoogleFonts.inter(
+                            color: Colors.redAccent,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: c.onPrimary,
+                        ),
+                        child: const Text('Done'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   Widget _buildMultiChipGroup(

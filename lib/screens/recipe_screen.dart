@@ -1023,23 +1023,29 @@ class _RecipeScreenState extends State<RecipeScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(2),
+          Expanded(
+            child: Row(
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                label,
-                style: GoogleFonts.inter(color: c.muted),
-              ),
-            ],
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    label,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(color: c.muted),
+                  ),
+                ),
+              ],
+            ),
           ),
+          const SizedBox(width: 12),
           Text(
             value,
             style: GoogleFonts.inter(

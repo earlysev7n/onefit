@@ -100,17 +100,28 @@ class _OneFitAppState extends State<OneFitApp> {
       themeMode: themeProvider.themeMode,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
-      builder: (context, child) => ValueListenableBuilder<bool>(
-        valueListenable: devDayChangerEnabled,
-        builder: (context, changerOn, _) => ValueListenableBuilder<int>(
-          valueListenable: debugDayOffset,
-          // Rebuilds only the day pill's label; the actual screen refresh on a
-          // day change is driven by _onDayChanged re-pushing a fresh HomeScreen.
-          builder: (context, offset, _) => Stack(
-            children: [child!, if (changerOn) _DebugDayChanger()],
+      builder: (context, child) {
+        // Cap OS/accessibility font scaling so large text can't overflow the
+        // app's many fixed-height rows/cards. Users still get bigger text up to
+        // 1.3×; beyond that the layout stays intact instead of clipping.
+        final mq = MediaQuery.of(context);
+        final clamped = mq.textScaler.clamp(maxScaleFactor: 1.3);
+        return MediaQuery(
+          data: mq.copyWith(textScaler: clamped),
+          child: ValueListenableBuilder<bool>(
+            valueListenable: devDayChangerEnabled,
+            builder: (context, changerOn, _) => ValueListenableBuilder<int>(
+              valueListenable: debugDayOffset,
+              // Rebuilds only the day pill's label; the actual screen refresh on
+              // a day change is driven by _onDayChanged re-pushing a fresh
+              // HomeScreen.
+              builder: (context, offset, _) => Stack(
+                children: [child!, if (changerOn) _DebugDayChanger()],
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
       home: const AuthGate(),
     );
   }

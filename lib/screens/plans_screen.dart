@@ -3512,7 +3512,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
           // contraindicated move in the picker (equipment/tier stay warn-then-
           // allow via _restrictionsFor, but limitations are not overridable).
           if (profile != null &&
-              exerciseBlockedByLimitations(e, profile.physicalLimitations)) {
+              exerciseBlockedByLimitations(
+                e,
+                profile.physicalLimitations,
+                profile.avoidedMovements,
+              )) {
             return false;
           }
           if (targetMuscles.isEmpty) return true;

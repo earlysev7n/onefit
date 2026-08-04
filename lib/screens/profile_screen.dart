@@ -219,7 +219,10 @@ class ProfileScreen extends StatelessWidget {
                 _infoRow(
                   context,
                   'Limitations',
-                  profile!.physicalLimitations.join(', '),
+                  profile!.physicalLimitations.join(', ') +
+                      (profile.avoidedMovements.isNotEmpty
+                          ? ' (+${profile.avoidedMovements.length} avoided)'
+                          : ''),
                 ),
             ]),
             const SizedBox(height: 12),
@@ -373,14 +376,20 @@ class ProfileScreen extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: GoogleFonts.inter(color: c.muted)),
-          Text(
-            value,
-            style: GoogleFonts.inter(
-              color: c.onBackground,
-              fontWeight: FontWeight.w500,
+          const SizedBox(width: 16),
+          // Expanded + right-align so long values (Limitations, Equipment,
+          // Allergies) wrap onto multiple lines instead of overflowing the row.
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: GoogleFonts.inter(
+                color: c.onBackground,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],

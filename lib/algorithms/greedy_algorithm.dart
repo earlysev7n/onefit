@@ -105,7 +105,13 @@ class GreedyAlgorithm {
     // Physical limitations (e.g. asthma) hard-exclude contraindicated moves.
     // Checked first so it applies to Gym users and blocks even bodyweight moves
     // like burpees. No-op when the user has no limitations (empty list).
-    if (exerciseBlockedByLimitations(e, p.physicalLimitations)) return false;
+    if (exerciseBlockedByLimitations(
+      e,
+      p.physicalLimitations,
+      p.avoidedMovements,
+    )) {
+      return false;
+    }
 
     // The catalog duplicates many moves as "(male)" / "(female)" demo
     // variants — keep only the variant matching the user.
@@ -242,8 +248,85 @@ class GreedyAlgorithm {
     return true;
   }
 
-  //  SCORING — runs over candidates that already passed the hard filters, so
-  //  location/equipment carry no score weight (they'd be constants).
+  //  SCORING — profile-driven. Runs over candidates that already passed the
+  //  hard filters (limitation ban / gender / location / equipment / experience
+  //  gate), so those carry no score weight (they'd be constants). Two terms are
+  //  fixed STRUCTURAL anchors: the day-focus bonus (+50) and the muscle-balance
+  //  penalties (-25 day / -15 week). The middle block — Goal + Experience + Time
+  //  — is selected from the user's UserProfile so the same eligible pool ranks
+  //  differently per user, and is CLAMPED to [-20, +45] so it can never overpower
+  //  the balance penalties (ceiling +45 == the old flat-bonus max 15+12+8+10, so
+  //  variety behaviour is unchanged and the "wrist-curl-on-leg-day" regression
+  //  stays fixed). Reuses isStapleCompound / isHeavyCompound / difficultyAllowed
+  //  / _goalKey. See the goal/experience/time tables below.
+
+  // Goal weight columns keyed by _goalKey(profile.fitnessGoal). The app has no
+  // "Strength" goal — its heavy-compound/overload intent lives in the
+  // muscle_gain and general columns (higher heavyLift/compound weights).
+  static const Map<String, Map<String, int>> _goalWeights = {
+    // feature: goalMatch compound isolation heavyLift fullBody highRep
+    'weight_loss': {
+      'goalMatch': 15, 'compound': 12, 'isolation': 2,
+      'heavyLift': 4, 'fullBody': 10, 'highRep': 6,
+    },
+    'muscle_gain': {
+      'goalMatch': 15, 'compound': 10, 'isolation': 6,
+      'heavyLift': 8, 'fullBody': 4, 'highRep': 2,
+    },
+    'endurance': {
+      'goalMatch': 15, 'compound': 6, 'isolation': 4,
+      'heavyLift': 0, 'fullBody': 6, 'highRep': 12,
+    },
+    'general': {
+      'goalMatch': 15, 'compound': 10, 'isolation': 4,
+      'heavyLift': 6, 'fullBody': 6, 'highRep': 4,
+    },
+  };
+
+  // Graduated experience score (replaces the old flat +10). Keyed by the user's
+  // level then the exercise's difficulty. Missing combos score 0 — this mirrors
+  // the difficultyAllowed gate (a disallowed exercise is filtered out of the
+  // pool anyway; the 0 is a belt-and-braces fallback).
+  static const Map<String, Map<String, int>> _experienceWeights = {
+    'Beginner': {'beginner': 8},
+    'Intermediate': {'beginner': 4, 'intermediate': 8},
+    'Advanced': {'beginner': 2, 'intermediate': 6, 'advanced': 10},
+  };
+
+  // Time-suitability score from sessionMinutes. Short sessions favour efficient
+  // compounds and penalise isolation/high-setup; long sessions open up accessory
+  // and isolation work. This is the FIRST time sessionMinutes affects ranking —
+  // it still independently controls the per-day exercise COUNT via
+  // _fitExerciseCount (unchanged).
+  static int _timeScore(
+    int sessionMinutes, {
+    required bool compound,
+    required bool isolation,
+    required bool highSetup,
+  }) {
+    // Real session values are 30 / 45 / 60 / 90.
+    final bucket = sessionMinutes < 40
+        ? 'short'
+        : (sessionMinutes > 70 ? 'long' : 'medium');
+    int s = 0;
+    if (compound) {
+      s += bucket == 'short'
+          ? 6
+          : bucket == 'medium'
+              ? 2
+              : 0;
+    }
+    if (isolation) {
+      s += bucket == 'short'
+          ? -4
+          : bucket == 'medium'
+              ? 0
+              : 4;
+    }
+    if (highSetup && bucket == 'short') s -= 3;
+    return s;
+  }
+
   double _scoreExercise({
     required Exercise exercise,
     required UserProfile profile,
@@ -253,39 +336,50 @@ class GreedyAlgorithm {
   }) {
     double score = 0;
 
-    // 1. Day focus
+    // Structural anchor 1 — day focus (also a hard pool constraint upstream).
     if (exercise.primaryMuscles.any(targetMuscles.contains)) score += 50;
 
-    // 2. Goal tag
-    if (exercise.goals.contains(_goalKey(profile.fitnessGoal))) score += 15;
+    // Exercise features, all derived from the existing Exercise model.
+    final compound = isStapleCompound(exercise) || isHeavyCompound(exercise);
+    final isolation = !compound;
+    final heavyLift = isHeavyCompound(exercise);
+    final fullBody =
+        (exercise.primaryMuscles.length + exercise.secondaryMuscles.length) >= 4;
+    final highRep = exercise.goals.contains('endurance');
 
-    // 2b. Compound (multi-joint) bonus — staples like squat/bench/row recruit
-    //     more muscle mass and belong early in a session (ACSM; Simão 2012).
-    //     Kept below the focus bonus (+50) so the day's focus still dominates,
-    //     but above isolation so the big lift is picked first.
-    if (isStapleCompound(exercise)) score += 12;
+    // ── Profile-driven block: Goal + Experience + Time ──────────────────────
+    final goalKey = _goalKey(profile.fitnessGoal);
+    final g = _goalWeights[goalKey] ?? _goalWeights['general']!;
+    int goalScore = 0;
+    if (exercise.goals.contains(goalKey)) goalScore += g['goalMatch']!;
+    if (compound) goalScore += g['compound']!;
+    if (isolation) goalScore += g['isolation']!;
+    if (heavyLift) goalScore += g['heavyLift']!;
+    if (fullBody) goalScore += g['fullBody']!;
+    if (highRep) goalScore += g['highRep']!;
 
-    // 2c. Foundational barbell/dumbbell compound (bench, squat, deadlift, row,
-    //     OHP, hip thrust, lunge) — staples at EVERY level, so give them a lead
-    //     bonus on top of the generic compound bonus. This makes a major lift
-    //     get selected first and open the session, independent of the inferred
-    //     difficulty label (our inference caps barbell lifts at 'intermediate').
-    //     Reuses the same predicate that already sorts these first (see
-    //     `ordered` in _selectExercisesForDay).
-    if (isHeavyCompound(exercise)) score += 8;
-
-    // 3. Experience COMPATIBILITY — not an exact-tier ranking. Any exercise at
-    //    or below the user's level is appropriate, so award the bonus for being
-    //    compatible (mirrors the difficultyAllowed gate). Exact-match previously
-    //    handed a +10 edge to advanced-labelled bodyweight/novelty moves over
-    //    foundational barbell compounds our inference caps at 'intermediate' —
-    //    the reason Advanced users saw mostly bodyweight work.
+    int expScore = 0;
     if (difficultyAllowed(exercise.difficulty, profile.experienceLevel)) {
-      score += 10;
+      expScore =
+          _experienceWeights[profile.experienceLevel]?[exercise.difficulty] ?? 0;
     }
 
-    // 4. Muscle balance: a strong day-local penalty forces variety within a
-    //    session; a milder weekly penalty spreads volume across the week.
+    final timeScore = _timeScore(
+      profile.sessionMinutes,
+      compound: compound,
+      isolation: isolation,
+      highSetup: heavyLift,
+    );
+
+    // Clamp so the personalised block can't overpower the balance penalties.
+    double profileBlock = (goalScore + expScore + timeScore).toDouble();
+    if (profileBlock > 45) profileBlock = 45;
+    if (profileBlock < -20) profileBlock = -20;
+    score += profileBlock;
+
+    // Structural anchor 2 — muscle balance: a strong day-local penalty forces
+    // variety within a session; a milder weekly penalty spreads volume across
+    // the week.
     for (final muscle in exercise.primaryMuscles) {
       score -= (dayHits[muscle] ?? 0) * 25;
       score -= (weeklyHits[muscle] ?? 0) * 15;

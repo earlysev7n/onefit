@@ -19,6 +19,14 @@ class UserProfile {
   /// Firestore reads. This is a conservative auto-filter, not medical advice.
   final List<String> physicalLimitations;
 
+  /// Specific movements the user opted to avoid within a selected limitation
+  /// area (e.g. 'Barbell Squat', 'Lateral Raise'). Each maps to an
+  /// [AvoidableMovement] in [kPhysicalLimitations]; the greedy generator
+  /// hard-excludes matching moves via [exerciseBlockedByLimitations]. Distinct
+  /// from [physicalLimitations] (the always-on auto-block layer). Defaults empty
+  /// for backward-compatible Firestore reads.
+  final List<String> avoidedMovements;
+
   final String unitSystem; // 'metric' or 'imperial'
 
   // Profiling — workload, recovery & scheduling inputs
@@ -73,6 +81,7 @@ class UserProfile {
     required this.dietaryRestrictions,
     this.foodAllergies = const [],
     this.physicalLimitations = const [],
+    this.avoidedMovements = const [],
     this.unitSystem = 'metric',
     this.activityLevel = 'Moderately Active',
     this.workoutDaysPerWeek = 3,
@@ -220,6 +229,7 @@ class UserProfile {
       physicalLimitations: List<String>.from(
         map['physicalLimitations'] ?? [],
       ),
+      avoidedMovements: List<String>.from(map['avoidedMovements'] ?? []),
       unitSystem: map['unitSystem'] ?? 'metric',
       activityLevel: map['activityLevel'] ?? 'Moderately Active',
       workoutDaysPerWeek: map['workoutDaysPerWeek'] ?? 3,
@@ -254,6 +264,7 @@ class UserProfile {
       'dietaryRestrictions': dietaryRestrictions,
       'foodAllergies': foodAllergies,
       'physicalLimitations': physicalLimitations,
+      'avoidedMovements': avoidedMovements,
       'unitSystem': unitSystem,
       'activityLevel': activityLevel,
       'workoutDaysPerWeek': workoutDaysPerWeek,
@@ -281,6 +292,7 @@ class UserProfile {
     List<String>? dietaryRestrictions,
     List<String>? foodAllergies,
     List<String>? physicalLimitations,
+    List<String>? avoidedMovements,
     String? unitSystem,
     String? activityLevel,
     int? workoutDaysPerWeek,
@@ -306,6 +318,7 @@ class UserProfile {
       dietaryRestrictions: dietaryRestrictions ?? this.dietaryRestrictions,
       foodAllergies: foodAllergies ?? this.foodAllergies,
       physicalLimitations: physicalLimitations ?? this.physicalLimitations,
+      avoidedMovements: avoidedMovements ?? this.avoidedMovements,
       unitSystem: unitSystem ?? this.unitSystem,
       activityLevel: activityLevel ?? this.activityLevel,
       workoutDaysPerWeek: workoutDaysPerWeek ?? this.workoutDaysPerWeek,

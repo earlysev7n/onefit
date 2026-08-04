@@ -87,12 +87,12 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         content: Text(
           increased
-              ? "You've been slightly below your calorie target earlier this week — "
-                "that's okay. We've nudged today's goal up to $adjusted kcal "
-                "($diff kcal above your usual) so your weekly total stays balanced."
+              ? "You've been slightly below your calorie target earlier this week "
+                    "that's okay. We've nudged today's goal up to $adjusted kcal "
+                    "($diff kcal above your usual) so your weekly total stays balanced."
               : "You've been slightly above your calorie target earlier this week — "
-                "no problem. We've nudged today's goal down to $adjusted kcal "
-                "($diff kcal below your usual) so your weekly total stays on track.",
+                    "no problem. We've nudged today's goal down to $adjusted kcal "
+                    "($diff kcal below your usual) so your weekly total stays on track.",
           style: GoogleFonts.inter(color: c.muted),
         ),
         actions: [
@@ -109,9 +109,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
             child: Text(
               'OK',
               style: GoogleFonts.inter(
@@ -501,7 +499,9 @@ class _HomeDashboard extends StatelessWidget {
     final profileProvider = context.watch<ProfileProvider>();
     final calorieGoal = profileProvider.dailyEffectiveGoal;
     final macros = profileProvider.effectiveMacroGoals;
-    final todayWorkout = planProvider.todayWorkout(anchorWeekday: profileProvider.profile?.createdAt?.weekday ?? 1);
+    final todayWorkout = planProvider.todayWorkout(
+      anchorWeekday: profileProvider.profile?.createdAt?.weekday ?? 1,
+    );
     final todayName = _getDayName();
 
     return SafeArea(
@@ -510,504 +510,514 @@ class _HomeDashboard extends StatelessWidget {
           padding: const EdgeInsets.all(20),
           child: StreamBuilder<List<FoodItem>>(
             stream: FirestoreService().streamTodayFoodLogs(user.uid),
-          builder: (context, snapshot) {
-            final foodLogs = snapshot.data ?? [];
+            builder: (context, snapshot) {
+              final foodLogs = snapshot.data ?? [];
 
-            // Aggregate totals and per-meal calories from Firestore stream
-            double caloriesEaten = 0;
-            double proteinEaten = 0;
-            final mealsMap = <String, double>{
-              'breakfast': 0,
-              'lunch': 0,
-              'dinner': 0,
-              'snack': 0,
-            };
+              // Aggregate totals and per-meal calories from Firestore stream
+              double caloriesEaten = 0;
+              double proteinEaten = 0;
+              final mealsMap = <String, double>{
+                'breakfast': 0,
+                'lunch': 0,
+                'dinner': 0,
+                'snack': 0,
+              };
 
-            for (final food in foodLogs) {
-              caloriesEaten += food.totalCalories;
-              proteinEaten += food.totalProtein;
-              final mt = food.mealType.toLowerCase();
-              if (mealsMap.containsKey(mt)) {
-                mealsMap[mt] = mealsMap[mt]! + food.totalCalories;
+              for (final food in foodLogs) {
+                caloriesEaten += food.totalCalories;
+                proteinEaten += food.totalProtein;
+                final mt = food.mealType.toLowerCase();
+                if (mealsMap.containsKey(mt)) {
+                  mealsMap[mt] = mealsMap[mt]! + food.totalCalories;
+                }
               }
-            }
 
-            final caloriesRemaining = (calorieGoal - caloriesEaten.round())
-                .clamp(0, calorieGoal);
-            final progress = (caloriesEaten / calorieGoal).clamp(0.0, 1.0);
+              final caloriesRemaining = (calorieGoal - caloriesEaten.round())
+                  .clamp(0, calorieGoal);
+              final progress = (caloriesEaten / calorieGoal).clamp(0.0, 1.0);
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Header ──────────────────────────────────────────────────
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _getGreeting(),
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Header ──────────────────────────────────────────────────
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _getGreeting(),
+                              style: GoogleFonts.inter(
+                                color: c.muted,
+                                fontSize: 13,
+                              ),
+                            ),
+                            Text(
+                              profile?.name ?? 'Athlete',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.spaceGrotesk(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w700,
+                                color: c.onBackground,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        _getDate(),
+                        style: GoogleFonts.inter(color: c.muted, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── Calorie ring card ────────────────────────────────────────
+                  GestureDetector(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const NutritionScreen(),
+                      ),
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: c.surface,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 100,
+                            height: 100,
+                            child: CustomPaint(
+                              painter: _CaloriePainter(
+                                progress,
+                                trackColor: c.inputFill,
+                              ),
+                              child: Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      '$caloriesRemaining',
+                                      style: GoogleFonts.spaceGrotesk(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                        color: c.onBackground,
+                                      ),
+                                    ),
+                                    Text(
+                                      'left',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 11,
+                                        color: c.muted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 24),
+                          Expanded(
+                            child: Column(
+                              children: [
+                                _buildMacroRow(
+                                  'Goal',
+                                  '$calorieGoal kcal',
+                                  c.inactive,
+                                  colors: c,
+                                ),
+                                const SizedBox(height: 8),
+                                _buildMacroRow(
+                                  'Eaten',
+                                  '${caloriesEaten.round()} kcal',
+                                  AppColors.orange,
+                                  colors: c,
+                                ),
+                                const SizedBox(height: 8),
+                                _buildMacroRow(
+                                  'Remaining',
+                                  '${caloriesRemaining.round()} kcal',
+                                  AppColors.primary,
+                                  colors: c,
+                                ),
+                                const SizedBox(height: 8),
+                                _buildMacroRow(
+                                  'Protein',
+                                  '${proteinEaten.round()}g / ${macros['protein'] ?? 0}g',
+                                  AppColors.cyan,
+                                  colors: c,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(Icons.chevron_right, color: c.subtle),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ── Today's Meals — driven by Firestore stream ───────────────
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Today's Meals",
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: c.onBackground,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          onGoToPlans();
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            plansScreenKey.currentState?.switchToMealTab();
+                          });
+                        },
+                        child: Text(
+                          'See all',
                           style: GoogleFonts.inter(
-                            color: c.muted,
+                            color: AppColors.primary,
                             fontSize: 13,
                           ),
                         ),
-                        Text(
-                          profile?.name ?? 'Athlete',
-                          style: GoogleFonts.spaceGrotesk(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                            color: c.onBackground,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Breakfast row
+                  _buildMealRow(
+                    context: context,
+                    meal: 'Breakfast',
+                    mealType: 'breakfast',
+                    calories: mealsMap['breakfast']!,
+                    icon: Icons.wb_sunny_rounded,
+                    color: AppColors.yellow,
+                    foodLogs: foodLogs
+                        .where((f) => f.mealType.toLowerCase() == 'breakfast')
+                        .toList(),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Lunch row
+                  _buildMealRow(
+                    context: context,
+                    meal: 'Lunch',
+                    mealType: 'lunch',
+                    calories: mealsMap['lunch']!,
+                    icon: Icons.lunch_dining_rounded,
+                    color: AppColors.orange,
+                    foodLogs: foodLogs
+                        .where((f) => f.mealType.toLowerCase() == 'lunch')
+                        .toList(),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Dinner row
+                  _buildMealRow(
+                    context: context,
+                    meal: 'Dinner',
+                    mealType: 'dinner',
+                    calories: mealsMap['dinner']!,
+                    icon: Icons.dinner_dining_rounded,
+                    color: AppColors.purple,
+                    foodLogs: foodLogs
+                        .where((f) => f.mealType.toLowerCase() == 'dinner')
+                        .toList(),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ── Today's Workout ──────────────────────────────────────────
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Today's Workout",
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: c.onBackground,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: onGoToPlans,
+                        child: Text(
+                          'See all',
+                          style: GoogleFonts.inter(
+                            color: AppColors.primary,
+                            fontSize: 13,
                           ),
                         ),
-                      ],
-                    ),
-                    Text(
-                      _getDate(),
-                      style: GoogleFonts.inter(color: c.muted, fontSize: 12),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // ── Calorie ring card ────────────────────────────────────────
-                GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const NutritionScreen()),
+                      ),
+                    ],
                   ),
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: c.surface,
-                      borderRadius: BorderRadius.circular(20),
+                  const SizedBox(height: 12),
+                  StreamBuilder<WorkoutLog?>(
+                    stream: FirestoreService().streamWorkoutLogForDate(
+                      user.uid,
+                      appNow(),
                     ),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 100,
-                          height: 100,
-                          child: CustomPaint(
-                            painter: _CaloriePainter(
-                              progress,
-                              trackColor: c.inputFill,
-                            ),
-                            child: Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    '$caloriesRemaining',
-                                    style: GoogleFonts.spaceGrotesk(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                      color: c.onBackground,
-                                    ),
-                                  ),
-                                  Text(
-                                    'left',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      color: c.muted,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                    builder: (context, workoutSnap) {
+                      final workoutLog = workoutSnap.data;
+                      return GestureDetector(
+                        onTap: onGoToPlans,
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: c.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: workoutLog != null
+                                ? Border.all(
+                                    color: AppColors.primary.withOpacity(0.4),
+                                  )
+                                : null,
                           ),
-                        ),
-                        const SizedBox(width: 24),
-                        Expanded(
-                          child: Column(
-                            children: [
-                              _buildMacroRow(
-                                'Goal',
-                                '$calorieGoal kcal',
-                                c.inactive,
-                                colors: c,
-                              ),
-                              const SizedBox(height: 8),
-                              _buildMacroRow(
-                                'Eaten',
-                                '${caloriesEaten.round()} kcal',
-                                AppColors.orange,
-                                colors: c,
-                              ),
-                              const SizedBox(height: 8),
-                              _buildMacroRow(
-                                'Remaining',
-                                '${caloriesRemaining.round()} kcal',
-                                AppColors.primary,
-                                colors: c,
-                              ),
-                              const SizedBox(height: 8),
-                              _buildMacroRow(
-                                'Protein',
-                                '${proteinEaten.round()}g / ${macros['protein'] ?? 0}g',
-                                AppColors.cyan,
-                                colors: c,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(Icons.chevron_right, color: c.subtle),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // ── Today's Meals — driven by Firestore stream ───────────────
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "Today's Meals",
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: c.onBackground,
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () {
-                        onGoToPlans();
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          plansScreenKey.currentState?.switchToMealTab();
-                        });
-                      },
-                      child: Text(
-                        'See all',
-                        style: GoogleFonts.inter(
-                          color: AppColors.primary,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // Breakfast row
-                _buildMealRow(
-                  context: context,
-                  meal: 'Breakfast',
-                  mealType: 'breakfast',
-                  calories: mealsMap['breakfast']!,
-                  icon: Icons.wb_sunny_rounded,
-                  color: AppColors.yellow,
-                  foodLogs: foodLogs
-                      .where((f) => f.mealType.toLowerCase() == 'breakfast')
-                      .toList(),
-                ),
-                const SizedBox(height: 8),
-
-                // Lunch row
-                _buildMealRow(
-                  context: context,
-                  meal: 'Lunch',
-                  mealType: 'lunch',
-                  calories: mealsMap['lunch']!,
-                  icon: Icons.lunch_dining_rounded,
-                  color: AppColors.orange,
-                  foodLogs: foodLogs
-                      .where((f) => f.mealType.toLowerCase() == 'lunch')
-                      .toList(),
-                ),
-                const SizedBox(height: 8),
-
-                // Dinner row
-                _buildMealRow(
-                  context: context,
-                  meal: 'Dinner',
-                  mealType: 'dinner',
-                  calories: mealsMap['dinner']!,
-                  icon: Icons.dinner_dining_rounded,
-                  color: AppColors.purple,
-                  foodLogs: foodLogs
-                      .where((f) => f.mealType.toLowerCase() == 'dinner')
-                      .toList(),
-                ),
-                const SizedBox(height: 20),
-
-                // ── Today's Workout ──────────────────────────────────────────
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "Today's Workout",
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: c.onBackground,
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: onGoToPlans,
-                      child: Text(
-                        'See all',
-                        style: GoogleFonts.inter(
-                          color: AppColors.primary,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                StreamBuilder<WorkoutLog?>(
-                  stream: FirestoreService().streamWorkoutLogForDate(
-                    user.uid,
-                    appNow(),
-                  ),
-                  builder: (context, workoutSnap) {
-                    final workoutLog = workoutSnap.data;
-                    return GestureDetector(
-                      onTap: onGoToPlans,
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: c.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          border: workoutLog != null
-                              ? Border.all(
-                                  color: AppColors.primary.withOpacity(0.4),
-                                )
-                              : null,
-                        ),
-                        child: todayWorkout == null
-                            ? Row(
-                                children: [
-                                  Container(
-                                    width: 44,
-                                    height: 44,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primary.withOpacity(
-                                        0.15,
-                                      ),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: const Icon(
-                                      Icons.fitness_center_rounded,
-                                      color: AppColors.primary,
-                                      size: 22,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'No workout generated yet',
-                                          style: GoogleFonts.spaceGrotesk(
-                                            color: c.onBackground,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        Text(
-                                          'Go to Plans to generate',
-                                          style: GoogleFonts.inter(
-                                            color: c.muted,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Icon(Icons.chevron_right, color: c.subtle),
-                                ],
-                              )
-                            : todayWorkout.isRest
-                            ? Row(
-                                children: [
-                                  Container(
-                                    width: 44,
-                                    height: 44,
-                                    decoration: BoxDecoration(
-                                      color: c.subtle.withOpacity(0.3),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Icon(
-                                      Icons.bedtime_rounded,
-                                      color: c.muted,
-                                      size: 22,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Rest Day',
-                                          style: GoogleFonts.spaceGrotesk(
-                                            color: c.onBackground,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        Text(
-                                          'Recovery is part of the plan',
-                                          style: GoogleFonts.inter(
-                                            color: c.muted,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        width: 44,
-                                        height: 44,
-                                        decoration: BoxDecoration(
-                                          color: AppColors.primary.withOpacity(
-                                            0.15,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        child: const Icon(
-                                          Icons.fitness_center_rounded,
-                                          color: AppColors.primary,
-                                          size: 22,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 14),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              '$todayName — ${todayWorkout.focus}',
-                                              style: GoogleFonts.spaceGrotesk(
-                                                color: c.onBackground,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                            Text(
-                                              '${todayWorkout.exercises.length} exercises',
-                                              style: GoogleFonts.inter(
-                                                color: c.muted,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      workoutLog != null
-                                          ? const Icon(
-                                              Icons.check_circle_rounded,
-                                              color: AppColors.primary,
-                                              size: 22,
-                                            )
-                                          : Icon(
-                                              Icons.chevron_right,
-                                              color: c.subtle,
-                                            ),
-                                    ],
-                                  ),
-                                  if (workoutLog != null) ...[
-                                    const SizedBox(height: 8),
+                          child: todayWorkout == null
+                              ? Row(
+                                  children: [
                                     Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 5,
-                                      ),
+                                      width: 44,
+                                      height: 44,
                                       decoration: BoxDecoration(
                                         color: AppColors.primary.withOpacity(
-                                          0.12,
+                                          0.15,
                                         ),
-                                        borderRadius: BorderRadius.circular(8),
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
-                                      child: Text(
-                                        'Completed · ${workoutLog.durationMinutes} min · ${workoutLog.focus}',
-                                        style: GoogleFonts.inter(
-                                          color: AppColors.primary,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
-                                        ),
+                                      child: const Icon(
+                                        Icons.fitness_center_rounded,
+                                        color: AppColors.primary,
+                                        size: 22,
                                       ),
                                     ),
-                                  ] else if (todayWorkout
-                                      .exercises
-                                      .isNotEmpty) ...[
-                                    const SizedBox(height: 12),
-                                    Divider(color: c.border, height: 1),
-                                    const SizedBox(height: 10),
-                                    ...todayWorkout.exercises
-                                        .take(2)
-                                        .map(
-                                          (we) => Padding(
-                                            padding: const EdgeInsets.only(
-                                              bottom: 6,
-                                            ),
-                                            child: Row(
-                                              children: [
-                                                Container(
-                                                  width: 6,
-                                                  height: 6,
-                                                  decoration:
-                                                      const BoxDecoration(
-                                                        color:
-                                                            AppColors.primary,
-                                                        shape: BoxShape.circle,
-                                                      ),
-                                                ),
-                                                const SizedBox(width: 10),
-                                                Expanded(
-                                                  child: Text(
-                                                    we.exercise.name,
-                                                    style: GoogleFonts.inter(
-                                                      color: c.onBackground,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                      fontSize: 13,
-                                                    ),
-                                                  ),
-                                                ),
-                                                Text(
-                                                  '${we.sets}×${we.reps}',
-                                                  style: GoogleFonts.inter(
-                                                    color: c.muted,
-                                                    fontSize: 12,
-                                                  ),
-                                                ),
-                                              ],
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'No workout generated yet',
+                                            style: GoogleFonts.spaceGrotesk(
+                                              color: c.onBackground,
+                                              fontWeight: FontWeight.w600,
                                             ),
                                           ),
+                                          Text(
+                                            'Go to Plans to generate',
+                                            style: GoogleFonts.inter(
+                                              color: c.muted,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(Icons.chevron_right, color: c.subtle),
+                                  ],
+                                )
+                              : todayWorkout.isRest
+                              ? Row(
+                                  children: [
+                                    Container(
+                                      width: 44,
+                                      height: 44,
+                                      decoration: BoxDecoration(
+                                        color: c.subtle.withOpacity(0.3),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Icon(
+                                        Icons.bedtime_rounded,
+                                        color: c.muted,
+                                        size: 22,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Rest Day',
+                                            style: GoogleFonts.spaceGrotesk(
+                                              color: c.onBackground,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          Text(
+                                            'Recovery is part of the plan',
+                                            style: GoogleFonts.inter(
+                                              color: c.muted,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          width: 44,
+                                          height: 44,
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary
+                                                .withOpacity(0.15),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          child: const Icon(
+                                            Icons.fitness_center_rounded,
+                                            color: AppColors.primary,
+                                            size: 22,
+                                          ),
                                         ),
-                                    if (todayWorkout.exercises.length > 2)
-                                      Text(
-                                        '+${todayWorkout.exercises.length - 2} more exercises',
-                                        style: GoogleFonts.inter(
-                                          color: c.inactive,
-                                          fontSize: 12,
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                '$todayName — ${todayWorkout.focus}',
+                                                style: GoogleFonts.spaceGrotesk(
+                                                  color: c.onBackground,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              Text(
+                                                '${todayWorkout.exercises.length} exercises',
+                                                style: GoogleFonts.inter(
+                                                  color: c.muted,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        workoutLog != null
+                                            ? const Icon(
+                                                Icons.check_circle_rounded,
+                                                color: AppColors.primary,
+                                                size: 22,
+                                              )
+                                            : Icon(
+                                                Icons.chevron_right,
+                                                color: c.subtle,
+                                              ),
+                                      ],
+                                    ),
+                                    if (workoutLog != null) ...[
+                                      const SizedBox(height: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 5,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withOpacity(
+                                            0.12,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          'Completed · ${workoutLog.durationMinutes} min · ${workoutLog.focus}',
+                                          style: GoogleFonts.inter(
+                                            color: AppColors.primary,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                         ),
                                       ),
+                                    ] else if (todayWorkout
+                                        .exercises
+                                        .isNotEmpty) ...[
+                                      const SizedBox(height: 12),
+                                      Divider(color: c.border, height: 1),
+                                      const SizedBox(height: 10),
+                                      ...todayWorkout.exercises
+                                          .take(2)
+                                          .map(
+                                            (we) => Padding(
+                                              padding: const EdgeInsets.only(
+                                                bottom: 6,
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  Container(
+                                                    width: 6,
+                                                    height: 6,
+                                                    decoration:
+                                                        const BoxDecoration(
+                                                          color:
+                                                              AppColors.primary,
+                                                          shape:
+                                                              BoxShape.circle,
+                                                        ),
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Expanded(
+                                                    child: Text(
+                                                      we.exercise.name,
+                                                      style: GoogleFonts.inter(
+                                                        color: c.onBackground,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                        fontSize: 13,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    '${we.sets}×${we.reps}',
+                                                    style: GoogleFonts.inter(
+                                                      color: c.muted,
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                      if (todayWorkout.exercises.length > 2)
+                                        Text(
+                                          '+${todayWorkout.exercises.length - 2} more exercises',
+                                          style: GoogleFonts.inter(
+                                            color: c.inactive,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                    ],
                                   ],
-                                ],
-                              ),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            );
-          },
-        ),
+                                ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -1034,12 +1044,18 @@ class _HomeDashboard extends StatelessWidget {
             Text(label, style: GoogleFonts.inter(color: c.muted, fontSize: 13)),
           ],
         ),
-        Text(
-          value,
-          style: GoogleFonts.inter(
-            color: c.onBackground,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.inter(
+              color: c.onBackground,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],
