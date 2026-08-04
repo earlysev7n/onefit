@@ -1285,29 +1285,59 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: kPhysicalLimitations.map((lim) {
-        final selected = _physicalLimitations.contains(lim.id);
-        final count = lim.movements
-            .where((m) => _avoidedMovements.contains(m.id))
-            .length;
-        return GestureDetector(
-          onTap: () => _openLimitationSheet(lim),
+      children: [
+        // "None" is the empty state: selected when no limitations are chosen.
+        // Tapping it clears any selected areas and opted-in avoided movements;
+        // selecting any real area below makes the list non-empty, so this
+        // deselects automatically (no stored 'None' token needed).
+        GestureDetector(
+          onTap: () => setState(() {
+            _physicalLimitations.clear();
+            _avoidedMovements.clear();
+          }),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: selected ? AppColors.primary : c.inputFill,
+              color: _physicalLimitations.isEmpty
+                  ? AppColors.primary
+                  : c.inputFill,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              count > 0 ? '${lim.id}  ·  $count' : lim.id,
+              'None',
               style: GoogleFonts.inter(
-                color: selected ? c.onPrimary : c.onBackground,
+                color: _physicalLimitations.isEmpty
+                    ? c.onPrimary
+                    : c.onBackground,
                 fontWeight: FontWeight.w500,
               ),
             ),
           ),
-        );
-      }).toList(),
+        ),
+        ...kPhysicalLimitations.map((lim) {
+          final selected = _physicalLimitations.contains(lim.id);
+          final count = lim.movements
+              .where((m) => _avoidedMovements.contains(m.id))
+              .length;
+          return GestureDetector(
+            onTap: () => _openLimitationSheet(lim),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: selected ? AppColors.primary : c.inputFill,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                count > 0 ? '${lim.id}  ·  $count' : lim.id,
+                style: GoogleFonts.inter(
+                  color: selected ? c.onPrimary : c.onBackground,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
     );
   }
 
