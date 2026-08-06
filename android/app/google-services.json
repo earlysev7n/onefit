@@ -12,7 +12,20 @@
           "package_name": "com.example.onefit"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "445848368960-9ksi0721126cjsdmba80npqhjsin9hqb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.onefit",
+            "certificate_hash": "968fd5f00e4a0dd76b5f43519da29580655eda19"
+          }
+        },
+        {
+          "client_id": "445848368960-ksqd6kdnb2i3bh3f1jfdoo7p48m1q4cv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDMyWjb-to9nSoL_TChB-jqcrlY9oEzObY"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "445848368960-ksqd6kdnb2i3bh3f1jfdoo7p48m1q4cv.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

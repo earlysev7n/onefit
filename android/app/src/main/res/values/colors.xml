@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand-dark background for the native launch window so the cold-boot
+         frame matches the Flutter SplashScreen (no white flash). -->
+    <color name="splash_background">#FF0D0D0D</color>
+</resources>
