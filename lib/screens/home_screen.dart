@@ -653,7 +653,7 @@ class _HomeDashboard extends StatelessWidget {
                                 _buildMacroRow(
                                   'Protein',
                                   '${proteinEaten.round()}g / ${macros['protein'] ?? 0}g',
-                                  AppColors.cyan,
+                                  AppColors.protein,
                                   colors: c,
                                 ),
                               ],

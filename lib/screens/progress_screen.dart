@@ -59,49 +59,49 @@ class _ProgressScreenState extends State<ProgressScreen> {
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
               child: ResponsiveBody(
                 child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header
-                  Text(
-                    'Progress',
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                      color: c.onBackground,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Track your fitness journey',
-                    style: GoogleFonts.inter(color: c.muted),
-                  ),
-                  const SizedBox(height: 24),
-
-                  if (prov.isLoading)
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 60),
-                        child: CircularProgressIndicator(
-                          color: AppColors.primary,
-                        ),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header
+                    Text(
+                      'Progress',
+                      style: GoogleFonts.spaceGrotesk(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: c.onBackground,
                       ),
-                    )
-                  else ...[
-                    _TodaySnapshot(prov: prov),
-                    const SizedBox(height: 20),
-                    const _WeeklyReportCard(),
-                    const SizedBox(height: 20),
-                    _WeeklyAchievements(prov: prov),
-                    const SizedBox(height: 20),
-                    _CalorieTrendChart(prov: prov),
-                    const SizedBox(height: 20),
-                    _MacroTrendChart(prov: prov),
-                    const SizedBox(height: 20),
-                    _WeightSection(prov: prov),
-                    const SizedBox(height: 20),
-                    _MilestonesSection(prov: prov),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Track your fitness journey',
+                      style: GoogleFonts.inter(color: c.muted),
+                    ),
+                    const SizedBox(height: 24),
+
+                    if (prov.isLoading)
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 60),
+                          child: CircularProgressIndicator(
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      )
+                    else ...[
+                      _TodaySnapshot(prov: prov),
+                      const SizedBox(height: 20),
+                      const _WeeklyReportCard(),
+                      const SizedBox(height: 20),
+                      _WeeklyAchievements(prov: prov),
+                      const SizedBox(height: 20),
+                      _CalorieTrendChart(prov: prov),
+                      const SizedBox(height: 20),
+                      _MacroTrendChart(prov: prov),
+                      const SizedBox(height: 20),
+                      _WeightSection(prov: prov),
+                      const SizedBox(height: 20),
+                      _MilestonesSection(prov: prov),
+                    ],
                   ],
-                ],
                 ),
               ),
             ),
@@ -183,7 +183,7 @@ class _TodaySnapshot extends StatelessWidget {
                   child: LinearProgressIndicator(
                     value: protProgress,
                     backgroundColor: c.border,
-                    valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+                    valueColor: const AlwaysStoppedAnimation(AppColors.protein),
                     minHeight: 8,
                   ),
                 ),
@@ -344,11 +344,16 @@ class _WeeklyAchievementsState extends State<_WeeklyAchievements> {
   Widget build(BuildContext context) {
     final prov = widget.prov;
     final adherence = prov.calorieAdherenceFor(_range);
-    final adherenceColor = adherence >= 90
+    // No data (new user / nothing logged this range) reads neutral, not red —
+    // a 0% "alarm" on an empty week is a false alarm. Real values grade
+    // primary → warning → danger.
+    final adherenceColor = adherence <= 0
+        ? context.colors.muted
+        : adherence >= 90
         ? AppColors.primary
         : adherence >= 75
-        ? AppColors.orange
-        : Colors.redAccent;
+        ? AppColors.warning
+        : AppColors.danger;
 
     return _SectionCard(
       title: _titles[_range]!,
@@ -357,15 +362,19 @@ class _WeeklyAchievementsState extends State<_WeeklyAchievements> {
         onChanged: (r) => setState(() => _range = r),
       ),
       child: GridView.count(
-        crossAxisCount: context.responsiveColumns(phone: 2, tablet: 4, large: 4),
+        crossAxisCount: context.responsiveColumns(
+          phone: 2,
+          tablet: 4,
+          large: 4,
+        ),
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
         childAspectRatio:
             context.responsiveColumns(phone: 2, tablet: 4, large: 4) >= 4
-                ? 1.6
-                : 2.0,
+            ? 1.6
+            : 2.0,
         children: [
           _StatTile(
             label: 'Calorie Adherence',
@@ -545,11 +554,11 @@ class _MacroTrendChartState extends State<_MacroTrendChart> {
   Color _colorFor(String macro) {
     switch (macro) {
       case 'carbs':
-        return AppColors.purple;
+        return AppColors.carbs;
       case 'fat':
-        return AppColors.orange;
+        return AppColors.fat;
       default:
-        return AppColors.primary;
+        return AppColors.protein;
     }
   }
 
@@ -594,18 +603,19 @@ class _MacroTrendChartState extends State<_MacroTrendChart> {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: selected ? mc.withOpacity(0.15) : Colors.transparent,
+                      color: selected
+                          ? mc.withOpacity(0.15)
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: selected ? mc : c.border,
-                      ),
+                      border: Border.all(color: selected ? mc : c.border),
                     ),
                     child: Text(
                       _macroLabels[m]!,
                       style: GoogleFonts.inter(
                         color: selected ? mc : c.muted,
-                        fontWeight:
-                            selected ? FontWeight.w600 : FontWeight.w400,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
                         fontSize: 12,
                       ),
                     ),
@@ -1219,10 +1229,7 @@ class _SectionCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (trailing != null) ...[
-                const SizedBox(width: 10),
-                trailing!,
-              ],
+              if (trailing != null) ...[const SizedBox(width: 10), trailing!],
             ],
           ),
           const SizedBox(height: 14),

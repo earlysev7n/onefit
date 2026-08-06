@@ -48,6 +48,24 @@ class AppColors {
   /// Reads correctly on both dark and light surfaces.
   static const overTarget = Color(0xFFFF4D4D);
 
+  // --- Macro identity ---------------------------------------------------
+  // One canonical colour per macro, used everywhere macros are shown (rings,
+  // breakdowns, trend charts) so a colour always means the same nutrient
+  // across every screen. Protein is cyan (not primary green) to avoid a
+  // green-on-green clash with the calorie ring on Home.
+  static const protein = cyan; // #00B4D8
+  static const carbs = purple; // #6C63FF
+  static const fat = orange; // #FF6B35
+  static const fiber = yellow; // #FFD60A
+
+  // --- Semantic meaning -------------------------------------------------
+  // caution / approaching a limit
+  static const warning = amber; // #FFA726
+  // real problem: over target or destructive (prefer over raw Colors.red*)
+  static const danger = overTarget; // #FF4D4D
+  // neutral highlight / links
+  static const info = Color(0xFF4A9EFF);
+
   static const dark = AppColors._(
     background: Color(0xFF0D0D0D),
     surface: Color(0xFF1A1A1A),

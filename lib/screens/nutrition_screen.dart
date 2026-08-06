@@ -191,10 +191,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
         final c = context.colors;
         return Theme(
           data: base.copyWith(
-            colorScheme: (isDark ? const ColorScheme.dark() : const ColorScheme.light()).copyWith(
-              primary: AppColors.primary,
-              surface: c.surface,
-            ),
+            colorScheme:
+                (isDark ? const ColorScheme.dark() : const ColorScheme.light())
+                    .copyWith(primary: AppColors.primary, surface: c.surface),
           ),
           child: child!,
         );
@@ -225,9 +224,7 @@ class _CaloriesTabState extends State<_CaloriesTab>
   void _navigateToMealPlan(BuildContext context, String mealType) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => FoodLogScreen(mealType: mealType),
-      ),
+      MaterialPageRoute(builder: (_) => FoodLogScreen(mealType: mealType)),
     );
   }
 
@@ -272,92 +269,86 @@ class _CaloriesTabState extends State<_CaloriesTab>
 
         return ResponsiveBody(
           child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: 180,
-                    height: 180,
-                    child: CustomPaint(
-                      painter: _RingPainter(
-                        eaten / calorieGoal,
-                        AppColors.primary,
-                        ringBackground: c.inputFill,
-                      ),
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              '${remaining.clamp(0, calorieGoal)}',
-                              style: GoogleFonts.spaceGrotesk(
-                                fontSize: 36,
-                                fontWeight: FontWeight.w700,
-                                color: c.onBackground,
-                              ),
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: 180,
+                  height: 180,
+                  child: CustomPaint(
+                    painter: _RingPainter(
+                      eaten / calorieGoal,
+                      AppColors.primary,
+                      ringBackground: c.inputFill,
+                    ),
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            '${remaining.clamp(0, calorieGoal)}',
+                            style: GoogleFonts.spaceGrotesk(
+                              fontSize: 36,
+                              fontWeight: FontWeight.w700,
+                              color: c.onBackground,
                             ),
-                            Text(
-                              'kcal left',
-                              style: GoogleFonts.inter(
-                                color: c.muted,
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                          Text(
+                            'kcal left',
+                            style: GoogleFonts.inter(color: c.muted),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 32),
-                  Row(
-                    children: [
-                      _buildCalCard(
-                        'Goal',
-                        '$calorieGoal',
-                        c.inactive,
-                      ),
-                      const SizedBox(width: 12),
-                      _buildCalCard('Eaten', '$eaten', AppColors.orange),
-                      const SizedBox(width: 12),
-                      _buildCalCard(
-                        'Remaining',
-                        '${remaining.clamp(0, calorieGoal)}',
-                        AppColors.primary,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  _buildMealRow(
-                    context,
-                    label: 'Breakfast',
-                    mealType: 'breakfast',
-                    calories: totals['breakfast'] ?? 0,
-                  ),
-                  const SizedBox(height: 8),
-                  _buildMealRow(
-                    context,
-                    label: 'Lunch',
-                    mealType: 'lunch',
-                    calories: totals['lunch'] ?? 0,
-                  ),
-                  const SizedBox(height: 8),
-                  _buildMealRow(
-                    context,
-                    label: 'Dinner',
-                    mealType: 'dinner',
-                    calories: totals['dinner'] ?? 0,
-                  ),
-                  const SizedBox(height: 8),
-                  _buildMealRow(
-                    context,
-                    label: 'Snacks',
-                    mealType: 'snack',
-                    calories: totals['snack'] ?? 0,
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 32),
+                Row(
+                  children: [
+                    _buildCalCard('Goal', '$calorieGoal', c.inactive),
+                    const SizedBox(width: 12),
+                    _buildCalCard('Eaten', '$eaten', AppColors.orange),
+                    const SizedBox(width: 12),
+                    _buildCalCard(
+                      'Remaining',
+                      '${remaining.clamp(0, calorieGoal)}',
+                      AppColors.primary,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                _buildMealRow(
+                  context,
+                  label: 'Breakfast',
+                  mealType: 'breakfast',
+                  calories: totals['breakfast'] ?? 0,
+                ),
+                const SizedBox(height: 8),
+                _buildMealRow(
+                  context,
+                  label: 'Lunch',
+                  mealType: 'lunch',
+                  calories: totals['lunch'] ?? 0,
+                ),
+                const SizedBox(height: 8),
+                _buildMealRow(
+                  context,
+                  label: 'Dinner',
+                  mealType: 'dinner',
+                  calories: totals['dinner'] ?? 0,
+                ),
+                const SizedBox(height: 8),
+                _buildMealRow(
+                  context,
+                  label: 'Snacks',
+                  mealType: 'snack',
+                  calories: totals['snack'] ?? 0,
+                ),
+              ],
             ),
-          );
+          ),
+        );
       },
     );
   }
@@ -409,13 +400,7 @@ class _CaloriesTabState extends State<_CaloriesTab>
                 color: color,
               ),
             ),
-            Text(
-              label,
-              style: GoogleFonts.inter(
-                color: c.muted,
-                fontSize: 12,
-              ),
-            ),
+            Text(label, style: GoogleFonts.inter(color: c.muted, fontSize: 12)),
           ],
         ),
       ),
@@ -450,16 +435,9 @@ class _CaloriesTabState extends State<_CaloriesTab>
                 ),
               ),
               const Spacer(),
-              Text(
-                '$calories kcal',
-                style: GoogleFonts.inter(color: c.muted),
-              ),
+              Text('$calories kcal', style: GoogleFonts.inter(color: c.muted)),
               const SizedBox(width: 6),
-              Icon(
-                Icons.chevron_right,
-                color: c.inactive,
-                size: 18,
-              ),
+              Icon(Icons.chevron_right, color: c.inactive, size: 18),
             ],
           ),
         ),
@@ -622,210 +600,210 @@ class _NutrientsTabState extends State<_NutrientsTab>
 
         return ResponsiveBody(
           child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Macronutrients ────────────────────────────────────────
-                  _sectionHeader('Macronutrients'),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Protein',
-                    desc: 'Builds & repairs muscle tissue',
-                    current: n['protein']!,
-                    goal: macroGoal('protein', 50).toDouble(),
-                    unit: 'g',
-                    color: AppColors.primary,
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Carbohydrates',
-                    desc: 'Primary energy source',
-                    current: n['carbs']!,
-                    goal: macroGoal('carbs', 275).toDouble(),
-                    unit: 'g',
-                    color: AppColors.purple,
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Fat',
-                    desc: 'Hormones & fat-soluble vitamins',
-                    current: n['fat']!,
-                    goal: macroGoal('fat', 78).toDouble(),
-                    unit: 'g',
-                    color: AppColors.orange,
-                  ),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Macronutrients ────────────────────────────────────────
+                _sectionHeader('Macronutrients'),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Protein',
+                  desc: 'Builds & repairs muscle tissue',
+                  current: n['protein']!,
+                  goal: macroGoal('protein', 50).toDouble(),
+                  unit: 'g',
+                  color: AppColors.protein,
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Carbohydrates',
+                  desc: 'Primary energy source',
+                  current: n['carbs']!,
+                  goal: macroGoal('carbs', 275).toDouble(),
+                  unit: 'g',
+                  color: AppColors.carbs,
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Fat',
+                  desc: 'Hormones & fat-soluble vitamins',
+                  current: n['fat']!,
+                  goal: macroGoal('fat', 78).toDouble(),
+                  unit: 'g',
+                  color: AppColors.fat,
+                ),
 
-                  // ── Fiber & Sugars ────────────────────────────────────────
-                  const SizedBox(height: 24),
-                  _sectionHeader('Fiber & Sugars'),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Dietary Fiber',
-                    desc: 'Gut health & blood sugar control',
-                    current: n['fiber']!,
-                    goal: macroGoal('fiber', 28).toDouble(),
-                    unit: 'g',
-                    color: AppColors.cyan,
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Sugar',
-                    desc: 'Keep below daily limit',
-                    current: n['sugar']!,
-                    goal: macroGoal('sugar', 50).toDouble(),
-                    unit: 'g',
-                    color: AppColors.yellow,
-                    isLimit: true,
-                  ),
+                // ── Fiber & Sugars ────────────────────────────────────────
+                const SizedBox(height: 24),
+                _sectionHeader('Fiber & Sugars'),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Dietary Fiber',
+                  desc: 'Gut health & blood sugar control',
+                  current: n['fiber']!,
+                  goal: macroGoal('fiber', 28).toDouble(),
+                  unit: 'g',
+                  color: AppColors.fiber,
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Sugar',
+                  desc: 'Keep below daily limit',
+                  current: n['sugar']!,
+                  goal: macroGoal('sugar', 50).toDouble(),
+                  unit: 'g',
+                  color: AppColors.warning,
+                  isLimit: true,
+                ),
 
-                  // ── Minerals ─────────────────────────────────────────────
-                  const SizedBox(height: 24),
-                  _sectionHeader('Minerals'),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Sodium',
-                    desc: 'Fluid balance & nerve function',
-                    current: n['sodium']!,
-                    goal: macroGoal('sodium', 2300).toDouble(),
-                    unit: 'mg',
-                    color: const Color(0xFFFF4D6D),
-                    isLimit: true,
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Calcium',
-                    desc: 'Bone & teeth strength',
-                    current: n['calcium']!,
-                    goal: 1000,
-                    unit: 'mg',
-                    color: const Color(0xFF4CC9F0),
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Iron',
-                    desc: 'Oxygen transport in blood',
-                    current: n['iron']!,
-                    goal: 18,
-                    unit: 'mg',
-                    color: const Color(0xFFE07A5F),
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Magnesium',
-                    desc: 'Muscle & nerve function',
-                    current: n['magnesium']!,
-                    goal: 400,
-                    unit: 'mg',
-                    color: const Color(0xFF81B29A),
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Potassium',
-                    desc: 'Heart & muscle contractions',
-                    current: n['potassium']!,
-                    goal: 4700,
-                    unit: 'mg',
-                    color: const Color(0xFFF2CC8F),
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Zinc',
-                    desc: 'Immune system & wound healing',
-                    current: n['zinc']!,
-                    goal: 11,
-                    unit: 'mg',
-                    color: const Color(0xFF9B8EA0),
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Phosphorus',
-                    desc: 'Bone formation & energy production',
-                    current: n['phosphorus']!,
-                    goal: 700,
-                    unit: 'mg',
-                    color: const Color(0xFF7EC8E3),
-                  ),
+                // ── Minerals ─────────────────────────────────────────────
+                const SizedBox(height: 24),
+                _sectionHeader('Minerals'),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Sodium',
+                  desc: 'Fluid balance & nerve function',
+                  current: n['sodium']!,
+                  goal: macroGoal('sodium', 2300).toDouble(),
+                  unit: 'mg',
+                  color: const Color(0xFFFF4D6D),
+                  isLimit: true,
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Calcium',
+                  desc: 'Bone & teeth strength',
+                  current: n['calcium']!,
+                  goal: 1000,
+                  unit: 'mg',
+                  color: const Color(0xFF4CC9F0),
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Iron',
+                  desc: 'Oxygen transport in blood',
+                  current: n['iron']!,
+                  goal: 18,
+                  unit: 'mg',
+                  color: const Color(0xFFE07A5F),
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Magnesium',
+                  desc: 'Muscle & nerve function',
+                  current: n['magnesium']!,
+                  goal: 400,
+                  unit: 'mg',
+                  color: const Color(0xFF81B29A),
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Potassium',
+                  desc: 'Heart & muscle contractions',
+                  current: n['potassium']!,
+                  goal: 4700,
+                  unit: 'mg',
+                  color: const Color(0xFFF2CC8F),
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Zinc',
+                  desc: 'Immune system & wound healing',
+                  current: n['zinc']!,
+                  goal: 11,
+                  unit: 'mg',
+                  color: const Color(0xFF9B8EA0),
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Phosphorus',
+                  desc: 'Bone formation & energy production',
+                  current: n['phosphorus']!,
+                  goal: 700,
+                  unit: 'mg',
+                  color: const Color(0xFF7EC8E3),
+                ),
 
-                  // Vitamins
-                  const SizedBox(height: 24),
-                  _sectionHeader('Vitamins'),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Vitamin A',
-                    desc: 'Vision, immunity & skin health',
-                    current: n['vitaminA']!,
-                    goal: 900,
-                    unit: 'mcg',
-                    color: const Color(0xFFFF9F1C),
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Vitamin C',
-                    desc: 'Antioxidant & collagen synthesis',
-                    current: n['vitaminC']!,
-                    goal: 90,
-                    unit: 'mg',
-                    color: const Color(0xFFFFBF00),
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Vitamin D',
-                    desc: 'Calcium absorption & bone health',
-                    current: n['vitaminD']!,
-                    goal: 20,
-                    unit: 'mcg',
-                    color: const Color(0xFFFFC300),
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Vitamin E',
-                    desc: 'Antioxidant & cell protection',
-                    current: n['vitaminE']!,
-                    goal: 15,
-                    unit: 'mg',
-                    color: const Color(0xFFCB9CF2),
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Vitamin K',
-                    desc: 'Blood clotting & bone metabolism',
-                    current: n['vitaminK']!,
-                    goal: 120,
-                    unit: 'mcg',
-                    color: const Color(0xFF80ED99),
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Vitamin B6',
-                    desc: 'Protein metabolism & brain function',
-                    current: n['vitaminB6']!,
-                    goal: 1.7,
-                    unit: 'mg',
-                    color: const Color(0xFFA8DADC),
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Vitamin B12',
-                    desc: 'Nerve function & red blood cells',
-                    current: n['vitaminB12']!,
-                    goal: 2.4,
-                    unit: 'mcg',
-                    color: const Color(0xFFB5838D),
-                  ),
-                  const SizedBox(height: 10),
-                  _nutrientCard(
-                    name: 'Folate',
-                    desc: 'DNA synthesis & cell division',
-                    current: n['folate']!,
-                    goal: 400,
-                    unit: 'mcg',
-                    color: const Color(0xFF52B788),
-                  ),
-                ],
-              ),
+                // Vitamins
+                const SizedBox(height: 24),
+                _sectionHeader('Vitamins'),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Vitamin A',
+                  desc: 'Vision, immunity & skin health',
+                  current: n['vitaminA']!,
+                  goal: 900,
+                  unit: 'mcg',
+                  color: const Color(0xFFFF9F1C),
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Vitamin C',
+                  desc: 'Antioxidant & collagen synthesis',
+                  current: n['vitaminC']!,
+                  goal: 90,
+                  unit: 'mg',
+                  color: const Color(0xFFFFBF00),
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Vitamin D',
+                  desc: 'Calcium absorption & bone health',
+                  current: n['vitaminD']!,
+                  goal: 20,
+                  unit: 'mcg',
+                  color: const Color(0xFFFFC300),
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Vitamin E',
+                  desc: 'Antioxidant & cell protection',
+                  current: n['vitaminE']!,
+                  goal: 15,
+                  unit: 'mg',
+                  color: const Color(0xFFCB9CF2),
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Vitamin K',
+                  desc: 'Blood clotting & bone metabolism',
+                  current: n['vitaminK']!,
+                  goal: 120,
+                  unit: 'mcg',
+                  color: const Color(0xFF80ED99),
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Vitamin B6',
+                  desc: 'Protein metabolism & brain function',
+                  current: n['vitaminB6']!,
+                  goal: 1.7,
+                  unit: 'mg',
+                  color: const Color(0xFFA8DADC),
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Vitamin B12',
+                  desc: 'Nerve function & red blood cells',
+                  current: n['vitaminB12']!,
+                  goal: 2.4,
+                  unit: 'mcg',
+                  color: const Color(0xFFB5838D),
+                ),
+                const SizedBox(height: 10),
+                _nutrientCard(
+                  name: 'Folate',
+                  desc: 'DNA synthesis & cell division',
+                  current: n['folate']!,
+                  goal: 400,
+                  unit: 'mcg',
+                  color: const Color(0xFF52B788),
+                ),
+              ],
             ),
-          );
+          ),
+        );
       },
     );
   }
@@ -958,10 +936,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
                     const SizedBox(height: 2),
                     Text(
                       desc,
-                      style: GoogleFonts.inter(
-                        color: c.inactive,
-                        fontSize: 11,
-                      ),
+                      style: GoogleFonts.inter(color: c.inactive, fontSize: 11),
                     ),
                   ],
                 ),
@@ -1026,7 +1001,11 @@ class _RingPainter extends CustomPainter {
   final double progress;
   final Color color;
   final Color ringBackground;
-  _RingPainter(this.progress, this.color, {this.ringBackground = const Color(0xFF222222)});
+  _RingPainter(
+    this.progress,
+    this.color, {
+    this.ringBackground = const Color(0xFF222222),
+  });
 
   @override
   void paint(Canvas canvas, Size size) {

@@ -149,25 +149,25 @@ class ProfileScreen extends StatelessWidget {
                         context,
                         'Protein',
                         '${macros['protein'] ?? 0}g',
-                        AppColors.primary,
+                        AppColors.protein,
                       ),
                       _buildMacroTarget(
                         context,
                         'Carbs',
                         '${macros['carbs'] ?? 0}g',
-                        AppColors.purple,
+                        AppColors.carbs,
                       ),
                       _buildMacroTarget(
                         context,
                         'Fat',
                         '${macros['fat'] ?? 0}g',
-                        AppColors.orange,
+                        AppColors.fat,
                       ),
                       _buildMacroTarget(
                         context,
                         'Fiber',
                         '${macros['fiber'] ?? 0}g',
-                        AppColors.cyan,
+                        AppColors.fiber,
                       ),
                     ],
                   ),
@@ -178,7 +178,7 @@ class ProfileScreen extends StatelessWidget {
                   const SizedBox(height: 6),
                   _infoRow(context, 'TDEE', '${profile?.tdee ?? 0} kcal'),
                   const SizedBox(height: 6),
-                  _infoRow(context, 'BMI', profile?.bmiDisplay ?? '-'),
+                  _bmiRow(context, profile?.bmiDisplay ?? '-'),
                 ],
               ),
             ),
@@ -398,5 +398,69 @@ class ProfileScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// BMI row with a colored status pill (e.g. "27.5  [Overweight]").
+  /// Parses the value + category out of [UserProfile.bmiDisplay] so the model
+  /// stays untouched.
+  Widget _bmiRow(BuildContext context, String bmiDisplay) {
+    final c = context.colors;
+    String value = bmiDisplay;
+    String? category;
+    final match = RegExp(r'^(.*?)\s*\(([^)]+)\)$').firstMatch(bmiDisplay);
+    if (match != null) {
+      value = match.group(1)!.trim();
+      category = match.group(2)!.trim();
+    }
+    final badge = _bmiColor(category);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Text('BMI', style: GoogleFonts.inter(color: c.muted)),
+          const Spacer(),
+          Text(
+            value,
+            style: GoogleFonts.inter(
+              color: c.onBackground,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          if (category != null) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: badge.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                category,
+                style: GoogleFonts.inter(
+                  color: badge,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Color _bmiColor(String? category) {
+    switch (category) {
+      case 'Underweight':
+        return AppColors.info;
+      case 'Normal':
+        return AppColors.primary;
+      case 'Overweight':
+        return AppColors.warning;
+      case 'Obese':
+        return AppColors.danger;
+      default:
+        return AppColors.info;
+    }
   }
 }

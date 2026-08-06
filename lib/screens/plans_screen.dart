@@ -32,6 +32,7 @@ import '../theme/app_colors.dart';
 import '../theme/responsive.dart';
 
 enum _RemoveAction { cancel, delete, regenerate }
+
 enum _RemoveReason { noEquipment, dislike, justToday, block }
 
 String _friendlyMuscle(String m) {
@@ -267,7 +268,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final now = appNow();
     _selectedDate = DateTime(now.year, now.month, now.day);
     final provider = context.read<PlanProvider>();
-    final anchorWeekday = context.read<ProfileProvider>().profile?.createdAt?.weekday ?? 1;
+    final anchorWeekday =
+        context.read<ProfileProvider>().profile?.createdAt?.weekday ?? 1;
     final currentDayIndex = (now.weekday - anchorWeekday + 7) % 7;
     if (provider.workoutPlan.isNotEmpty) {
       setState(() {
@@ -329,8 +331,12 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final now = appNow();
     // Floor to midnight so the range aligns with midnight-stored log dates.
     final today = DateTime(now.year, now.month, now.day);
-    final anchorWeekday = context.read<ProfileProvider>().profile?.createdAt?.weekday ?? 1;
-    final weekStart = FirestoreService.weekStartFor(today, anchorWeekday: anchorWeekday);
+    final anchorWeekday =
+        context.read<ProfileProvider>().profile?.createdAt?.weekday ?? 1;
+    final weekStart = FirestoreService.weekStartFor(
+      today,
+      anchorWeekday: anchorWeekday,
+    );
     final weekEnd = weekStart.add(const Duration(days: 7));
     try {
       final logs = await FirestoreService().getWorkoutLogsForDateRange(
@@ -380,7 +386,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
     if (uid == null) return;
     setState(() => _historyLoading = true);
     final anchor = _profile?.createdAt?.weekday ?? 1;
-    final weekStart = FirestoreService.weekStartFor(date, anchorWeekday: anchor);
+    final weekStart = FirestoreService.weekStartFor(
+      date,
+      anchorWeekday: anchor,
+    );
     final dayIndex = date.difference(weekStart).inDays;
     final thisWeekStart = FirestoreService.weekStartFor(
       _todayDate(),
@@ -514,7 +523,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
           await planProvider.persistWorkoutPlan(uid, weekId);
         }
 
-        final thisWeekStart = FirestoreService.weekStartFor(today, anchorWeekday: anchor);
+        final thisWeekStart = FirestoreService.weekStartFor(
+          today,
+          anchorWeekday: anchor,
+        );
         final thisWeekEnd = thisWeekStart.add(const Duration(days: 7));
         final weekLogs = await fs.getWorkoutLogsForDateRange(
           uid,
@@ -538,7 +550,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
       // ── No persisted plan — generate a fresh one ─────────────────────────────
 
-      final weekStart = FirestoreService.weekStartFor(today, anchorWeekday: anchor).subtract(const Duration(days: 7));
+      final weekStart = FirestoreService.weekStartFor(
+        today,
+        anchorWeekday: anchor,
+      ).subtract(const Duration(days: 7));
       final lastWeekNutrition = await fs.getWeeklyNutritionSummary(
         uid,
         weekStart,
@@ -561,7 +576,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
       // Adaptation only applies when last week actually happened in the app —
       // a plan existed or at least one workout was logged. Without this guard
       // a brand-new user reads as 0% completion and gets a reduced first plan.
-      final lastWeekId = FirestoreService.weekIdFor(weekStart, anchorWeekday: anchor);
+      final lastWeekId = FirestoreService.weekIdFor(
+        weekStart,
+        anchorWeekday: anchor,
+      );
       final hadLastWeekPlan =
           await fs.loadWeeklyWorkoutPlan(uid, lastWeekId) != null;
       // Anchor the weekly engine to account creation too: a "last week" that
@@ -698,7 +716,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
         // Persist a snapshot of this week's adaptation for the Weekly Review
         // screen (current week + history). Same guard as the calorie bias, so
         // exactly one snapshot per weekId — no stacking on force-regenerate.
-        final activeWeekStart = FirestoreService.weekStartFor(today, anchorWeekday: anchor);
+        final activeWeekStart = FirestoreService.weekStartFor(
+          today,
+          anchorWeekday: anchor,
+        );
         final summary = WeeklySummary(
           weekId: weekId,
           generatedAt: appNow(),
@@ -726,7 +747,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
         await fs.saveWeeklySummary(uid, summary);
       }
 
-      final thisWeekStart = FirestoreService.weekStartFor(today, anchorWeekday: anchor);
+      final thisWeekStart = FirestoreService.weekStartFor(
+        today,
+        anchorWeekday: anchor,
+      );
       final thisWeekEnd = thisWeekStart.add(const Duration(days: 7));
       final weekLogs = await fs.getWorkoutLogsForDateRange(
         uid,
@@ -1077,6 +1101,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         );
       });
     }
+
     Widget stepButton(IconData icon, VoidCallback onTap) => InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -1635,7 +1660,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
       id: '',
       userId: uid,
       date: DateTime(now.year, now.month, now.day),
-      weekId: FirestoreService.weekIdFor(now, anchorWeekday: _profile?.createdAt?.weekday ?? 1),
+      weekId: FirestoreService.weekIdFor(
+        now,
+        anchorWeekday: _profile?.createdAt?.weekday ?? 1,
+      ),
       dayName: day.dayName,
       focus: day.focus,
       durationMinutes: durationMinutes,
@@ -1951,7 +1979,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
       id: '',
       userId: uid,
       date: DateTime(now.year, now.month, now.day),
-      weekId: FirestoreService.weekIdFor(now, anchorWeekday: _profile?.createdAt?.weekday ?? 1),
+      weekId: FirestoreService.weekIdFor(
+        now,
+        anchorWeekday: _profile?.createdAt?.weekday ?? 1,
+      ),
       dayName: day.dayName,
       focus: day.focus,
       durationMinutes: profile?.sessionMinutes ?? 45,
@@ -2064,9 +2095,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                   border: isSelected
-                      ? Border.all(
-                          color: AppColors.primary.withOpacity(0.4),
-                        )
+                      ? Border.all(color: AppColors.primary.withOpacity(0.4))
                       : null,
                 ),
                 child: Column(
@@ -2078,8 +2107,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
                         color: isSelected
                             ? AppColors.primary
                             : isRest
-                                ? c.inactive
-                                : c.muted,
+                            ? c.inactive
+                            : c.muted,
                         fontSize: 10,
                         fontWeight: FontWeight.w500,
                       ),
@@ -2091,11 +2120,12 @@ class _WorkoutTabState extends State<_WorkoutTab>
                         color: isSelected
                             ? AppColors.primary
                             : isRest
-                                ? c.inactive
-                                : c.onBackground,
+                            ? c.inactive
+                            : c.onBackground,
                         fontSize: 13,
-                        fontWeight:
-                            isSelected ? FontWeight.w700 : FontWeight.w600,
+                        fontWeight: isSelected
+                            ? FontWeight.w700
+                            : FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -2269,11 +2299,12 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
-                  color: done
-                      ? AppColors.primary.withOpacity(0.15)
-                      : c.surface,
+                  color: done ? AppColors.primary.withOpacity(0.15) : c.surface,
                   borderRadius: BorderRadius.circular(20),
                   border: done
                       ? Border.all(color: AppColors.primary.withOpacity(0.4))
@@ -2463,7 +2494,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
   // ── Edit-mode helpers ──────────────────────────────────────────────────────
 
-  String get _currentWeekId => FirestoreService.weekIdFor(appNow(), anchorWeekday: _profile?.createdAt?.weekday ?? 1);
+  String get _currentWeekId => FirestoreService.weekIdFor(
+    appNow(),
+    anchorWeekday: _profile?.createdAt?.weekday ?? 1,
+  );
 
   /// Enter / exit edit mode. On exit, guards against 0 exercises and prompts
   /// the user if they removed exercises without replacing them.
@@ -2922,7 +2956,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
         final c = context.colors;
         return AlertDialog(
           backgroundColor: c.surface,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: Text(
             'Remove "${we.exercise.name}"?',
             style: GoogleFonts.spaceGrotesk(
@@ -2996,7 +3032,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
       }
       final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
       await context.read<PlanProvider>().removeExercise(
-            uid, _currentWeekId, _selectedDay, exIdx);
+        uid,
+        _currentWeekId,
+        _selectedDay,
+        exIdx,
+      );
       if (mounted) {
         setState(() => _plan = context.read<PlanProvider>().workoutPlan);
       }
@@ -3017,8 +3057,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
           return InkWell(
             onTap: () => Navigator.pop(ctx, value),
             child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               child: Row(
                 children: [
                   Icon(icon, size: 20, color: AppColors.primary),
@@ -3041,8 +3080,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
         return AlertDialog(
           backgroundColor: c.surface,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
           contentPadding: const EdgeInsets.symmetric(vertical: 8),
           actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -3058,17 +3098,29 @@ class _WorkoutTabState extends State<_WorkoutTab>
             mainAxisSize: MainAxisSize.min,
             children: [
               Divider(color: c.borderLight, height: 1),
-              tile('No equipment', Icons.fitness_center_outlined,
-                  _RemoveReason.noEquipment),
+              tile(
+                'No equipment',
+                Icons.fitness_center_outlined,
+                _RemoveReason.noEquipment,
+              ),
               Divider(color: c.borderLight, height: 1, indent: 20),
-              tile("Don't like this exercise", Icons.thumb_down_alt_outlined,
-                  _RemoveReason.dislike),
+              tile(
+                "Don't like this exercise",
+                Icons.thumb_down_alt_outlined,
+                _RemoveReason.dislike,
+              ),
               Divider(color: c.borderLight, height: 1, indent: 20),
-              tile('Just for today', Icons.today_outlined,
-                  _RemoveReason.justToday),
+              tile(
+                'Just for today',
+                Icons.today_outlined,
+                _RemoveReason.justToday,
+              ),
               Divider(color: c.borderLight, height: 1, indent: 20),
-              tile('Remove from future recommendations', Icons.block_outlined,
-                  _RemoveReason.block),
+              tile(
+                'Remove from future recommendations',
+                Icons.block_outlined,
+                _RemoveReason.block,
+              ),
               Divider(color: c.borderLight, height: 1),
             ],
           ),
@@ -3162,8 +3214,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
           ),
           backgroundColor: context.colors.surface,
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
       return;
@@ -3822,7 +3875,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
   Widget _buildWorkoutDay(WorkoutDay day) {
     final c = context.colors;
-    final isToday = _selectedDay == (appNow().weekday - (_profile?.createdAt?.weekday ?? 1) + 7) % 7;
+    final isToday =
+        _selectedDay ==
+        (appNow().weekday - (_profile?.createdAt?.weekday ?? 1) + 7) % 7;
     final isCompleted = _todayLog != null && isToday;
     // The session covers the warm-up phase + the lifts; exercises stay locked
     // until the warm-up finishes/skips.
@@ -5914,8 +5969,9 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.orange,
-                  side: BorderSide(color: AppColors.orange),
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.14),
+                  foregroundColor: AppColors.primary,
+                  side: BorderSide.none,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -6213,8 +6269,9 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                     ),
                   ),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.orange,
-                    side: BorderSide(color: AppColors.orange),
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.14),
+                    foregroundColor: AppColors.primary,
+                    side: BorderSide.none,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -6330,10 +6387,10 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
               children: [
-                _miniMacro('P', '${p.round()}g', AppColors.primary),
-                _miniMacro('C', '${c.round()}g', AppColors.purple),
-                _miniMacro('F', '${fat.round()}g', AppColors.orange),
-                _miniMacro('Fiber', '${fib.round()}g', AppColors.cyan),
+                _miniMacro('P', '${p.round()}g', AppColors.protein),
+                _miniMacro('C', '${c.round()}g', AppColors.carbs),
+                _miniMacro('F', '${fat.round()}g', AppColors.fat),
+                _miniMacro('Fiber', '${fib.round()}g', AppColors.fiber),
                 Icon(
                   expanded
                       ? Icons.expand_less_rounded
@@ -6605,12 +6662,28 @@ Widget _chip(String label, Color color) => Container(
 // ─── Date-history navigation shared by the Workout + Meal tabs ────────────────
 
 const List<String> _shortMonths = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 
 const List<String> _shortWeekdays = [
-  'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun',
+  'Mon',
+  'Tue',
+  'Wed',
+  'Thu',
+  'Fri',
+  'Sat',
+  'Sun',
 ];
 
 /// Relative day label: Today / Yesterday / Tomorrow, else "Sat, 18 Jul".
