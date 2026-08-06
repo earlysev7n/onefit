@@ -58,6 +58,29 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   List<String> _dietaryRestrictions = ['Balanced'];
   List<String> _foodAllergies = [];
 
+  // Keyboard flow for the Step-1 text fields (Name → Weight → Height).
+  final _weightFocus = FocusNode();
+  final _heightFocus = FocusNode();
+
+  // Wizard step headings, indexed by _currentPage.
+  static const _stepTitles = [
+    'About You',
+    'Your Fitness',
+    'Your Schedule',
+    'Your Diet',
+  ];
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _nameController.dispose();
+    _weightController.dispose();
+    _heightController.dispose();
+    _weightFocus.dispose();
+    _heightFocus.dispose();
+    super.dispose();
+  }
+
   // Activity levels + descriptions (shown in the "?" help sheet)
   final Map<String, String> _activityLevels = {
     'Sedentary': 'Mostly sitting with very little daily movement.',
@@ -294,14 +317,17 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   }
 
   void _nextPage() {
+    // Dismiss the soft keyboard so it never lingers onto a later, field-less
+    // step (e.g. the chip-only Fitness/Schedule pages).
+    FocusScope.of(context).unfocus();
     // Validate Step 1 (biometrics) before advancing
     if (_currentPage == 0) {
       bool ok = false;
       setState(() => ok = _validateStep1());
       if (!ok) return; // block progression; inline errors now visible
     }
-    // Validate Step 2 before advancing
-    if (_currentPage == 1) {
+    // Validate the Schedule step (days vs split) before advancing
+    if (_currentPage == 2) {
       final err = _splitDaysError();
       if (err != null) {
         final c = context.colors;
@@ -341,7 +367,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
         return; // block progression
       }
     }
-    if (_currentPage < 2) {
+    if (_currentPage < 3) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
@@ -353,6 +379,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   }
 
   void _prevPage() {
+    FocusScope.of(context).unfocus();
     if (_currentPage > 0) {
       _pageController.previousPage(
         duration: const Duration(milliseconds: 300),
@@ -463,10 +490,10 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
               child: Row(
                 children: List.generate(
-                  3,
+                  4,
                   (i) => Expanded(
                     child: Container(
-                      margin: EdgeInsets.only(right: i < 2 ? 8 : 0),
+                      margin: EdgeInsets.only(right: i < 3 ? 8 : 0),
                       height: 4,
                       decoration: BoxDecoration(
                         color: i <= _currentPage
@@ -479,11 +506,30 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                 ),
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Step ${_currentPage + 1} of 4 · ${_stepTitles[_currentPage]}',
+                  style: GoogleFonts.inter(
+                    color: c.muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
             Expanded(
               child: PageView(
                 controller: _pageController,
                 physics: const NeverScrollableScrollPhysics(),
-                children: [_buildStep1(), _buildStep2(), _buildStep3()],
+                children: [
+                  _buildStep1(),
+                  _buildStep2(),
+                  _buildStepSchedule(),
+                  _buildStep3(),
+                ],
               ),
             ),
             Padding(
@@ -526,7 +572,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                       child: _isLoading
                           ? CircularProgressIndicator(color: c.onPrimary)
                           : Text(
-                              _currentPage == 2
+                              _currentPage == 3
                                   ? (widget.existing != null
                                         ? 'Save Changes'
                                         : 'Get Started')
@@ -640,6 +686,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
             _nameController,
             'Full Name',
             errorText: _nameError,
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) => _weightFocus.requestFocus(),
             onChanged: (_) {
               if (_nameError != null) setState(() => _nameError = null);
             },
@@ -695,6 +743,9 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
             _unitSystem == 'metric' ? 'Weight (kg)' : 'Weight (lbs)',
             isNumber: true,
             errorText: _weightError,
+            focusNode: _weightFocus,
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) => _heightFocus.requestFocus(),
             onChanged: (_) {
               if (_weightError != null) setState(() => _weightError = null);
             },
@@ -705,6 +756,9 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
             _unitSystem == 'metric' ? 'Height (cm)' : 'Height (inches)',
             isNumber: true,
             errorText: _heightError,
+            focusNode: _heightFocus,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => FocusScope.of(context).unfocus(),
             onChanged: (_) {
               if (_heightError != null) setState(() => _heightError = null);
             },
@@ -855,6 +909,46 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               ),
             ),
           ],
+          const SizedBox(height: 24),
+          _buildLabel('Physical Limitations'),
+          const SizedBox(height: 4),
+          Text(
+            'Tap an affected area to choose exercises to avoid.',
+            style: GoogleFonts.inter(color: c.muted, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          _buildLimitationChips(),
+          const SizedBox(height: 8),
+          Text(
+            'We avoid recommending higher-risk exercises for what you select. '
+            'This is not medical advice, consult a healthcare professional.',
+            style: GoogleFonts.inter(color: c.muted, fontSize: 12, height: 1.5),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepSchedule() {
+    final c = context.colors;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Your Schedule',
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+              color: c.onBackground,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'When and how often you train',
+            style: GoogleFonts.inter(color: c.muted),
+          ),
           const SizedBox(height: 24),
           _buildLabelWithHelp('Activity Level', _activityLevels),
           const SizedBox(height: 8),
@@ -1028,21 +1122,6 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 20),
-          _buildLabel('Physical Limitations'),
-          const SizedBox(height: 4),
-          Text(
-            'Tap an affected area to choose exercises to avoid.',
-            style: GoogleFonts.inter(color: c.muted, fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          _buildLimitationChips(),
-          const SizedBox(height: 8),
-          Text(
-            'We avoid recommending higher-risk exercises for what you select. '
-            'This is not medical advice, consult a healthcare professional.',
-            style: GoogleFonts.inter(color: c.muted, fontSize: 12, height: 1.5),
-          ),
         ],
       ),
     );
@@ -1142,13 +1221,29 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     bool isNumber = false,
     String? errorText,
     ValueChanged<String>? onChanged,
+    FocusNode? focusNode,
+    bool autofocus = false,
+    TextInputAction? textInputAction,
+    ValueChanged<String>? onSubmitted,
   }) {
     final c = context.colors;
+    OutlineInputBorder border(Color color, {double width = 1}) =>
+        OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: color, width: width),
+        );
     return TextField(
       controller: controller,
+      focusNode: focusNode,
+      autofocus: autofocus,
+      textInputAction: textInputAction,
+      textCapitalization: isNumber
+          ? TextCapitalization.none
+          : TextCapitalization.words,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
       style: TextStyle(color: c.onBackground),
       onChanged: onChanged,
+      onSubmitted: onSubmitted,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: GoogleFonts.inter(color: c.muted),
@@ -1159,10 +1254,10 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           color: const Color(0xFFFF6B6B),
           fontSize: 12,
         ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
-        ),
+        enabledBorder: border(c.border),
+        focusedBorder: border(AppColors.primary, width: 1.5),
+        errorBorder: border(AppColors.overTarget),
+        focusedErrorBorder: border(AppColors.overTarget, width: 1.5),
       ),
     );
   }

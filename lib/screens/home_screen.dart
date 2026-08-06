@@ -698,6 +698,28 @@ class _HomeDashboard extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
 
+                  if (caloriesEaten == 0)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.restaurant_menu_rounded,
+                            size: 15,
+                            color: c.muted,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Log your first meal to get started.',
+                            style: GoogleFonts.inter(
+                              color: c.muted,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
                   // Breakfast row
                   _buildMealRow(
                     context: context,

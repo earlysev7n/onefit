@@ -355,52 +355,120 @@ class _WeeklyAchievementsState extends State<_WeeklyAchievements> {
         ? AppColors.warning
         : AppColors.danger;
 
+    final hasData =
+        adherence > 0 ||
+        prov.workoutStreak > 0 ||
+        prov.workoutsDoneFor(_range) > 0 ||
+        prov.proteinConsistencyFor(_range) > 0;
+
     return _SectionCard(
       title: _titles[_range]!,
       trailing: _RangeSelector(
         value: _range,
         onChanged: (r) => setState(() => _range = r),
       ),
-      child: GridView.count(
-        crossAxisCount: context.responsiveColumns(
-          phone: 2,
-          tablet: 4,
-          large: 4,
-        ),
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        childAspectRatio:
-            context.responsiveColumns(phone: 2, tablet: 4, large: 4) >= 4
-            ? 1.6
-            : 2.0,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _StatTile(
-            label: 'Calorie Adherence',
-            value: '${adherence.round()}%',
-            color: adherenceColor,
-            icon: Icons.local_fire_department_rounded,
+          GridView.count(
+            crossAxisCount: context.responsiveColumns(
+              phone: 2,
+              tablet: 4,
+              large: 4,
+            ),
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio:
+                context.responsiveColumns(phone: 2, tablet: 4, large: 4) >= 4
+                ? 1.6
+                : 2.0,
+            children: [
+              _StatTile(
+                label: 'Calorie Adherence',
+                value: '${adherence.round()}%',
+                color: adherenceColor,
+                icon: Icons.local_fire_department_rounded,
+              ),
+              _StatTile(
+                label: 'Workout Streak',
+                value: '${prov.workoutStreak} days',
+                color: AppColors.purple,
+                icon: Icons.bolt_rounded,
+              ),
+              _StatTile(
+                label: 'Workouts Done',
+                value: '${prov.workoutsDoneFor(_range)} ${_periods[_range]}',
+                color: AppColors.orange,
+                icon: Icons.fitness_center_rounded,
+              ),
+              _StatTile(
+                label: 'Protein Consistency',
+                value: '${prov.proteinConsistencyFor(_range).round()}%',
+                color: AppColors.primary,
+                icon: Icons.egg_alt_rounded,
+              ),
+            ],
           ),
-          _StatTile(
-            label: 'Workout Streak',
-            value: '${prov.workoutStreak} days',
-            color: AppColors.purple,
-            icon: Icons.bolt_rounded,
-          ),
-          _StatTile(
-            label: 'Workouts Done',
-            value: '${prov.workoutsDoneFor(_range)} ${_periods[_range]}',
-            color: AppColors.orange,
-            icon: Icons.fitness_center_rounded,
-          ),
-          _StatTile(
-            label: 'Protein Consistency',
-            value: '${prov.proteinConsistencyFor(_range).round()}%',
-            color: AppColors.primary,
-            icon: Icons.egg_alt_rounded,
-          ),
+          if (!hasData)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(
+                'Complete a workout or log a meal to see your weekly stats.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  color: context.colors.muted,
+                  fontSize: 12,
+                ),
+              ),
+            ),
         ],
+      ),
+    );
+  }
+}
+
+/// Friendly stand-in shown in a chart card when there's no data yet, instead
+/// of an empty axis grid. Mirrors the muted, centered style of the Weight
+/// section's empty message so first-run cards feel consistent.
+class _ChartEmptyState extends StatelessWidget {
+  final double height;
+  final IconData icon;
+  final String message;
+  const _ChartEmptyState({
+    required this.height,
+    required this.icon,
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return SizedBox(
+      height: height,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: c.inactive, size: 28),
+            const SizedBox(height: 8),
+            Text(
+              'Not enough data yet',
+              style: GoogleFonts.inter(
+                color: c.muted,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(color: c.inactive, fontSize: 11),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -449,6 +517,8 @@ class _CalorieTrendChartState extends State<_CalorieTrendChart> {
       );
     }).toList();
 
+    final isEmpty = series.isEmpty || series.every((v) => v <= 0);
+
     return _SectionCard(
       title: 'Calorie Trend',
       subtitle: '${_subtitles[_range]} • Goal ${prov.baseCalorieGoal} kcal',
@@ -456,72 +526,81 @@ class _CalorieTrendChartState extends State<_CalorieTrendChart> {
         value: _range,
         onChanged: (r) => setState(() => _range = r),
       ),
-      child: SizedBox(
-        height: 160,
-        child: BarChart(
-          BarChartData(
-            maxY: maxY,
-            gridData: FlGridData(
-              show: true,
-              drawVerticalLine: false,
-              horizontalInterval: goal / 2,
-              getDrawingHorizontalLine: (_) =>
-                  FlLine(color: c.border, strokeWidth: 1),
-            ),
-            borderData: FlBorderData(show: false),
-            titlesData: FlTitlesData(
-              leftTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              rightTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              topTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              bottomTitles: AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: true,
-                  interval: 1,
-                  getTitlesWidget: (v, _) {
-                    final i = v.toInt();
-                    if (i < 0 || i >= labels.length) {
-                      return const SizedBox.shrink();
-                    }
-                    return Text(
-                      labels[i],
-                      style: GoogleFonts.inter(color: c.inactive, fontSize: 9),
-                    );
-                  },
-                ),
-              ),
-            ),
-            extraLinesData: ExtraLinesData(
-              horizontalLines: [
-                HorizontalLine(
-                  y: goal,
-                  color: AppColors.primary.withOpacity(0.4),
-                  strokeWidth: 1.5,
-                  dashArray: [6, 4],
-                ),
-              ],
-            ),
-            barGroups: bars,
-            barTouchData: BarTouchData(
-              touchTooltipData: BarTouchTooltipData(
-                getTooltipItem: (group, _, rod, _) => BarTooltipItem(
-                  '${rod.toY.round()} kcal',
-                  GoogleFonts.inter(
-                    color: c.onBackground,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 11,
+      child: isEmpty
+          ? const _ChartEmptyState(
+              height: 160,
+              icon: Icons.insights_rounded,
+              message: 'Log meals to see your calorie trend',
+            )
+          : SizedBox(
+              height: 160,
+              child: BarChart(
+                BarChartData(
+                  maxY: maxY,
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: goal / 2,
+                    getDrawingHorizontalLine: (_) =>
+                        FlLine(color: c.border, strokeWidth: 1),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  titlesData: FlTitlesData(
+                    leftTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 1,
+                        getTitlesWidget: (v, _) {
+                          final i = v.toInt();
+                          if (i < 0 || i >= labels.length) {
+                            return const SizedBox.shrink();
+                          }
+                          return Text(
+                            labels[i],
+                            style: GoogleFonts.inter(
+                              color: c.inactive,
+                              fontSize: 9,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  extraLinesData: ExtraLinesData(
+                    horizontalLines: [
+                      HorizontalLine(
+                        y: goal,
+                        color: AppColors.primary.withOpacity(0.4),
+                        strokeWidth: 1.5,
+                        dashArray: [6, 4],
+                      ),
+                    ],
+                  ),
+                  barGroups: bars,
+                  barTouchData: BarTouchData(
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipItem: (group, _, rod, _) => BarTooltipItem(
+                        '${rod.toY.round()} kcal',
+                        GoogleFonts.inter(
+                          color: c.onBackground,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -579,6 +658,8 @@ class _MacroTrendChartState extends State<_MacroTrendChart> {
     double maxY = series.isEmpty ? 10 : series.reduce(math.max);
     maxY = math.max(maxY * 1.2, 50.0);
 
+    final isEmpty = series.isEmpty || series.every((v) => v <= 0);
+
     return _SectionCard(
       title: 'Macro Trend',
       subtitle: _subtitles[_range],
@@ -625,53 +706,59 @@ class _MacroTrendChartState extends State<_MacroTrendChart> {
             }).toList(),
           ),
           const SizedBox(height: 14),
-          SizedBox(
-            height: 140,
-            child: LineChart(
-              LineChartData(
-                minY: 0,
-                maxY: maxY,
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  getDrawingHorizontalLine: (_) =>
-                      FlLine(color: c.border, strokeWidth: 1),
-                ),
-                borderData: FlBorderData(show: false),
-                titlesData: FlTitlesData(
-                  leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      interval: 1,
-                      getTitlesWidget: (v, _) {
-                        final i = v.toInt();
-                        if (i < 0 || i >= labels.length) {
-                          return const SizedBox.shrink();
-                        }
-                        return Text(
-                          labels[i],
-                          style: GoogleFonts.inter(
-                            color: c.inactive,
-                            fontSize: 9,
+          isEmpty
+              ? const _ChartEmptyState(
+                  height: 140,
+                  icon: Icons.show_chart_rounded,
+                  message: 'Log meals to see your macro trend',
+                )
+              : SizedBox(
+                  height: 140,
+                  child: LineChart(
+                    LineChartData(
+                      minY: 0,
+                      maxY: maxY,
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: false,
+                        getDrawingHorizontalLine: (_) =>
+                            FlLine(color: c.border, strokeWidth: 1),
+                      ),
+                      borderData: FlBorderData(show: false),
+                      titlesData: FlTitlesData(
+                        leftTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            interval: 1,
+                            getTitlesWidget: (v, _) {
+                              final i = v.toInt();
+                              if (i < 0 || i >= labels.length) {
+                                return const SizedBox.shrink();
+                              }
+                              return Text(
+                                labels[i],
+                                style: GoogleFonts.inter(
+                                  color: c.inactive,
+                                  fontSize: 9,
+                                ),
+                              );
+                            },
                           ),
-                        );
-                      },
+                        ),
+                      ),
+                      lineBarsData: [_line(spots, color)],
                     ),
                   ),
                 ),
-                lineBarsData: [_line(spots, color)],
-              ),
-            ),
-          ),
         ],
       ),
     );
