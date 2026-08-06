@@ -1098,10 +1098,12 @@ class _HomeDashboard extends StatelessWidget {
     final hasData = calories > 0;
 
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const NutritionScreen()),
-      ),
+      onTap: () {
+        onGoToPlans();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          plansScreenKey.currentState?.switchToMealTab();
+        });
+      },
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
