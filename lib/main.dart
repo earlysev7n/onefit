@@ -8,6 +8,7 @@ import 'services/firestore_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/profile_input_screen.dart';
+import 'screens/splash_screen.dart';
 import 'providers/plan_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/progress_provider.dart';
@@ -115,9 +116,8 @@ class _OneFitAppState extends State<OneFitApp> {
               // Rebuilds only the day pill's label; the actual screen refresh on
               // a day change is driven by _onDayChanged re-pushing a fresh
               // HomeScreen.
-              builder: (context, offset, _) => Stack(
-                children: [child!, if (changerOn) _DebugDayChanger()],
-              ),
+              builder: (context, offset, _) =>
+                  Stack(children: [child!, if (changerOn) _DebugDayChanger()]),
             ),
           ),
         );
@@ -224,34 +224,48 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
+  // Keep the launch splash on screen at least this long on cold boot so the
+  // logo doesn't just flash by when auth state resolves instantly.
+  static const _minSplash = Duration(milliseconds: 2200);
+  final DateTime _bootedAt = DateTime.now();
+  bool _handledFirstEvent = false;
+
   @override
   void initState() {
     super.initState();
-    AuthService().authStateChanges.listen((User? user) async {
-      if (user == null) {
-        // Signed out → go to Login, clear stack
-        navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-          (route) => false,
-        );
-      } else {
-        // Signed in → check if profile exists
-        final hasProfile = await FirestoreService().profileExists(user.uid);
-        navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (_) =>
-                hasProfile ? const HomeScreen() : const ProfileInputScreen(),
-          ),
-          (route) => false,
-        );
-      }
-    });
+    AuthService().authStateChanges.listen(_routeForAuthState);
+  }
+
+  Future<void> _routeForAuthState(User? user) async {
+    // Resolve where this auth state should land.
+    Widget destination;
+    if (user == null) {
+      // Signed out → Login.
+      destination = const LoginScreen();
+    } else {
+      // Signed in → Home if a profile exists, else onboarding.
+      final hasProfile = await FirestoreService().profileExists(user.uid);
+      destination = hasProfile
+          ? const HomeScreen()
+          : const ProfileInputScreen();
+    }
+
+    // Only the first (cold-boot) event honours the minimum splash time; later
+    // sign-in / sign-out transitions route immediately.
+    if (!_handledFirstEvent) {
+      _handledFirstEvent = true;
+      final remaining = _minSplash - DateTime.now().difference(_bootedAt);
+      if (remaining > Duration.zero) await Future.delayed(remaining);
+    }
+
+    navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => destination),
+      (route) => false,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
-    );
+    return const SplashScreen();
   }
 }

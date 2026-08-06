@@ -49,7 +49,10 @@ class _SplashScreenState extends State<SplashScreen>
               opacity: _fade,
               child: ScaleTransition(
                 scale: _scale,
-                child: Image.asset('assets/images/logo2.png', width: 200),
+                child: Image.asset(
+                  'assets/images/logo2.png',
+                  width: MediaQuery.of(context).size.width * 0.65,
+                ),
               ),
             ),
             const SizedBox(height: 48),
