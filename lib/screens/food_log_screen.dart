@@ -16,6 +16,7 @@ import '../models/meal_ingredient.dart';
 import '../app_clock.dart';
 import 'barcode_scan_screen.dart';
 import '../theme/app_colors.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class FoodLogScreen extends StatefulWidget {
   final String mealType;
@@ -64,7 +65,8 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   /// search never re-hits the network. Bounded to the last [_searchCacheMax]
   /// queries (insertion order = eviction order).
   static const int _searchCacheMax = 30;
-  final Map<String, ({List<_USDAFoodItem> items, int totalPages})> _searchCache = {};
+  final Map<String, ({List<_USDAFoodItem> items, int totalPages})>
+  _searchCache = {};
   String _lastQuery = '';
 
   int _searchPage = 1;
@@ -543,7 +545,10 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
         if (mounted) setState(() => _isLoadingMore = false);
         return;
       }
-      final more = _rankResults(_parseSearchResults(jsonDecode(response.body)), _lastQuery);
+      final more = _rankResults(
+        _parseSearchResults(jsonDecode(response.body)),
+        _lastQuery,
+      );
       final compliant = DietaryFilter.filter(
         more,
         restrictions,
@@ -564,15 +569,49 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   }
 
   static const _processedWords = {
-    'cracker', 'cake', 'cookie', 'bread', 'mix', 'flour', 'bran',
-    'noodle', 'oil', 'syrup', 'nugget', 'snack', 'bar', 'puff',
-    'chips', 'frozen', 'flavored', 'instant', 'cereal', 'candy',
-    'dessert', 'beverage', 'drink', 'dressing', 'spread', 'paste',
-    'powder', 'extract',
+    'cracker',
+    'cake',
+    'cookie',
+    'bread',
+    'mix',
+    'flour',
+    'bran',
+    'noodle',
+    'oil',
+    'syrup',
+    'nugget',
+    'snack',
+    'bar',
+    'puff',
+    'chips',
+    'frozen',
+    'flavored',
+    'instant',
+    'cereal',
+    'candy',
+    'dessert',
+    'beverage',
+    'drink',
+    'dressing',
+    'spread',
+    'paste',
+    'powder',
+    'extract',
   };
   static const _simpleWords = {
-    'raw', 'cooked', 'whole', 'plain', 'fluid', 'fresh', 'steamed',
-    'boiled', 'baked', 'roasted', 'grilled', 'unenriched', 'enriched',
+    'raw',
+    'cooked',
+    'whole',
+    'plain',
+    'fluid',
+    'fresh',
+    'steamed',
+    'boiled',
+    'baked',
+    'roasted',
+    'grilled',
+    'unenriched',
+    'enriched',
   };
 
   /// Re-ranks USDA results so generic staple foods surface before processed
@@ -585,7 +624,8 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
       final d = item.name.toLowerCase();
       int s = 0;
       final firstSeg = d.split(',').first.trim();
-      final exactMatch = firstSeg == q ||
+      final exactMatch =
+          firstSeg == q ||
           firstSeg == '${q}s' ||
           (q.endsWith('s') && firstSeg == q.substring(0, q.length - 1));
       if (exactMatch) {
@@ -606,6 +646,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
       s -= item.name.length ~/ 35;
       return s;
     }
+
     return List<_USDAFoodItem>.from(items)
       ..sort((a, b) => scoreItem(b).compareTo(scoreItem(a)));
   }
@@ -614,64 +655,63 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   List<_USDAFoodItem> _parseSearchResults(dynamic data) {
     final foods = data['foods'] as List? ?? [];
     return foods
-          .map((f) {
-            final nutrients = (f['foodNutrients'] as List? ?? []);
+        .map((f) {
+          final nutrients = (f['foodNutrients'] as List? ?? []);
 
-            // Returns value for a given USDA nutrient ID
-            double getN(int id) {
-              final n = nutrients.firstWhere(
-                (n) =>
-                    n['nutrientId'] == id ||
-                    n['nutrientNumber'] == id.toString(),
-                orElse: () => {},
-              );
-              return ((n['value'] ?? n['amount'] ?? 0) as num).toDouble();
-            }
-
-            // Foundation foods report energy under the Atwater IDs (2047/2048)
-            // instead of 1008 — fall back so they aren't dropped as 0 kcal.
-            double getEnergy() {
-              final kcal = getN(1008);
-              if (kcal > 0) return kcal;
-              final atwaterGeneral = getN(2047);
-              if (atwaterGeneral > 0) return atwaterGeneral;
-              return getN(2048);
-            }
-
-            return _USDAFoodItem(
-              fdcId: f['fdcId']?.toString() ?? '',
-              name: f['description'] ?? 'Unknown',
-              brandOwner: f['brandOwner'] ?? f['brandName'] ?? '',
-              servingSize: (f['servingSize'] ?? 100).toDouble(),
-              servingUnit: f['servingSizeUnit'] ?? 'g',
-              // Macros
-              calories: getEnergy(),
-              protein: getN(1003),
-              carbs: getN(1005),
-              fat: getN(1004),
-              fiber: getN(1079),
-              sugar: getN(1063),
-              sodium: getN(1093),
-              // Vitamins
-              vitaminA: getN(1106),
-              vitaminC: getN(1162),
-              vitaminD: getN(1114),
-              vitaminE: getN(1109),
-              vitaminK: getN(1185),
-              vitaminB6: getN(1175),
-              vitaminB12: getN(1178),
-              folate: getN(1177),
-              // Minerals
-              iron: getN(1089),
-              calcium: getN(1087),
-              magnesium: getN(1090),
-              potassium: getN(1092),
-              zinc: getN(1095),
-              phosphorus: getN(1091),
+          // Returns value for a given USDA nutrient ID
+          double getN(int id) {
+            final n = nutrients.firstWhere(
+              (n) =>
+                  n['nutrientId'] == id || n['nutrientNumber'] == id.toString(),
+              orElse: () => {},
             );
-          })
-          .where((f) => f.calories > 0)
-          .toList();
+            return ((n['value'] ?? n['amount'] ?? 0) as num).toDouble();
+          }
+
+          // Foundation foods report energy under the Atwater IDs (2047/2048)
+          // instead of 1008 — fall back so they aren't dropped as 0 kcal.
+          double getEnergy() {
+            final kcal = getN(1008);
+            if (kcal > 0) return kcal;
+            final atwaterGeneral = getN(2047);
+            if (atwaterGeneral > 0) return atwaterGeneral;
+            return getN(2048);
+          }
+
+          return _USDAFoodItem(
+            fdcId: f['fdcId']?.toString() ?? '',
+            name: f['description'] ?? 'Unknown',
+            brandOwner: f['brandOwner'] ?? f['brandName'] ?? '',
+            servingSize: (f['servingSize'] ?? 100).toDouble(),
+            servingUnit: f['servingSizeUnit'] ?? 'g',
+            // Macros
+            calories: getEnergy(),
+            protein: getN(1003),
+            carbs: getN(1005),
+            fat: getN(1004),
+            fiber: getN(1079),
+            sugar: getN(1063),
+            sodium: getN(1093),
+            // Vitamins
+            vitaminA: getN(1106),
+            vitaminC: getN(1162),
+            vitaminD: getN(1114),
+            vitaminE: getN(1109),
+            vitaminK: getN(1185),
+            vitaminB6: getN(1175),
+            vitaminB12: getN(1178),
+            folate: getN(1177),
+            // Minerals
+            iron: getN(1089),
+            calcium: getN(1087),
+            magnesium: getN(1090),
+            potassium: getN(1092),
+            zinc: getN(1095),
+            phosphorus: getN(1091),
+          );
+        })
+        .where((f) => f.calories > 0)
+        .toList();
   }
 
   Future<void> _quickAddUSDA(_USDAFoodItem food) async {
@@ -846,7 +886,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
               height: 48,
               child: OutlinedButton.icon(
                 onPressed: _scanBarcode,
-                icon: const Icon(Icons.qr_code_scanner, size: 20),
+                icon: const Icon(FontAwesomeIcons.barcode, size: 20),
                 label: Text(
                   'Scan Barcode',
                   style: GoogleFonts.spaceGrotesk(
@@ -920,9 +960,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   backgroundColor: AppColors.primary.withOpacity(0.12),
-                  side: BorderSide(
-                    color: AppColors.primary.withOpacity(0.35),
-                  ),
+                  side: BorderSide(color: AppColors.primary.withOpacity(0.35)),
                   deleteIcon: const Icon(Icons.close, size: 15),
                   deleteIconColor: c.muted,
                   onDeleted: () => setState(
@@ -1011,17 +1049,10 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
             ),
             TextButton.icon(
               onPressed: _loadHistory,
-              icon: Icon(
-                Icons.refresh,
-                color: c.muted,
-                size: 14,
-              ),
+              icon: Icon(Icons.refresh, color: c.muted, size: 14),
               label: Text(
                 'Refresh',
-                style: GoogleFonts.inter(
-                  color: c.muted,
-                  fontSize: 12,
-                ),
+                style: GoogleFonts.inter(color: c.muted, fontSize: 12),
               ),
               style: TextButton.styleFrom(padding: EdgeInsets.zero),
             ),
@@ -1120,10 +1151,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                   const SizedBox(height: 3),
                   Text(
                     '${food.totalCalories.round()} kcal · ${food.quantity.toStringAsFixed(0)} × ${food.servingSize.round()}${food.servingSizeUnit}',
-                    style: GoogleFonts.inter(
-                      color: c.muted,
-                      fontSize: 12,
-                    ),
+                    style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                   ),
                   const SizedBox(height: 6),
                   Wrap(
@@ -1170,11 +1198,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                           ),
                         ),
                       )
-                    : const Icon(
-                        Icons.add,
-                        color: AppColors.primary,
-                        size: 20,
-                      ),
+                    : const Icon(Icons.add, color: AppColors.primary, size: 20),
               ),
             ),
           ],
@@ -1230,16 +1254,12 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
       padding: const EdgeInsets.only(bottom: 10, top: 2),
       child: Row(
         children: [
-          Icon(Icons.filter_alt_outlined,
-              size: 14, color: c.muted),
+          Icon(Icons.filter_alt_outlined, size: 14, color: c.muted),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
               '$_hiddenCount $plural hidden by your dietary preferences',
-              style: GoogleFonts.inter(
-                color: c.muted,
-                fontSize: 12,
-              ),
+              style: GoogleFonts.inter(color: c.muted, fontSize: 12),
             ),
           ),
         ],
@@ -1277,10 +1297,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                   if (food.brandOwner.isNotEmpty)
                     Text(
                       food.brandOwner,
-                      style: GoogleFonts.inter(
-                        color: c.inactive,
-                        fontSize: 12,
-                      ),
+                      style: GoogleFonts.inter(color: c.inactive, fontSize: 12),
                     ),
                   const SizedBox(height: 6),
                   Wrap(
@@ -1294,22 +1311,13 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                         'P: ${food.protein.round()}g',
                         AppColors.primary,
                       ),
-                      _macroTag(
-                        'C: ${food.carbs.round()}g',
-                        AppColors.purple,
-                      ),
-                      _macroTag(
-                        'F: ${food.fat.round()}g',
-                        AppColors.yellow,
-                      ),
+                      _macroTag('C: ${food.carbs.round()}g', AppColors.purple),
+                      _macroTag('F: ${food.fat.round()}g', AppColors.yellow),
                     ],
                   ),
                   Text(
                     'per ${food.servingSize.round()}${food.servingUnit}',
-                    style: GoogleFonts.inter(
-                      color: c.subtle,
-                      fontSize: 11,
-                    ),
+                    style: GoogleFonts.inter(color: c.subtle, fontSize: 11),
                   ),
                 ],
               ),
@@ -1366,10 +1374,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                   maxLines: 2,
                 ),
                 const SizedBox(height: 16),
-                Text(
-                  'Portion (g)',
-                  style: GoogleFonts.inter(color: c.muted),
-                ),
+                Text('Portion (g)', style: GoogleFonts.inter(color: c.muted)),
                 const SizedBox(height: 8),
                 TextField(
                   controller: portionController,
@@ -1386,9 +1391,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                       borderSide: BorderSide.none,
                     ),
                     suffixText: 'g',
-                    suffixStyle: GoogleFonts.inter(
-                      color: c.muted,
-                    ),
+                    suffixStyle: GoogleFonts.inter(color: c.muted),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -1455,21 +1458,13 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _nutriPreview(
-                'Calories',
-                '${cal.round()}',
-                AppColors.orange,
-              ),
+              _nutriPreview('Calories', '${cal.round()}', AppColors.orange),
               _nutriPreview(
                 'Protein',
                 '${protein.round()}g',
                 AppColors.primary,
               ),
-              _nutriPreview(
-                'Carbs',
-                '${carbs.round()}g',
-                AppColors.purple,
-              ),
+              _nutriPreview('Carbs', '${carbs.round()}g', AppColors.purple),
               _nutriPreview('Fat', '${fat.round()}g', AppColors.yellow),
             ],
           ),
@@ -1485,11 +1480,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _nutriPreview(
-                  'Fiber',
-                  '${fiber.round()}g',
-                  AppColors.cyan,
-                ),
+                _nutriPreview('Fiber', '${fiber.round()}g', AppColors.cyan),
                 _nutriPreview(
                   'Sodium',
                   '${sodium.round()}mg',
