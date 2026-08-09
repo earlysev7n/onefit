@@ -786,11 +786,6 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
           style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.qr_code_scanner),
-            onPressed: _scanBarcode,
-            tooltip: 'Scan Barcode',
-          ),
           if (widget.pickerMode)
             TextButton(
               onPressed: _picked.isEmpty
