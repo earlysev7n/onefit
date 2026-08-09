@@ -208,6 +208,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
   // (duration = WorkoutExercise.timePerSetSeconds, session-budget fit). Pressing
   // "Done" ends the set early; reaching 0 auto-advances to the rest phase.
   bool _setRunning = false;
+  // After "Done" (or the work timer hitting 0) the set enters a logging
+  // sub-phase: the reps/weight inputs appear so the user records what they
+  // actually did, then taps "Log Set" to commit and move to rest. Inputs are NOT
+  // shown before the set — the ready phase is just the Start Set button.
+  bool _setLogging = false;
   int _setRemaining = 0;
   int _setTotal = 0;
   // Bodyweight exercises hide the weight field by default; tapping "Add weight"
@@ -1731,6 +1736,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
     _restRemaining = 0;
     _restTotal = 0;
     _setRunning = false;
+    _setLogging = false;
     _setRemaining = 0;
     _setTotal = 0;
     _waitingForReady = false;
@@ -1786,6 +1792,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
       _warmupRunning = false;
       _activeWarmupIndex = -1;
       _setRunning = false;
+      _setLogging = false;
       if (warmups.isEmpty) {
         // No warm-up available — go straight into the exercise flow.
         _warmupComplete = true;
@@ -1826,10 +1833,22 @@ class _WorkoutTabState extends State<_WorkoutTab>
     });
   }
 
-  // Ends the current set (early "Done" tap or timer reaching 0) → rest phase.
+  // Ends the current set's work timer (early "Done" tap or timer reaching 0) →
+  // logging sub-phase, where the user records the reps/weight they actually did.
   void _finishSet(WorkoutExercise we) {
     _setTimer?.cancel();
-    if (mounted) setState(() => _setRunning = false);
+    if (mounted) {
+      setState(() {
+        _setRunning = false;
+        _setLogging = true;
+      });
+    }
+  }
+
+  // Commits the logged reps/weight for the current set (via _doneSet →
+  // _captureActiveInput) and advances to rest / the next set.
+  void _logSet(WorkoutExercise we) {
+    if (mounted) setState(() => _setLogging = false);
     _doneSet(we);
   }
 
@@ -1849,6 +1868,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         _completedExercises.add(idx);
         _inRest = false;
         _setRunning = false;
+        _setLogging = false;
         _waitingForReady = true;
       });
       _scrollToActive();
@@ -1857,6 +1877,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         _completedExercises.add(idx);
         _inRest = false;
         _setRunning = false;
+        _setLogging = false;
       });
       _autoComplete(day);
     }
@@ -1874,6 +1895,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
               _activeSetNumber++;
               _inRest = false;
               _setRunning = false;
+              _setLogging = false;
             });
         },
       );
@@ -1913,6 +1935,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
       _activeExerciseIndex++;
       _activeSetNumber = 1;
       _setRunning = false;
+      _setLogging = false;
     });
     // Pre-fill the next exercise with its own progression target (clears when
     // there is none).
@@ -4546,10 +4569,44 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   ],
                 ),
                 const SizedBox(height: 16),
-                if (!_setRunning) ...[
-                  // Logging sub-phase: enter kg/reps, then "Start Set" (ready gate).
+                if (_setLogging) ...[
+                  // Logging sub-phase: after "Done", record the reps/weight the
+                  // user actually performed, then "Log Set" commits + advances.
+                  Text(
+                    'Log what you did',
+                    style: GoogleFonts.spaceGrotesk(
+                      color: c.onBackground,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   _buildWeightInput(we),
                   const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _logSet(we),
+                      icon: const Icon(Icons.check_rounded, size: 18),
+                      label: Text(
+                        'Log Set',
+                        style: GoogleFonts.spaceGrotesk(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: c.onPrimary,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ] else if (!_setRunning) ...[
+                  // Ready sub-phase: just Start Set — inputs come AFTER the set.
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
