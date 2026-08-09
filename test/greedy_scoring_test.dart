@@ -328,6 +328,46 @@ void main() {
               'for an Advanced user');
     });
 
+    test('user goalPriorities ranking changes the score', () {
+      // Same isolation exercise, same profile — only the feature ranking differs.
+      // Ranking "isolation" #1 (12 pts) must score strictly higher than ranking
+      // it last (2 pts).
+      final iso = _ex(
+        id: 'iso', name: 'Cable Curl', primaryMuscles: ['biceps'],
+        goals: const [], equipment: ['cable'], locations: ['gym'],
+      );
+      final isoFirst = _profile(goal: 'Muscle Gain', level: 'Beginner')
+          .copyWith(goalPriorities: const [
+        'isolation',
+        'compound',
+        'heavyLift',
+        'fullBody',
+        'highRep',
+      ]);
+      final isoLast = _profile(goal: 'Muscle Gain', level: 'Beginner')
+          .copyWith(goalPriorities: const [
+        'compound',
+        'heavyLift',
+        'fullBody',
+        'highRep',
+        'isolation',
+      ]);
+      expect(s(iso, isoFirst), greaterThan(s(iso, isoLast)),
+          reason: 'ranking a feature higher must raise the score of exercises '
+              'with that feature');
+    });
+
+    test('empty goalPriorities reproduces the goal default ordering', () {
+      // With no custom ranking, defaultGoalPriorities is used — so an explicit
+      // default-order list scores identically to an empty one.
+      final e = heavyCompound;
+      final empty = _profile(goal: 'Weight Loss', level: 'Beginner');
+      final explicitDefault = empty.copyWith(
+        goalPriorities: GreedyAlgorithm.defaultGoalPriorities('Weight Loss'),
+      );
+      expect(s(e, empty), s(e, explicitDefault));
+    });
+
     test('profile block never overpowers a single balance penalty (clamp)', () {
       // A maximally attractive exercise still loses to a fresh-muscle pick once
       // it has one day-hit: +45 clamp - 25 = 20 < a fresh +45. This is what

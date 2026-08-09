@@ -60,6 +60,16 @@ class UserProfile {
   /// empty for backward-compatible Firestore reads.
   final List<String> blockedExercises;
 
+  /// User's ranking of the greedy scorer's exercise "features"
+  /// (`compound`, `isolation`, `heavyLift`, `fullBody`, `highRep`), most
+  /// important first. The generator maps rank position → points
+  /// ([GreedyAlgorithm._rankPoints]: 12/9/6/4/2) so a higher-ranked feature
+  /// makes exercises with that trait score higher. Empty (the default) means
+  /// "use the selected goal's built-in order" via
+  /// [GreedyAlgorithm.defaultGoalPriorities], so legacy profiles keep today's
+  /// behavior. Set/edited in the profile screen under Fitness Goal.
+  final List<String> goalPriorities;
+
   /// When the account was created. Anchors the adaptive "week" so days **before**
   /// the account existed aren't read as under-eaten (which would inflate the
   /// daily goal) or as a completed training week. Nullable for backward-compatible
@@ -91,6 +101,7 @@ class UserProfile {
     this.lastAdaptationWeekId = '',
     this.pinnedExercises = const {},
     this.blockedExercises = const [],
+    this.goalPriorities = const [],
     this.createdAt,
   });
 
@@ -243,6 +254,7 @@ class UserProfile {
           ) ??
           const {},
       blockedExercises: List<String>.from(map['blockedExercises'] ?? const []),
+      goalPriorities: List<String>.from(map['goalPriorities'] ?? const []),
       createdAt: map['createdAt'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['createdAt'])
           : null,
@@ -274,6 +286,7 @@ class UserProfile {
       'lastAdaptationWeekId': lastAdaptationWeekId,
       'pinnedExercises': pinnedExercises,
       'blockedExercises': blockedExercises,
+      'goalPriorities': goalPriorities,
       'createdAt': createdAt?.millisecondsSinceEpoch,
     };
   }
@@ -302,6 +315,7 @@ class UserProfile {
     String? lastAdaptationWeekId,
     Map<String, List<String>>? pinnedExercises,
     List<String>? blockedExercises,
+    List<String>? goalPriorities,
     DateTime? createdAt,
   }) {
     return UserProfile(
@@ -328,6 +342,7 @@ class UserProfile {
       lastAdaptationWeekId: lastAdaptationWeekId ?? this.lastAdaptationWeekId,
       pinnedExercises: pinnedExercises ?? this.pinnedExercises,
       blockedExercises: blockedExercises ?? this.blockedExercises,
+      goalPriorities: goalPriorities ?? this.goalPriorities,
       createdAt: createdAt ?? this.createdAt,
     );
   }

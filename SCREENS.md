@@ -127,7 +127,8 @@ Navigation uses `navigatorKey` (a global `GlobalKey<NavigatorState>`) with `push
 #### Step 2 — Your Fitness
 | Field | Widget | Notes |
 |---|---|---|
-| Fitness goal | Chip group | Weight Loss / Muscle Gain / Endurance / General Fitness |
+| Fitness goal | Chip group | Weight Loss / Muscle Gain / Endurance / General Fitness. Changing it re-seeds **Exercise Priority** to that goal's default order. |
+| Exercise priority | **Drag-to-rank list + "?" info** | Reorderable list of the five greedy-scorer features (Compound / Isolation / Heavy Lift / Full Body / High Rep) with a live `+points` badge per row (rank position → `GreedyAlgorithm.rankPoints` = 12/9/6/4/2). Seeded from `GreedyAlgorithm.defaultGoalPriorities(goal)`; the order saves to `UserProfile.goalPriorities` and the generator's `_scoreExercise` reads it. Empty (legacy) → goal default. |
 | Experience level | Chip group | Beginner / Intermediate / Advanced |
 | Workout location | Toggle chip | Home / Gym — drives equipment filter |
 | Equipment available | Multi-chip (Home only) | Bodyweight (locked/always-on), Dumbbells, Kettlebells, Resistance Bands, Pull-up Bar, Barbell, Bench, Home Gym. Bodyweight can't be deselected — it's the guaranteed baseline and is always saved (`{'Bodyweight', ...selected}`). Selecting **Home Gym** (= squat/power rack) auto-adds Barbell + Bench. Gym saves `[]` (all equipment assumed). The rack flag (`Home Gym`) is what unlocks barbell squat/bench-press; a bare Barbell chip only unlocks floor-start barbell lifts (deadlift/row/OHP). |

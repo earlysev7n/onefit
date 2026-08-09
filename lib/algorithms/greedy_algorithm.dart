@@ -260,33 +260,84 @@ class GreedyAlgorithm {
   //  stays fixed). Reuses isStapleCompound / isHeavyCompound / difficultyAllowed
   //  / _goalKey. See the goal/experience/time tables below.
 
-  // Goal weight columns keyed by _goalKey(profile.fitnessGoal). The app has no
-  // "Strength" goal — its heavy-compound/overload intent lives in the
-  // muscle_gain and general columns (higher heavyLift/compound weights).
+  // Goal weight columns
   static const Map<String, Map<String, int>> _goalWeights = {
     // feature: goalMatch compound isolation heavyLift fullBody highRep
     'weight_loss': {
-      'goalMatch': 15, 'compound': 12, 'isolation': 2,
-      'heavyLift': 4, 'fullBody': 10, 'highRep': 6,
+      'goalMatch': 15,
+      'compound': 12,
+      'isolation': 2,
+      'heavyLift': 4,
+      'fullBody': 10,
+      'highRep': 6,
     },
     'muscle_gain': {
-      'goalMatch': 15, 'compound': 10, 'isolation': 6,
-      'heavyLift': 8, 'fullBody': 4, 'highRep': 2,
+      'goalMatch': 15,
+      'compound': 10,
+      'isolation': 6,
+      'heavyLift': 8,
+      'fullBody': 4,
+      'highRep': 2,
     },
     'endurance': {
-      'goalMatch': 15, 'compound': 6, 'isolation': 4,
-      'heavyLift': 0, 'fullBody': 6, 'highRep': 12,
+      'goalMatch': 15,
+      'compound': 6,
+      'isolation': 4,
+      'heavyLift': 0,
+      'fullBody': 6,
+      'highRep': 12,
     },
     'general': {
-      'goalMatch': 15, 'compound': 10, 'isolation': 4,
-      'heavyLift': 6, 'fullBody': 6, 'highRep': 4,
+      'goalMatch': 15,
+      'compound': 10,
+      'isolation': 4,
+      'heavyLift': 6,
+      'fullBody': 6,
+      'highRep': 4,
     },
   };
 
-  // Graduated experience score (replaces the old flat +10). Keyed by the user's
-  // level then the exercise's difficulty. Missing combos score 0 — this mirrors
-  // the difficultyAllowed gate (a disallowed exercise is filtered out of the
-  // pool anyway; the 0 is a belt-and-braces fallback).
+  // The five reorderable exercise "features" the user can rank per goal, and
+  // their display names. `goalMatch` is intentionally NOT here — it stays a
+  // fixed +15 bonus in _scoreExercise (awarded when an exercise is tagged for
+  // the user's goal), independent of feature ranking.
+  static const List<String> goalFeatureKeys = [
+    'compound',
+    'isolation',
+    'heavyLift',
+    'fullBody',
+    'highRep',
+  ];
+
+  static const Map<String, String> goalFeatureLabels = {
+    'compound': 'Compound',
+    'isolation': 'Isolation',
+    'heavyLift': 'Heavy Lift',
+    'fullBody': 'Full Body',
+    'highRep': 'High Rep',
+  };
+
+  // Rank position → points. The user's #1 feature earns 12, then 9/6/4/2 down
+  // the list. Kept inside the range the scorer was tuned for so the
+  // Goal+Experience+Time block stays under its [-20, +45] clamp and the
+  // variety/balance safeguards (day-focus +50, repeat-muscle penalties) are
+  // untouched.
+  static const List<int> rankPoints = [12, 9, 6, 4, 2];
+
+  /// Default feature ranking for a goal, derived from [_goalWeights] so an
+  /// untouched profile reproduces today's *ordering* of importance. Sorts the
+  /// goal's feature weights (excluding `goalMatch`) high→low and returns the
+  /// feature keys. Shared by the profile UI (to seed the reorderable list) and
+  /// [_scoreExercise] (fallback when the user hasn't customised the order).
+  static List<String> defaultGoalPriorities(String fitnessGoal) {
+    final goalKey = _goalKey(fitnessGoal);
+    final weights = _goalWeights[goalKey] ?? _goalWeights['general']!;
+    final keys = List<String>.from(goalFeatureKeys);
+    keys.sort((a, b) => (weights[b] ?? 0).compareTo(weights[a] ?? 0));
+    return keys;
+  }
+
+  // Graduated experience score
   static const Map<String, Map<String, int>> _experienceWeights = {
     'Beginner': {'beginner': 8},
     'Intermediate': {'beginner': 4, 'intermediate': 8},
@@ -295,9 +346,7 @@ class GreedyAlgorithm {
 
   // Time-suitability score from sessionMinutes. Short sessions favour efficient
   // compounds and penalise isolation/high-setup; long sessions open up accessory
-  // and isolation work. This is the FIRST time sessionMinutes affects ranking —
-  // it still independently controls the per-day exercise COUNT via
-  // _fitExerciseCount (unchanged).
+  // and isolation work.
   static int _timeScore(
     int sessionMinutes, {
     required bool compound,
@@ -313,15 +362,15 @@ class GreedyAlgorithm {
       s += bucket == 'short'
           ? 6
           : bucket == 'medium'
-              ? 2
-              : 0;
+          ? 2
+          : 0;
     }
     if (isolation) {
       s += bucket == 'short'
           ? -4
           : bucket == 'medium'
-              ? 0
-              : 4;
+          ? 0
+          : 4;
     }
     if (highSetup && bucket == 'short') s -= 3;
     return s;
@@ -344,24 +393,37 @@ class GreedyAlgorithm {
     final isolation = !compound;
     final heavyLift = isHeavyCompound(exercise);
     final fullBody =
-        (exercise.primaryMuscles.length + exercise.secondaryMuscles.length) >= 4;
+        (exercise.primaryMuscles.length + exercise.secondaryMuscles.length) >=
+        4;
     final highRep = exercise.goals.contains('endurance');
 
     // ── Profile-driven block: Goal + Experience + Time ──────────────────────
+    // Feature weights come from the user's ranking (rank position → _rankPoints
+    // 12/9/6/4/2). Empty goalPriorities falls back to the goal's built-in order
+    // so legacy profiles are unchanged. goalMatch stays a fixed +15 bonus,
+    // separate from the reorderable features.
     final goalKey = _goalKey(profile.fitnessGoal);
-    final g = _goalWeights[goalKey] ?? _goalWeights['general']!;
+    final priorities = profile.goalPriorities.isNotEmpty
+        ? profile.goalPriorities
+        : defaultGoalPriorities(profile.fitnessGoal);
+    int rankWeight(String feature) {
+      final i = priorities.indexOf(feature);
+      return (i >= 0 && i < rankPoints.length) ? rankPoints[i] : 0;
+    }
+
     int goalScore = 0;
-    if (exercise.goals.contains(goalKey)) goalScore += g['goalMatch']!;
-    if (compound) goalScore += g['compound']!;
-    if (isolation) goalScore += g['isolation']!;
-    if (heavyLift) goalScore += g['heavyLift']!;
-    if (fullBody) goalScore += g['fullBody']!;
-    if (highRep) goalScore += g['highRep']!;
+    if (exercise.goals.contains(goalKey)) goalScore += 15; // goalMatch — fixed
+    if (compound) goalScore += rankWeight('compound');
+    if (isolation) goalScore += rankWeight('isolation');
+    if (heavyLift) goalScore += rankWeight('heavyLift');
+    if (fullBody) goalScore += rankWeight('fullBody');
+    if (highRep) goalScore += rankWeight('highRep');
 
     int expScore = 0;
     if (difficultyAllowed(exercise.difficulty, profile.experienceLevel)) {
       expScore =
-          _experienceWeights[profile.experienceLevel]?[exercise.difficulty] ?? 0;
+          _experienceWeights[profile.experienceLevel]?[exercise.difficulty] ??
+          0;
     }
 
     final timeScore = _timeScore(
@@ -869,7 +931,7 @@ class GreedyAlgorithm {
       const ['pectorals', 'lats', 'quads', 'glutes', 'abs', 'delts'];
 
   //  HELPERS
-  String _goalKey(String goal) {
+  static String _goalKey(String goal) {
     switch (goal) {
       case 'Weight Loss':
         return 'weight_loss';

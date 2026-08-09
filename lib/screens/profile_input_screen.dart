@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
+import '../algorithms/greedy_algorithm.dart';
 import '../app_clock.dart';
 import '../data/physical_limitations.dart';
 import '../models/user_profile.dart';
@@ -49,6 +50,12 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   int _workoutDays = 3;
   int _sessionMinutes = 45;
   String _workoutSplit = 'Full Body Training';
+  // User's ranking of the greedy scorer's exercise features, most important
+  // first. Seeded from the selected goal's default order; re-seeded when the
+  // goal changes; editable via the drag list under Fitness Goal.
+  List<String> _goalPriorities = GreedyAlgorithm.defaultGoalPriorities(
+    'Weight Loss',
+  );
   // Common physical limitations that hard-exclude contraindicated exercises.
   List<String> _physicalLimitations = [];
   // Specific movements the user opted to avoid within a selected area.
@@ -173,6 +180,17 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
       _gender = p.gender;
       _unitSystem = p.unitSystem;
       _fitnessGoal = p.fitnessGoal;
+      // Restore the saved feature ranking, or seed the goal's default order.
+      // Guard against stale/partial saved lists by ensuring it holds exactly the
+      // current feature keys.
+      _goalPriorities =
+          (p.goalPriorities.isNotEmpty &&
+              p.goalPriorities.toSet().containsAll(
+                GreedyAlgorithm.goalFeatureKeys,
+              ) &&
+              p.goalPriorities.length == GreedyAlgorithm.goalFeatureKeys.length)
+          ? List<String>.from(p.goalPriorities)
+          : GreedyAlgorithm.defaultGoalPriorities(p.fitnessGoal);
       _experienceLevel = p.experienceLevel;
       _workoutLocation = p.workoutLocation;
       // Old Gym profiles store []; ensure Bodyweight is present so the locked
@@ -432,6 +450,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               workoutDaysPerWeek: _workoutDays,
               sessionMinutes: _sessionMinutes,
               workoutSplit: _workoutSplit,
+              goalPriorities: _goalPriorities,
             )
           : UserProfile(
               uid: FirebaseAuth.instance.currentUser!.uid,
@@ -453,6 +472,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               workoutDaysPerWeek: _workoutDays,
               sessionMinutes: _sessionMinutes,
               workoutSplit: _workoutSplit,
+              goalPriorities: _goalPriorities,
               createdAt: appNow(),
             );
       await profileProvider.save(profile);
@@ -827,10 +847,37 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           _buildChipGroup(
             _goals,
             _fitnessGoal,
-            (v) => setState(() => _fitnessGoal = v),
+            // Switching goal re-seeds the priority order to that goal's default.
+            (v) => setState(() {
+              _fitnessGoal = v;
+              _goalPriorities = GreedyAlgorithm.defaultGoalPriorities(v);
+            }),
           ),
           const SizedBox(height: 24),
-          _buildLabel('Experience Level'),
+          _buildLabelWithHelp('Exercise Priority', _goalPriorityHelp()),
+          const SizedBox(height: 4),
+          Text(
+            'Drag to rank what matters most. Higher = more points, so the '
+            'generator favours those exercises.',
+            style: GoogleFonts.inter(color: c.muted, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          _buildGoalPriorityList(),
+          const SizedBox(height: 24),
+          _buildLabelWithHelp('Experience Level', const {
+            'How it works':
+                'Exercises matched to your level score higher; moves above your '
+                    'level are filtered out entirely (not just down-ranked).',
+            'Beginner':
+                'Only beginner-level exercises are used, and they score +8. '
+                    'Intermediate and advanced moves are removed.',
+            'Intermediate':
+                'Intermediate moves score +8, beginner moves +4. Advanced moves '
+                    'are removed.',
+            'Advanced':
+                'Advanced moves score +10, intermediate +6, beginner +2 — the '
+                    'full catalogue is available.',
+          }),
           const SizedBox(height: 8),
           _buildChipGroup(
             _levels,
@@ -1015,11 +1062,17 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
             }),
           ),
           const SizedBox(height: 24),
-          _buildLabelWithHelp('Time per Session', {
-            '30 min': 'Short — fewer exercises per day.',
-            '45 min': 'Standard session length.',
-            '60 min': 'Longer — more exercises per day.',
-            '90 min': 'Extended — maximum volume per day.',
+          _buildLabelWithHelp('Time per Session', const {
+            'How it works':
+                'Session length sets how many exercises per day, and also shifts '
+                    'scoring toward moves that fit the time.',
+            '30 min':
+                'Short — fewer exercises. Compounds +6, isolation −4, '
+                    'heavy-setup lifts −3: efficient full-body moves win.',
+            '45 min': 'Standard — compounds get +2, isolation neutral.',
+            '60 min': 'Longer — compounds +2, isolation neutral.',
+            '90 min':
+                'Extended — most exercises; isolation/accessory work rewarded +4.',
           }),
           const SizedBox(height: 8),
           _buildChipGroup(
@@ -1266,6 +1319,92 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     text,
     style: GoogleFonts.inter(color: context.colors.muted, fontSize: 14),
   );
+
+  /// Help content for the Exercise Priority list — explains the 12/9/6/4/2 scale
+  /// (and why) plus what each feature means. Keyed for [_showHelpSheet].
+  Map<String, String> _goalPriorityHelp() => {
+    'How scoring works':
+        'The generator scores every candidate exercise and picks the highest. '
+            'Your #1 priority adds 12 points, then 9, 6, 4, 2 down the list — so '
+            'a higher-ranked trait makes exercises with that trait win more '
+            'often. The steps stay inside the range the algorithm is tuned for, '
+            'so re-ranking changes emphasis without breaking variety (day-focus '
+            'and repeat-muscle balancing still apply). A separate +15 is always '
+            'added when an exercise is tagged for your goal.',
+    'Compound': 'Multi-joint moves that work several muscles (e.g. squat, row).',
+    'Isolation': 'Single-muscle moves (e.g. biceps curl, lateral raise).',
+    'Heavy Lift': 'Heavy barbell compounds meant for low-rep strength work.',
+    'Full Body': 'Moves that work four or more muscles at once.',
+    'High Rep': 'Endurance-oriented, higher-repetition exercises.',
+  };
+
+  /// Drag-to-rank list of the five exercise features. Position → points
+  /// (12/9/6/4/2); the badge updates live as the user reorders. Feeds
+  /// [UserProfile.goalPriorities], which the greedy scorer reads.
+  Widget _buildGoalPriorityList() {
+    final c = context.colors;
+    return ReorderableListView(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      buildDefaultDragHandles: false,
+      onReorder: (oldIndex, newIndex) {
+        setState(() {
+          if (newIndex > oldIndex) newIndex -= 1;
+          final key = _goalPriorities.removeAt(oldIndex);
+          _goalPriorities.insert(newIndex, key);
+        });
+      },
+      children: [
+        for (int i = 0; i < _goalPriorities.length; i++)
+          ReorderableDragStartListener(
+            key: ValueKey(_goalPriorities[i]),
+            index: i,
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: c.inputFill,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '+${GreedyAlgorithm.rankPoints[i]}',
+                      style: GoogleFonts.inter(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      GreedyAlgorithm.goalFeatureLabels[_goalPriorities[i]] ??
+                          _goalPriorities[i],
+                      style: GoogleFonts.inter(
+                        color: c.onBackground,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.drag_handle, color: c.muted, size: 20),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 
   /// Section label with a small "?" info button. Tapping it opens a bottom
   /// sheet that explains each option in [help] (name → one-line description).
