@@ -397,4 +397,48 @@ void main() {
           reason: 'one day-hit costs a fixed -25 regardless of attractiveness');
     });
   });
+
+  group('explainSelection (why-this-exercise reasons)', () {
+    final compoundGoalMatch = _ex(
+      id: 'sq', name: 'Barbell Squat', primaryMuscles: ['quads'],
+      secondaryMuscles: ['glutes', 'hamstrings'], difficulty: 'beginner',
+      goals: ['muscle_gain'],
+    );
+
+    test('lists the goal match and the top-ranked feature priority', () {
+      final p = _profile(goal: 'Muscle Gain', level: 'Beginner').copyWith(
+        goalPriorities: const [
+          'compound',
+          'heavyLift',
+          'fullBody',
+          'highRep',
+          'isolation',
+        ],
+      );
+      final reasons =
+          GreedyAlgorithm.explainSelection(compoundGoalMatch, p, 'Legs');
+      expect(reasons, isNotEmpty);
+      expect(reasons.any((r) => r.contains('Muscle Gain goal')), isTrue);
+      expect(reasons.any((r) => r.contains('Compound') && r.contains('#1')),
+          isTrue,
+          reason: 'compound ranked #1 must be stated as the #1 priority');
+    });
+
+    test('re-ranking a feature changes its stated rank/points', () {
+      final low = _profile(goal: 'Muscle Gain', level: 'Beginner').copyWith(
+        goalPriorities: const [
+          'isolation',
+          'heavyLift',
+          'fullBody',
+          'highRep',
+          'compound',
+        ],
+      );
+      final reasons =
+          GreedyAlgorithm.explainSelection(compoundGoalMatch, low, 'Legs');
+      expect(reasons.any((r) => r.contains('Compound') && r.contains('#5')),
+          isTrue,
+          reason: 'compound ranked last must be stated as the #5 priority');
+    });
+  });
 }

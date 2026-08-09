@@ -1057,6 +1057,99 @@ class _WorkoutTabState extends State<_WorkoutTab>
     );
   }
 
+  /// Small "?" info button that explains why this exercise was generated for
+  /// the user (focus, goal, exercise-priority ranking, experience level).
+  Widget _whyButton(WorkoutExercise we, String focus) {
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+      onPressed: () => _showWhySheet(we, focus),
+      tooltip: 'Why this exercise?',
+      icon: Icon(Icons.info_outline, size: 18, color: context.colors.muted),
+    );
+  }
+
+  void _showWhySheet(WorkoutExercise we, String focus) {
+    final profile = _profile;
+    if (profile == null) return;
+    final reasons = GreedyAlgorithm.explainSelection(
+      we.exercise,
+      profile,
+      focus,
+    );
+    final c = context.colors;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Why this exercise?',
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: c.onBackground,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                we.exercise.name,
+                style: GoogleFonts.inter(color: c.muted, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              for (final r in reasons)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.check_circle_rounded,
+                        color: AppColors.primary,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          r,
+                          style: GoogleFonts.inter(
+                            color: c.onBackground,
+                            fontSize: 13,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 4),
+              Text(
+                'Your location, equipment and any physical limitations are '
+                'applied as filters first — every exercise shown already fits '
+                'those.',
+                style: GoogleFonts.inter(
+                  color: c.muted,
+                  fontSize: 12,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Inline working-weight + reps input shown on the active exercise card,
   /// pre-hinted with the last logged top set as the progressive-overload target.
   Widget _buildWeightInput(WorkoutExercise we) {
@@ -4482,6 +4575,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                     ],
                   ),
                 ),
+                if (focus.isNotEmpty) _whyButton(we, focus),
                 if (!isActive && focus.isNotEmpty) _pinButton(focus, ex),
                 _diffBadge(ex.difficulty),
               ],

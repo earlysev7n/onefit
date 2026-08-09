@@ -436,6 +436,83 @@ class GreedyAlgorithm {
     dayHits: dayHits,
   );
 
+  /// Plain-language reasons why [exercise] was placed in a [focus] day for
+  /// [profile]. Mirrors the real scoring in [_scoreExercise] so the "Why this
+  /// exercise?" sheet never drifts from what actually drives generation. Pure —
+  /// reads only the profile/exercise. Ordered most-important first.
+  static List<String> explainSelection(
+    Exercise exercise,
+    UserProfile profile,
+    String focus,
+  ) {
+    final reasons = <String>[];
+
+    // Pinned anchor (force-included first by the generator).
+    final pinned = (profile.pinnedExercises[focus] ?? const <String>[])
+        .contains(exercise.id);
+    if (pinned) {
+      reasons.add('You pinned this as an anchor lift for $focus.');
+    }
+
+    // Day focus — the +50 structural anchor / hard pool constraint.
+    final focusMuscles = musclesForFocus(focus);
+    if (exercise.primaryMuscles.any(focusMuscles.contains)) {
+      reasons.add("Targets today's focus ($focus).");
+    } else if (exercise.secondaryMuscles.any(focusMuscles.contains)) {
+      reasons.add("Supports today's $focus focus as a secondary mover.");
+    }
+
+    // Goal-tag match — fixed +15.
+    final goalKey = _goalKey(profile.fitnessGoal);
+    if (exercise.goals.contains(goalKey)) {
+      reasons.add('Matches your ${profile.fitnessGoal} goal (+15).');
+    }
+
+    // Feature priorities — the user's Exercise Priority ranking.
+    final priorities = profile.goalPriorities.isNotEmpty
+        ? profile.goalPriorities
+        : defaultGoalPriorities(profile.fitnessGoal);
+    final compound = isStapleCompound(exercise) || isHeavyCompound(exercise);
+    final features = <String>[
+      compound ? 'compound' : 'isolation',
+      if (isHeavyCompound(exercise)) 'heavyLift',
+      if ((exercise.primaryMuscles.length + exercise.secondaryMuscles.length) >=
+          4)
+        'fullBody',
+      if (exercise.goals.contains('endurance')) 'highRep',
+    ];
+    final featureReasons = <({int points, String text})>[];
+    for (final f in features) {
+      final rank = priorities.indexOf(f);
+      if (rank >= 0 && rank < rankPoints.length) {
+        final label = goalFeatureLabels[f] ?? f;
+        featureReasons.add((
+          points: rankPoints[rank],
+          text:
+              "It's a $label move — your #${rank + 1} exercise priority "
+              '(+${rankPoints[rank]}).',
+        ));
+      }
+    }
+    featureReasons.sort((a, b) => b.points.compareTo(a.points));
+    reasons.addAll(featureReasons.map((e) => e.text));
+
+    // Experience level — graduated bonus for level-appropriate difficulty.
+    if (difficultyAllowed(exercise.difficulty, profile.experienceLevel)) {
+      final w =
+          _experienceWeights[profile.experienceLevel]?[exercise.difficulty] ??
+          0;
+      if (w > 0) {
+        reasons.add('Suited to your ${profile.experienceLevel} level (+$w).');
+      }
+    }
+
+    if (reasons.isEmpty) {
+      reasons.add('Chosen to round out your $focus session while keeping variety.');
+    }
+    return reasons;
+  }
+
   //  Main:
   List<WorkoutDay> generatePlan({
     required List<Exercise> allExercises,
