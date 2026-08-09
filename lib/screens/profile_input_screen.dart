@@ -156,6 +156,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     'Balanced',
   ];
   final List<String> _allergyOptions = [
+    'None',
     'Peanuts',
     'Tree Nuts',
     'Eggs',
@@ -1223,9 +1224,15 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
             _allergyOptions,
             _foodAllergies,
             (v) => setState(() {
-              _foodAllergies.contains(v)
-                  ? _foodAllergies.remove(v)
-                  : _foodAllergies.add(v);
+              if (v == 'None') {
+                _foodAllergies.removeWhere(_allergyOptions.contains);
+                _foodAllergies.add('None');
+              } else {
+                _foodAllergies.remove('None');
+                _foodAllergies.contains(v)
+                    ? _foodAllergies.remove(v)
+                    : _foodAllergies.add(v);
+              }
             }),
           ),
           const SizedBox(height: 20),
