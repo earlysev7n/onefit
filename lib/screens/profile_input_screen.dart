@@ -1064,15 +1064,13 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           const SizedBox(height: 24),
           _buildLabelWithHelp('Time per Session', const {
             'How it works':
-                'Session length sets how many exercises per day, and also shifts '
-                    'scoring toward moves that fit the time.',
-            '30 min':
-                'Short — fewer exercises. Compounds +6, isolation −4, '
-                    'heavy-setup lifts −3: efficient full-body moves win.',
-            '45 min': 'Standard — compounds get +2, isolation neutral.',
-            '60 min': 'Longer — compounds +2, isolation neutral.',
-            '90 min':
-                'Extended — most exercises; isolation/accessory work rewarded +4.',
+                'Session length sets how many exercises you get per day — it '
+                    'does not change which exercises are picked. That is decided '
+                    'by your Exercise Priority and Experience Level.',
+            '30 min': 'Short — fewest exercises per day.',
+            '45 min': 'Standard — a few more exercises.',
+            '60 min': 'Longer — more exercises per day.',
+            '90 min': 'Extended — most exercises per day.',
           }),
           const SizedBox(height: 8),
           _buildChipGroup(

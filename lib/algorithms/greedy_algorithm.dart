@@ -252,13 +252,15 @@ class GreedyAlgorithm {
   //  hard filters (limitation ban / gender / location / equipment / experience
   //  gate), so those carry no score weight (they'd be constants). Two terms are
   //  fixed STRUCTURAL anchors: the day-focus bonus (+50) and the muscle-balance
-  //  penalties (-25 day / -15 week). The middle block — Goal + Experience + Time
-  //  — is selected from the user's UserProfile so the same eligible pool ranks
-  //  differently per user, and is CLAMPED to [-20, +45] so it can never overpower
-  //  the balance penalties (ceiling +45 == the old flat-bonus max 15+12+8+10, so
-  //  variety behaviour is unchanged and the "wrist-curl-on-leg-day" regression
-  //  stays fixed). Reuses isStapleCompound / isHeavyCompound / difficultyAllowed
-  //  / _goalKey. See the goal/experience/time tables below.
+  //  penalties (-25 day / -15 week). The middle block — Goal (user-ranked
+  //  Exercise Priority) + Experience — is selected from the user's UserProfile so
+  //  the same eligible pool ranks differently per user, and is CLAMPED to
+  //  [-20, +45] so it can never overpower the balance penalties. sessionMinutes
+  //  is deliberately NOT a ranking term — it only sizes the exercise COUNT via
+  //  _fitExerciseCount, so a short session gives fewer exercises without
+  //  overriding which TYPE the user prioritised. Reuses isStapleCompound /
+  //  isHeavyCompound / difficultyAllowed / _goalKey. See the goal/experience
+  //  tables below.
 
   // Goal weight columns
   static const Map<String, Map<String, int>> _goalWeights = {
@@ -344,37 +346,10 @@ class GreedyAlgorithm {
     'Advanced': {'beginner': 2, 'intermediate': 6, 'advanced': 10},
   };
 
-  // Time-suitability score from sessionMinutes. Short sessions favour efficient
-  // compounds and penalise isolation/high-setup; long sessions open up accessory
-  // and isolation work.
-  static int _timeScore(
-    int sessionMinutes, {
-    required bool compound,
-    required bool isolation,
-    required bool highSetup,
-  }) {
-    // Real session values are 30 / 45 / 60 / 90.
-    final bucket = sessionMinutes < 40
-        ? 'short'
-        : (sessionMinutes > 70 ? 'long' : 'medium');
-    int s = 0;
-    if (compound) {
-      s += bucket == 'short'
-          ? 6
-          : bucket == 'medium'
-          ? 2
-          : 0;
-    }
-    if (isolation) {
-      s += bucket == 'short'
-          ? -4
-          : bucket == 'medium'
-          ? 0
-          : 4;
-    }
-    if (highSetup && bucket == 'short') s -= 3;
-    return s;
-  }
+  // Note: sessionMinutes deliberately does NOT influence ranking. It drives the
+  // per-day exercise COUNT via _fitExerciseCount only. Ranking is decided by the
+  // user's Exercise Priority (goalScore) + experience, so a short session gives
+  // FEWER exercises without overriding which TYPE the user prioritised.
 
   double _scoreExercise({
     required Exercise exercise,
@@ -426,15 +401,10 @@ class GreedyAlgorithm {
           0;
     }
 
-    final timeScore = _timeScore(
-      profile.sessionMinutes,
-      compound: compound,
-      isolation: isolation,
-      highSetup: heavyLift,
-    );
-
     // Clamp so the personalised block can't overpower the balance penalties.
-    double profileBlock = (goalScore + expScore + timeScore).toDouble();
+    // (sessionMinutes is intentionally not a term here — it drives the exercise
+    // count via _fitExerciseCount, not ranking.)
+    double profileBlock = (goalScore + expScore).toDouble();
     if (profileBlock > 45) profileBlock = 45;
     if (profileBlock < -20) profileBlock = -20;
     score += profileBlock;

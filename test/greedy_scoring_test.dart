@@ -303,11 +303,17 @@ void main() {
       expect(s(heavyCompound, gain), greaterThan(s(heavyCompound, endur)));
     });
 
-    test('Short session penalises isolation vs a long session', () {
+    test('session length does NOT affect ranking (only exercise count)', () {
+      // sessionMinutes drives the per-day exercise COUNT (_fitExerciseCount),
+      // never the score — so the user's Exercise Priority is never overridden by
+      // choosing a short session. A 30-min and a 90-min profile must score the
+      // same exercise identically.
       final short = _profile(sessionMinutes: 30, level: 'Beginner');
       final long = _profile(sessionMinutes: 90, level: 'Beginner');
-      expect(s(highRepIso, short), lessThan(s(highRepIso, long)),
-          reason: 'time-per-session must affect the score');
+      expect(s(highRepIso, short), s(highRepIso, long),
+          reason: 'time-per-session must not change ranking');
+      expect(s(heavyCompound, short), s(heavyCompound, long),
+          reason: 'time-per-session must not change ranking');
     });
 
     test('Advanced user ranks an advanced-difficulty move above a beginner one',
