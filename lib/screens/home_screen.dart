@@ -13,7 +13,6 @@ import '../providers/plan_provider.dart';
 import '../providers/profile_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/responsive.dart';
-import '../widgets/calorie_status_chip.dart';
 import '../app_clock.dart';
 import 'plans_screen.dart';
 import 'progress_screen.dart';
@@ -667,7 +666,9 @@ class _HomeDashboard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 24),
+                          // 16 not 24 — the column needs the width for a
+                          // 4-digit goal alongside the adjustment badge.
+                          const SizedBox(width: 16),
                           Expanded(
                             child: Column(
                               children: [
@@ -706,29 +707,6 @@ class _HomeDashboard extends StatelessWidget {
                                   AppColors.protein,
                                   colors: c,
                                 ),
-                                // ±5% tolerance status — logging noise reads as
-                                // "On Target" instead of a false shortfall, and
-                                // an unfinished day reads "In Progress".
-                                // Compact: the "Remaining" row above already
-                                // shows the kcal gap, and the card is narrow.
-                                if (caloriesEaten > 0) ...[
-                                  const SizedBox(height: 10),
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: GestureDetector(
-                                      onTap: () => showGoalAdjustmentDialog(
-                                        context,
-                                        profileProvider,
-                                        force: true,
-                                      ),
-                                      child: CalorieStatusChip(
-                                        consumed: caloriesEaten,
-                                        target: calorieGoal,
-                                        compact: true,
-                                      ),
-                                    ),
-                                  ),
-                                ],
                               ],
                             ),
                           ),
@@ -1140,20 +1118,16 @@ class _HomeDashboard extends StatelessWidget {
           color: color.withValues(alpha: 0.14),
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '${up ? '+' : '−'}$diff',
-              style: GoogleFonts.inter(
-                color: color,
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(width: 3),
-            Icon(Icons.info_outline_rounded, size: 11, color: color),
-          ],
+        // Number only — the column is narrow enough that an extra icon pushed
+        // the goal value into an ellipsis ("2493 k…"). The tinted pill carries
+        // the affordance on its own.
+        child: Text(
+          '${up ? '+' : '−'}$diff',
+          style: GoogleFonts.inter(
+            color: color,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );
@@ -1170,17 +1144,29 @@ class _HomeDashboard extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 8),
-            Text(label, style: GoogleFonts.inter(color: c.muted, fontSize: 13)),
-            if (badge != null) ...[const SizedBox(width: 6), badge],
-          ],
+        // Flexible so that a wide label + badge gives way before the value does
+        // — the number on the right is the point of the row.
+        Flexible(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(color: c.muted, fontSize: 13),
+                ),
+              ),
+              if (badge != null) ...[const SizedBox(width: 6), badge],
+            ],
+          ),
         ),
         const SizedBox(width: 8),
         Flexible(
