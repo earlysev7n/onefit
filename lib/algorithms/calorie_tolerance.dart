@@ -13,6 +13,27 @@
 /// can never disagree.
 ///
 /// Pure Dart — no Flutter or Firebase dependencies.
+///
+/// How a day reads against the band. Separated from the widget so the states
+/// are unit-testable and the same rules can't drift between surfaces.
+enum CalorieStatus {
+  /// Nothing logged yet — no judgement to make.
+  notLogged,
+
+  /// Below the band, but the day is still running. Not a shortfall: an
+  /// unfinished day is simply unfinished.
+  inProgress,
+
+  /// Inside the band.
+  onTarget,
+
+  /// Below the band on a day that is over.
+  under,
+
+  /// Above the band (a finished fact the moment it happens, on any day).
+  over,
+}
+
 class CalorieTolerance {
   /// Half-width of the band as a fraction of target (±5%).
   static const double fraction = 0.05;
@@ -67,4 +88,30 @@ class CalorieTolerance {
   /// How many of [dailyTotals] landed inside the band around [base].
   static int daysInTolerance(Iterable<double> dailyTotals, double base) =>
       dailyTotals.where((d) => within(d, base)).length;
+
+  /// How [consumed] reads against [target]. [isCurrentDay] distinguishes a day
+  /// still in progress (below the band because it isn't over) from a finished
+  /// day that genuinely fell short.
+  static CalorieStatus statusFor({
+    required num consumed,
+    required num target,
+    required bool isCurrentDay,
+  }) {
+    if (consumed <= 0 || target <= 0) return CalorieStatus.notLogged;
+    if (consumed > upper(target)) return CalorieStatus.over;
+    if (within(consumed, target)) return CalorieStatus.onTarget;
+    return isCurrentDay ? CalorieStatus.inProgress : CalorieStatus.under;
+  }
+
+  /// Whether to announce that today's goal was re-balanced.
+  ///
+  /// The trigger is **a day that breached the band**, not the size of the
+  /// resulting nudge: a real breach is diluted across the remaining days by
+  /// construction (212 kcal over 6 days is only +35/day), so gating on the
+  /// nudge would stay silent for exactly the weeks that matter most.
+  static bool shouldAnnounceGoalShift({
+    required int daysOutOfTolerance,
+    required int adjusted,
+    required int base,
+  }) => daysOutOfTolerance > 0 && adjusted != base;
 }

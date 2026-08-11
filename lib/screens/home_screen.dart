@@ -25,6 +25,111 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 final plansScreenKey = GlobalKey<PlansScreenState>();
 
+/// Explains the weekly-adaptive re-balance of today's calorie goal.
+///
+/// **Auto path** (`force: false`, from `initState`): shown only when a *day*
+/// breached the ±5% band and today's goal actually moved — the breach is the
+/// trigger, not the size of the resulting nudge, which is small by construction
+/// once spread across the remaining days. Then at most once per day, and never
+/// after "Don't show again".
+///
+/// **Forced path** (`force: true`, from tapping the goal badge or status chip):
+/// the user explicitly asked for it, so all three guards are skipped.
+Future<void> showGoalAdjustmentDialog(
+  BuildContext context,
+  ProfileProvider pp, {
+  bool force = false,
+}) async {
+  final profile = pp.profile;
+  if (profile == null) return;
+
+  final adjusted = pp.dailyEffectiveGoal;
+  final base = profile.calorieGoal;
+  if (adjusted == base) return; // nothing was re-balanced — nothing to explain
+
+  if (!force) {
+    if (!CalorieTolerance.shouldAnnounceGoalShift(
+      daysOutOfTolerance: pp.daysOutOfToleranceThisWeek,
+      adjusted: adjusted,
+      base: base,
+    )) {
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('hideGoalAdjustmentPopup') ?? false) return;
+
+    final today = appToday().toIso8601String().substring(0, 10);
+    if (prefs.getString('goalAdjustmentLastShown') == today) return;
+    await prefs.setString('goalAdjustmentLastShown', today);
+  }
+
+  if (!context.mounted) return;
+  final increased = adjusted > base;
+  final diff = (adjusted - base).abs();
+  final breach = pp.lastBreachKcal;
+  final c = context.colors;
+
+  // Name the day that actually breached — a concrete number reads as a reason
+  // rather than an unexplained change.
+  final breachLine = breach == null
+      ? ''
+      : breach < 0
+      ? 'You came in ${breach.abs().round()} kcal under your target earlier this '
+            'week — past the ±5% we treat as on target. '
+      : 'You came in ${breach.round()} kcal over your target earlier this week — '
+            'past the ±5% we treat as on target. ';
+
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: c.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(
+        "Today's Goal Adjusted",
+        style: GoogleFonts.spaceGrotesk(
+          color: c.onBackground,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      content: Text(
+        increased
+            ? "${breachLine}We've spread it across the days you have left, so "
+                  "today's goal is $adjusted kcal (+$diff) and your weekly total "
+                  "stays balanced."
+            : "${breachLine}We've spread it across the days you have left, so "
+                  "today's goal is $adjusted kcal (−$diff) and your weekly total "
+                  "stays on track.",
+        style: GoogleFonts.inter(color: c.muted),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            final p = await SharedPreferences.getInstance();
+            await p.setBool('hideGoalAdjustmentPopup', true);
+            if (ctx.mounted) Navigator.pop(ctx);
+          },
+          child: Text(
+            "Don't show again",
+            style: GoogleFonts.inter(color: c.muted),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(ctx),
+          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+          child: Text(
+            'OK',
+            style: GoogleFonts.inter(
+              color: c.onPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -56,78 +161,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _maybeShowGoalDialog() async {
-    final pp = context.read<ProfileProvider>();
-    final profile = pp.profile;
-    if (profile == null) return;
-
-    final adjusted = pp.dailyEffectiveGoal;
-    final base = profile.calorieGoal;
-    // Only announce a *meaningful* shift. Anything inside the ±5% tolerance
-    // band is within measurement error (NASEM 2023 — see CalorieTolerance), so
-    // it would be an unnecessary warning. This also covers `adjusted == base`.
-    if (CalorieTolerance.within(adjusted, base)) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('hideGoalAdjustmentPopup') ?? false) return;
-
-    final today = appToday().toIso8601String().substring(0, 10);
-    if (prefs.getString('goalAdjustmentLastShown') == today) return;
-    await prefs.setString('goalAdjustmentLastShown', today);
-
     if (!mounted) return;
-    final increased = adjusted > base;
-    final diff = (adjusted - base).abs();
-    final c = context.colors;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: c.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          "Today's Goal Adjusted",
-          style: GoogleFonts.spaceGrotesk(
-            color: c.onBackground,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        content: Text(
-          increased
-              ? "You've been below your calorie target earlier this week by more "
-                    "than the ±5% we treat as on target — that's okay. We've nudged "
-                    "today's goal up to $adjusted kcal ($diff kcal above your usual) "
-                    "so your weekly total stays balanced."
-              : "You've been above your calorie target earlier this week by more "
-                    "than the ±5% we treat as on target — no problem. We've nudged "
-                    "today's goal down to $adjusted kcal ($diff kcal below your usual) "
-                    "so your weekly total stays on track.",
-          style: GoogleFonts.inter(color: c.muted),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              final p = await SharedPreferences.getInstance();
-              await p.setBool('hideGoalAdjustmentPopup', true);
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: Text(
-              "Don't show again",
-              style: GoogleFonts.inter(color: c.muted),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-            child: Text(
-              'OK',
-              style: GoogleFonts.inter(
-                color: c.onPrimary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    await showGoalAdjustmentDialog(context, context.read<ProfileProvider>());
   }
 
   void _showMealTypeSelector({bool autoScan = false}) {
@@ -641,6 +676,14 @@ class _HomeDashboard extends StatelessWidget {
                                   '$calorieGoal kcal',
                                   c.inactive,
                                   colors: c,
+                                  // "+35" when the weekly-adaptive re-balance
+                                  // moved today's target. Visible before
+                                  // anything is logged, and tappable to re-open
+                                  // the explanation.
+                                  badge: _goalAdjustBadge(
+                                    context,
+                                    profileProvider,
+                                  ),
                                 ),
                                 const SizedBox(height: 8),
                                 _buildMacroRow(
@@ -664,17 +707,25 @@ class _HomeDashboard extends StatelessWidget {
                                   colors: c,
                                 ),
                                 // ±5% tolerance status — logging noise reads as
-                                // "On Target" instead of a false shortfall.
+                                // "On Target" instead of a false shortfall, and
+                                // an unfinished day reads "In Progress".
                                 // Compact: the "Remaining" row above already
                                 // shows the kcal gap, and the card is narrow.
                                 if (caloriesEaten > 0) ...[
                                   const SizedBox(height: 10),
                                   Align(
                                     alignment: Alignment.centerLeft,
-                                    child: CalorieStatusChip(
-                                      consumed: caloriesEaten,
-                                      target: calorieGoal,
-                                      compact: true,
+                                    child: GestureDetector(
+                                      onTap: () => showGoalAdjustmentDialog(
+                                        context,
+                                        profileProvider,
+                                        force: true,
+                                      ),
+                                      child: CalorieStatusChip(
+                                        consumed: caloriesEaten,
+                                        target: calorieGoal,
+                                        compact: true,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -1067,11 +1118,53 @@ class _HomeDashboard extends StatelessWidget {
     );
   }
 
+  /// The "+35" pill beside the Goal row when the weekly-adaptive redistribution
+  /// moved today's target. Returns null when nothing was re-balanced. Tapping
+  /// re-opens the explanation, so the reason survives dismissing the dialog —
+  /// or a past "Don't show again".
+  Widget? _goalAdjustBadge(BuildContext context, ProfileProvider pp) {
+    final base = pp.profile?.calorieGoal;
+    if (base == null) return null;
+    final adjusted = pp.dailyEffectiveGoal;
+    if (adjusted == base) return null;
+
+    final up = adjusted > base;
+    final diff = (adjusted - base).abs();
+    final color = up ? AppColors.primary : AppColors.orange;
+
+    return GestureDetector(
+      onTap: () => showGoalAdjustmentDialog(context, pp, force: true),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${up ? '+' : '−'}$diff',
+              style: GoogleFonts.inter(
+                color: color,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 3),
+            Icon(Icons.info_outline_rounded, size: 11, color: color),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildMacroRow(
     String label,
     String value,
     Color color, {
     required AppColors colors,
+    Widget? badge,
   }) {
     final c = colors;
     return Row(
@@ -1086,6 +1179,7 @@ class _HomeDashboard extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Text(label, style: GoogleFonts.inter(color: c.muted, fontSize: 13)),
+            if (badge != null) ...[const SizedBox(width: 6), badge],
           ],
         ),
         const SizedBox(width: 8),

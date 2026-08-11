@@ -229,6 +229,12 @@ class _CaloriesTabState extends State<_CaloriesTab>
     );
   }
 
+  /// Whether the shown date is the current (unfinished) day.
+  bool _isToday(DateTime d) {
+    final now = appNow();
+    return d.year == now.year && d.month == now.month && d.day == now.day;
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -313,6 +319,10 @@ class _CaloriesTabState extends State<_CaloriesTab>
                   CalorieStatusChip(
                     consumed: eaten.toDouble(),
                     target: calorieGoal,
+                    // A past date is a finished day — it can read "Under
+                    // Target". Today is still running, so it reads "In
+                    // Progress" until intake reaches the band.
+                    isCurrentDay: _isToday(widget.selectedDate),
                     showRange: true,
                   ),
                 ],

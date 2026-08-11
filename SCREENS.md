@@ -207,8 +207,8 @@ All selected values are stored together in `UserProfile.dietaryRestrictions`. Th
 
 Shown on tab 0. A scrollable dashboard with:
 - **Greeting card** — "Good morning/afternoon/evening, {name}".
-- **Calorie ring** — today's logged calories vs goal (from `FirestoreService.streamTodayFoodLogs`), with a `CalorieStatusChip` under the macro rows: **On Target** while intake is inside the ±5% `CalorieTolerance` band, otherwise **Under/Over Target · ±N kcal**.
-- **"Today's Goal Adjusted" dialog** (`_maybeShowGoalDialog`, after the profile/goal load) — announces a weekly-adaptive shift in today's target. Gated by `CalorieTolerance.within(adjusted, base)`: a shift inside the ±5% band is measurement noise and stays silent (this also covers `adjusted == base`). Still additionally gated by the `hideGoalAdjustmentPopup` "Don't show again" flag and a once-per-day `goalAdjustmentLastShown` stamp in `SharedPreferences`.
+- **Calorie ring** — today's logged calories vs goal (from `FirestoreService.streamTodayFoodLogs`), with a `CalorieStatusChip` under the macro rows: **On Target** inside the ±5% `CalorieTolerance` band, **In Progress · N kcal to go** while today is still below it (a running day is not a shortfall), **Over Target** above it. The Goal row carries a tappable **`+35` pill** (`_goalAdjustBadge`) whenever `dailyEffectiveGoal != profile.calorieGoal`.
+- **"Today's Goal Adjusted" dialog** — the top-level `showGoalAdjustmentDialog(context, pp, {force})`. Auto path (`_maybeShowGoalDialog`, after the profile/goal load) fires when `CalorieTolerance.shouldAnnounceGoalShift` says a **day breached the band** and today's goal actually moved — deliberately *not* gated on the size of the nudge, which is small by construction after redistribution. Then gated by the `hideGoalAdjustmentPopup` "Don't show again" flag and a once-per-day `goalAdjustmentLastShown` stamp in `SharedPreferences`. Tapping the `+35` badge or the status chip calls it with `force: true`, skipping all three guards, so the explanation is always retrievable. Copy quotes `ProfileProvider.lastBreachKcal`.
 - **Workout card** — streams today's `WorkoutLog` via `FirestoreService.streamWorkoutLogForDate`; shows the day's exercises if a plan exists in `PlanProvider`.
 - **Quick-action chips** — Log Food / View Plan / Nutrition.
 
@@ -321,7 +321,7 @@ Calorie split: Breakfast 25%, Lunch 35%, Dinner 30%, Snack 10% of the daily effe
 **State:** `_selectedDate` (defaults to today).
 
 **Sub-tabs:**
-- **Calories** — pulls `FoodItem` logs for `_selectedDate` from Firestore; shows total calories vs goal, a `CalorieStatusChip` under the ring with the numeric on-target range ("On-target range 2850–3150 kcal (±5%)"), macro bar chart breakdown (protein/carbs/fat), and a per-meal expandable list.
+- **Calories** — pulls `FoodItem` logs for `_selectedDate` from Firestore; shows total calories vs goal, a `CalorieStatusChip` under the ring with the numeric on-target range ("On-target range 2850–3150 kcal (±5%)") — it receives `isCurrentDay: _isToday(selectedDate)`, so a **past** date can read "Under Target" while today reads "In Progress" — macro bar chart breakdown (protein/carbs/fat), and a per-meal expandable list.
 - **Nutrients** — shows the 14 vitamin/mineral fields aggregated from the same day's logs.
 
 **Date navigation:** chevron arrows + an `IconButton` opening `showDatePicker`. The "Today" label appears when the selected date is the current day.

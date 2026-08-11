@@ -12,48 +12,75 @@ import '../theme/app_colors.dart';
 ///
 /// Renders **nothing** until something is logged. A day that has not started is
 /// not a shortfall, and "Under Target · −2199 kcal" first thing in the morning
-/// is a false alarm.
+/// is a false alarm. For the same reason a *current* day below the band reads
+/// "In Progress", not "Under Target" — the day isn't over yet.
 class CalorieStatusChip extends StatelessWidget {
-  /// Calories logged so far today.
+  /// Calories logged so far on the day being shown.
   final double consumed;
 
-  /// Today's effective calorie target (`ProfileProvider.dailyEffectiveGoal`).
+  /// That day's effective calorie target (`ProfileProvider.dailyEffectiveGoal`).
   final num target;
+
+  /// Whether the day shown is today (still running) or a finished past day.
+  final bool isCurrentDay;
 
   /// Show the numeric band (e.g. "2850–3150 kcal") beneath the pill.
   final bool showRange;
 
   /// Drop the ± kcal figure from the label. Used where the surrounding card
   /// already shows the same number (the Home card's "Remaining" row) and space
-  /// is tight.
+  /// is tight. Never applied to "In Progress", where the remaining figure is
+  /// the whole point.
   final bool compact;
 
   const CalorieStatusChip({
     super.key,
     required this.consumed,
     required this.target,
+    this.isCurrentDay = true,
     this.showRange = false,
     this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (consumed <= 0 || target <= 0) return const SizedBox.shrink();
-
     final c = context.colors;
-    final onTarget = CalorieTolerance.within(consumed, target);
-    final under = consumed < CalorieTolerance.lower(target);
+    final status = CalorieTolerance.statusFor(
+      consumed: consumed,
+      target: target,
+      isCurrentDay: isCurrentDay,
+    );
+    if (status == CalorieStatus.notLogged) return const SizedBox.shrink();
+
     final diff = (consumed - target).abs().round();
 
-    final base = onTarget
-        ? 'On Target'
-        : under
-        ? 'Under Target'
-        : 'Over Target';
-    final label = onTarget || compact
-        ? base
-        : '$base · ${under ? '−' : '+'}$diff kcal';
-    final color = onTarget ? AppColors.primary : AppColors.orange;
+    final String label;
+    final Color color;
+    final IconData icon;
+    switch (status) {
+      case CalorieStatus.inProgress:
+        label = 'In Progress · $diff kcal to go';
+        color = c.muted;
+        icon = Icons.schedule_rounded;
+        break;
+      case CalorieStatus.onTarget:
+        label = 'On Target';
+        color = AppColors.primary;
+        icon = Icons.check_circle_rounded;
+        break;
+      case CalorieStatus.under:
+        label = compact ? 'Under Target' : 'Under Target · −$diff kcal';
+        color = AppColors.orange;
+        icon = Icons.trending_down_rounded;
+        break;
+      case CalorieStatus.over:
+        label = compact ? 'Over Target' : 'Over Target · +$diff kcal';
+        color = AppColors.orange;
+        icon = Icons.trending_up_rounded;
+        break;
+      case CalorieStatus.notLogged:
+        return const SizedBox.shrink();
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -68,15 +95,7 @@ class CalorieStatusChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                onTarget
-                    ? Icons.check_circle_rounded
-                    : under
-                    ? Icons.trending_down_rounded
-                    : Icons.trending_up_rounded,
-                size: 13,
-                color: color,
-              ),
+              Icon(icon, size: 13, color: color),
               const SizedBox(width: 5),
               // Flexible + ellipsis: the pill lives inside narrow cards, and a
               // long label must shrink rather than overflow the card.

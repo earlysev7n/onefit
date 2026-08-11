@@ -102,6 +102,120 @@ void main() {
     });
   });
 
+  group('statusFor', () {
+    // The Tue Aug 18 screenshot: 2086 logged against a 2298 goal, at 3:20pm.
+    const dayGoal = 2298.0;
+
+    test('below the band on the CURRENT day is In Progress, not a shortfall', () {
+      expect(
+        CalorieTolerance.statusFor(
+          consumed: 2086,
+          target: dayGoal,
+          isCurrentDay: true,
+        ),
+        CalorieStatus.inProgress,
+      );
+    });
+
+    test('the same numbers on a FINISHED day are a real shortfall', () {
+      expect(
+        CalorieTolerance.statusFor(
+          consumed: 2086,
+          target: dayGoal,
+          isCurrentDay: false,
+        ),
+        CalorieStatus.under,
+      );
+    });
+
+    test('inside the band reads On Target on any day', () {
+      for (final current in const [true, false]) {
+        expect(
+          CalorieTolerance.statusFor(
+            consumed: 2250,
+            target: dayGoal,
+            isCurrentDay: current,
+          ),
+          CalorieStatus.onTarget,
+        );
+      }
+    });
+
+    test('over the band is a finished fact on any day', () {
+      for (final current in const [true, false]) {
+        expect(
+          CalorieTolerance.statusFor(
+            consumed: 2500,
+            target: dayGoal,
+            isCurrentDay: current,
+          ),
+          CalorieStatus.over,
+        );
+      }
+    });
+
+    test('nothing logged is never a judgement', () {
+      expect(
+        CalorieTolerance.statusFor(
+          consumed: 0,
+          target: dayGoal,
+          isCurrentDay: true,
+        ),
+        CalorieStatus.notLogged,
+      );
+      expect(
+        CalorieTolerance.statusFor(
+          consumed: 0,
+          target: dayGoal,
+          isCurrentDay: false,
+        ),
+        CalorieStatus.notLogged,
+      );
+    });
+  });
+
+  group('shouldAnnounceGoalShift', () {
+    // Regression: the trigger is the BREACH, not the size of the nudge.
+    // Tue came in 212 kcal under a 2298 goal (9.2% — a real breach); spread
+    // over the 6 remaining days that is only +35 on Wednesday (1.5%). Gating on
+    // the nudge kept this silent, which is the bug.
+    test('a breach announces even when the resulting nudge is tiny', () {
+      expect(
+        CalorieTolerance.shouldAnnounceGoalShift(
+          daysOutOfTolerance: 1,
+          adjusted: 2333,
+          base: 2298,
+        ),
+        isTrue,
+      );
+      // ...and that nudge is indeed inside the band, proving the old gate blocked it.
+      expect(CalorieTolerance.within(2333, 2298), isTrue);
+    });
+
+    test('no breached day → nothing to announce', () {
+      expect(
+        CalorieTolerance.shouldAnnounceGoalShift(
+          daysOutOfTolerance: 0,
+          adjusted: 2333,
+          base: 2298,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a breach that left the goal unmoved → nothing to announce', () {
+      // e.g. an over-day and an under-day cancelling out.
+      expect(
+        CalorieTolerance.shouldAnnounceGoalShift(
+          daysOutOfTolerance: 2,
+          adjusted: 2298,
+          base: 2298,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('daysInTolerance', () {
     test('counts only days inside the band', () {
       expect(

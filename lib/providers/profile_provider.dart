@@ -31,6 +31,7 @@ class ProfileProvider extends ChangeNotifier {
   double? _weeklyEffectiveFat;
   int _daysInToleranceThisWeek = 0;
   int _daysLoggedThisWeek = 0;
+  double? _lastBreachKcal;
 
   UserProfile? get profile => _profile;
   bool get isLoading => _isLoading;
@@ -42,6 +43,16 @@ class ProfileProvider extends ChangeNotifier {
 
   /// Days so far this week with at least one food log (excludes today).
   int get daysLoggedThisWeek => _daysLoggedThisWeek;
+
+  /// Logged days this week that fell outside the band — the days whose
+  /// deviation was real enough to be redistributed into today's goal.
+  int get daysOutOfToleranceThisWeek =>
+      _daysLoggedThisWeek - _daysInToleranceThisWeek;
+
+  /// Signed kcal deviation of the **most recent** out-of-band day (negative =
+  /// under target), so the goal-adjustment dialog can name a real number.
+  /// `null` when every logged day this week was on target.
+  double? get lastBreachKcal => _lastBreachKcal;
 
   /// Today's effective calorie goal (daily-carry-adjusted). All display screens
   /// should use this, NOT `profile.calorieGoal`, for the current day's target.
@@ -121,26 +132,36 @@ class ProfileProvider extends ChangeNotifier {
       // Calories are also bucketed per day so the ±5% tolerance can be applied
       // day-by-day before redistribution (see below). Macros stay on raw sums —
       // the tolerance rationale is about *energy* intake measurement error.
-      final dayCals = <String, double>{};
+      final dayCals = <DateTime, double>{};
       for (final f in logs) {
         final d = f.loggedAt;
-        final key = '${d.year}-${d.month}-${d.day}';
+        final key = DateTime(d.year, d.month, d.day);
         dayCals[key] = (dayCals[key] ?? 0) + f.totalCalories;
         sumProt += f.totalProtein;
         sumCarbs += f.totalCarbs;
         sumFat += f.totalFat;
       }
+      // Chronological, so "the most recent breach" below is unambiguous rather
+      // than relying on the query's ordering.
+      final days = dayCals.keys.toList()..sort();
 
       // Only *meaningful* deviations get redistributed: a day inside the ±5%
       // band is booked as exactly on target, so ordinary logging noise never
       // moves tomorrow's goal (NASEM 2023 — see CalorieTolerance).
       final baseGoal = p.calorieGoal.toDouble();
-      final dayTotals = dayCals.values.toList();
+      final dayTotals = [for (final d in days) dayCals[d]!];
       _daysLoggedThisWeek = dayTotals.length;
       _daysInToleranceThisWeek = CalorieTolerance.daysInTolerance(
         dayTotals,
         baseGoal,
       );
+      // The deviation the dialog quotes: the latest day that actually breached.
+      _lastBreachKcal = null;
+      for (final total in dayTotals) {
+        if (!CalorieTolerance.within(total, baseGoal)) {
+          _lastBreachKcal = total - baseGoal;
+        }
+      }
 
       // Redistribute over the days that actually have data. A day with no logs
       // is *missing data*, not a zero-calorie day — counting it as a full
@@ -182,6 +203,7 @@ class ProfileProvider extends ChangeNotifier {
       _weeklyEffectiveFat = null;
       _daysInToleranceThisWeek = 0;
       _daysLoggedThisWeek = 0;
+      _lastBreachKcal = null;
     }
   }
 
