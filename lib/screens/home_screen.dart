@@ -69,15 +69,23 @@ Future<void> showGoalAdjustmentDialog(
   final breach = pp.lastBreachKcal;
   final c = context.colors;
 
-  // Name the day that actually breached — a concrete number reads as a reason
-  // rather than an unexplained change.
-  final breachLine = breach == null
+  // Open by reassuring, then give the number to act on. The ±5% rule itself is
+  // deliberately absent — a modal should say what to eat today, not explain the
+  // threshold that produced it (that lives in the Weekly Review).
+  //
+  // `lastBreachKcal` is one day's deviation while `increased` reflects the net
+  // week, so in a mixed week they can disagree ("you were short" above "we
+  // trimmed"). Only lead with the breach when the two agree; otherwise open on
+  // the target directly.
+  final leadsWithBreach =
+      breach != null && (breach < 0) == increased && breach != 0;
+  final lead = !leadsWithBreach
       ? ''
-      : breach < 0
-      ? 'You came in ${breach.abs().round()} kcal under your target earlier this '
-            'week — past the ±5% we treat as on target. '
-      : 'You came in ${breach.round()} kcal over your target earlier this week — '
-            'past the ±5% we treat as on target. ';
+      : increased
+      ? 'You were ${breach.abs().round()} kcal short earlier this week — '
+            'no problem. '
+      : 'You went ${breach.abs().round()} kcal over earlier this week — '
+            'no problem. ';
 
   showDialog(
     context: context,
@@ -85,7 +93,7 @@ Future<void> showGoalAdjustmentDialog(
       backgroundColor: c.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Text(
-        "Today's Goal Adjusted",
+        increased ? "We topped up today's goal" : "We trimmed today's goal",
         style: GoogleFonts.spaceGrotesk(
           color: c.onBackground,
           fontWeight: FontWeight.w700,
@@ -93,12 +101,10 @@ Future<void> showGoalAdjustmentDialog(
       ),
       content: Text(
         increased
-            ? "${breachLine}We've spread it across the days you have left, so "
-                  "today's goal is $adjusted kcal (+$diff) and your weekly total "
-                  "stays balanced."
-            : "${breachLine}We've spread it across the days you have left, so "
-                  "today's goal is $adjusted kcal (−$diff) and your weekly total "
-                  "stays on track.",
+            ? "${lead}Today's target is $adjusted kcal, $diff more than usual, "
+                  "so your week still lands where you planned."
+            : "${lead}Today's target is $adjusted kcal, $diff less than usual, "
+                  "so your week still lands where you planned.",
         style: GoogleFonts.inter(color: c.muted),
       ),
       actions: [
@@ -117,7 +123,7 @@ Future<void> showGoalAdjustmentDialog(
           onPressed: () => Navigator.pop(ctx),
           style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
           child: Text(
-            'OK',
+            'Got it',
             style: GoogleFonts.inter(
               color: c.onPrimary,
               fontWeight: FontWeight.w600,
