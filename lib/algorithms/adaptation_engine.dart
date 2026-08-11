@@ -1,3 +1,5 @@
+import 'calorie_tolerance.dart';
+
 class AdaptationResult {
   final int calorieBiasKcal;
   final String difficultyBias; // 'up' | 'down' | 'same'
@@ -52,10 +54,14 @@ class AdaptationEngine {
     final notes = <String>[];
 
     // ── Calorie adjustment ──────────────────────────────────────────────────
-    if (lastWeekCalorieAdherence < 85) {
+    // The dead zone is the shared ±5% tolerance band: intake within it is
+    // treated as measurement noise, not a deviation worth acting on
+    // (NASEM 2023 — see CalorieTolerance).
+    final pct = lastWeekCalorieAdherence.round();
+    if (lastWeekCalorieAdherence < CalorieTolerance.lowerPct) {
       calorieBias = 100;
-      notes.add('Calorie target nudged +100 kcal — you were consistently under last week.');
-    } else if (lastWeekCalorieAdherence > 110) {
+      notes.add('Calorie target nudged +100 kcal — you averaged $pct% of target last week, under the ±5% tolerance range.');
+    } else if (lastWeekCalorieAdherence > CalorieTolerance.upperPct) {
       // W4: a Weight-Loss user who is over their logged calorie target but is
       // actually losing weight is already succeeding — don't cut further. Here
       // the outcome (weight) overrides the intake signal, even though the
@@ -68,7 +74,7 @@ class AdaptationEngine {
         notes.add('Calorie target held — you were over your logged target but still losing weight, so the deficit is working.');
       } else {
         calorieBias = -100;
-        notes.add('Calorie target nudged −100 kcal — you were over target last week.');
+        notes.add('Calorie target nudged −100 kcal — you averaged $pct% of target last week, over the ±5% tolerance range.');
       }
     }
 
@@ -108,8 +114,10 @@ class AdaptationEngine {
     // re-target them; but a protein shortfall while calories are on track was
     // previously invisible. Surface it as guidance using the already-collected
     // weekly avg protein. Null adherence = too little logging to judge.
+    // Protein keeps its own, looser 85% bar — protein logging is noisier than
+    // calories, so holding it to the ±5% band would fire almost every week.
     if (lastWeekProteinAdherence != null &&
-        lastWeekCalorieAdherence >= 85 &&
+        CalorieTolerance.withinPct(lastWeekCalorieAdherence) &&
         lastWeekProteinAdherence < 85) {
       notes.add('Protein was low last week (~${lastWeekProteinAdherence.round()}% of target) even though calories were on track — prioritise protein-rich foods.');
     }

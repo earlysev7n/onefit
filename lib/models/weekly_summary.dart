@@ -25,6 +25,12 @@ class WeeklySummary {
   final double? avgRating; // avg perceived difficulty 1–5; null if unrated
   final int daysLogged;
 
+  /// How many of the [daysLogged] landed inside the ±5% `CalorieTolerance`
+  /// band around the calorie goal. The weekly average hides distribution — a
+  /// week of wild swings can average on target — so the tally is recorded
+  /// alongside it. 0 on summaries written before the tolerance existed.
+  final int daysInTolerance;
+
   // ── Adjustments applied to the active week ────────────────────────────────
   final int calorieBias; // ± kcal (or 0)
   final int oldCalorieGoal;
@@ -51,6 +57,7 @@ class WeeklySummary {
     required this.workoutsPlanned,
     required this.avgRating,
     required this.daysLogged,
+    this.daysInTolerance = 0,
     required this.calorieBias,
     required this.oldCalorieGoal,
     required this.newCalorieGoal,
@@ -96,6 +103,7 @@ class WeeklySummary {
     'workoutsPlanned': workoutsPlanned,
     'avgRating': avgRating,
     'daysLogged': daysLogged,
+    'daysInTolerance': daysInTolerance,
     'calorieBias': calorieBias,
     'oldCalorieGoal': oldCalorieGoal,
     'newCalorieGoal': newCalorieGoal,
@@ -123,6 +131,7 @@ class WeeklySummary {
       workoutsPlanned: (m['workoutsPlanned'] as num?)?.toInt() ?? 0,
       avgRating: (m['avgRating'] as num?)?.toDouble(),
       daysLogged: (m['daysLogged'] as num?)?.toInt() ?? 0,
+      daysInTolerance: (m['daysInTolerance'] as num?)?.toInt() ?? 0,
       calorieBias: (m['calorieBias'] as num?)?.toInt() ?? 0,
       oldCalorieGoal: (m['oldCalorieGoal'] as num?)?.toInt() ?? 0,
       newCalorieGoal: (m['newCalorieGoal'] as num?)?.toInt() ?? 0,

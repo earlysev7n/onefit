@@ -19,6 +19,7 @@ import '../models/exercise_stat.dart';
 import '../models/weight_log.dart';
 import '../models/weekly_summary.dart';
 import '../algorithms/adaptation_engine.dart';
+import '../algorithms/calorie_tolerance.dart';
 import '../algorithms/progression.dart';
 import 'recipe_screen.dart';
 import 'food_log_screen.dart';
@@ -628,6 +629,16 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 profile.calorieGoal *
                 100
           : 100.0;
+      // Weekly tolerance tally — how many logged days landed inside the ±5%
+      // band. The average alone hides distribution (a week of swings can
+      // average on target), so the Weekly Review reports both.
+      final lastWeekDailyCalories =
+          (lastWeekNutrition['dailyCalories'] as List?)?.cast<double>() ??
+          const <double>[];
+      final daysInTolerance = CalorieTolerance.daysInTolerance(
+        lastWeekDailyCalories,
+        profile.calorieGoal.toDouble(),
+      );
       // N1: protein adherence drives a low-protein note when calories are met.
       final proteinGoal = profile.macroGoals['protein'] ?? 0;
       final proteinAdherence = (hasEnoughNutritionDays && proteinGoal > 0)
@@ -736,6 +747,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
           workoutsPlanned: plannedDays,
           avgRating: lastWeekAvgRating,
           daysLogged: daysLogged,
+          daysInTolerance: daysInTolerance,
           calorieBias: adaptation.calorieBiasKcal,
           oldCalorieGoal: oldGoal,
           newCalorieGoal: newProfile.calorieGoal,

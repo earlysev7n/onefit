@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../algorithms/calorie_tolerance.dart';
 import '../algorithms/weekly_adaptive_goal.dart';
 import '../app_clock.dart';
 import '../models/user_profile.dart';
@@ -13,7 +14,9 @@ import '../services/firestore_service.dart';
 /// listeners so every consumer recomputes its calorie/macro targets reactively.
 ///
 /// [dailyEffectiveGoal] / [effectiveMacroGoals] expose today's weekly-adaptive
-/// targets — `(weekly_goal − week_consumed) / days_left`, clamped ±10%. They
+/// targets — `(weekly_goal − week_consumed) / days_left`, clamped ±10%, where
+/// past days inside the ±5% [CalorieTolerance] band count as exactly on target
+/// so only meaningful calorie deviations are redistributed. They
 /// are **provider-level, transient state** — never persisted, never visible to
 /// the weekly [AdaptationEngine], recomputed on [load]/[refresh].
 class ProfileProvider extends ChangeNotifier {
@@ -26,9 +29,19 @@ class ProfileProvider extends ChangeNotifier {
   double? _weeklyEffectiveProtein;
   double? _weeklyEffectiveCarbs;
   double? _weeklyEffectiveFat;
+  int _daysInToleranceThisWeek = 0;
+  int _daysLoggedThisWeek = 0;
 
   UserProfile? get profile => _profile;
   bool get isLoading => _isLoading;
+
+  /// Days so far this week whose logged calories landed inside the ±5%
+  /// [CalorieTolerance] band around the base goal (excludes today, which is
+  /// still in progress). Paired with [daysLoggedThisWeek] for display.
+  int get daysInToleranceThisWeek => _daysInToleranceThisWeek;
+
+  /// Days so far this week with at least one food log (excludes today).
+  int get daysLoggedThisWeek => _daysLoggedThisWeek;
 
   /// Today's effective calorie goal (daily-carry-adjusted). All display screens
   /// should use this, NOT `profile.calorieGoal`, for the current day's target.
@@ -103,19 +116,44 @@ class ProfileProvider extends ChangeNotifier {
       final logs = await _fs.getFoodLogsForDateRange(uid, anchor, weekEnd);
 
       final daysLeft = 7 - (today.weekday - anchorWeekday + 7) % 7;
-      final daysElapsed = today.difference(anchor).inDays.clamp(0, 6);
 
-      double sumCals = 0, sumProt = 0, sumCarbs = 0, sumFat = 0;
+      double sumProt = 0, sumCarbs = 0, sumFat = 0;
+      // Calories are also bucketed per day so the ±5% tolerance can be applied
+      // day-by-day before redistribution (see below). Macros stay on raw sums —
+      // the tolerance rationale is about *energy* intake measurement error.
+      final dayCals = <String, double>{};
       for (final f in logs) {
-        sumCals += f.totalCalories;
+        final d = f.loggedAt;
+        final key = '${d.year}-${d.month}-${d.day}';
+        dayCals[key] = (dayCals[key] ?? 0) + f.totalCalories;
         sumProt += f.totalProtein;
         sumCarbs += f.totalCarbs;
         sumFat += f.totalFat;
       }
 
+      // Only *meaningful* deviations get redistributed: a day inside the ±5%
+      // band is booked as exactly on target, so ordinary logging noise never
+      // moves tomorrow's goal (NASEM 2023 — see CalorieTolerance).
+      final baseGoal = p.calorieGoal.toDouble();
+      final dayTotals = dayCals.values.toList();
+      _daysLoggedThisWeek = dayTotals.length;
+      _daysInToleranceThisWeek = CalorieTolerance.daysInTolerance(
+        dayTotals,
+        baseGoal,
+      );
+
+      // Redistribute over the days that actually have data. A day with no logs
+      // is *missing data*, not a zero-calorie day — counting it as a full
+      // shortfall used to inflate today's goal by up to +10% and fire the
+      // "Today's Goal Adjusted" dialog at anyone who simply forgot to log.
+      final daysElapsed = dayTotals.length.clamp(0, 6);
+
       _dailyEffectiveGoal = WeeklyAdaptiveGoal.adjust(
-        base: p.calorieGoal.toDouble(),
-        weekConsumed: sumCals,
+        base: baseGoal,
+        weekConsumed: CalorieTolerance.effectiveWeekConsumed(
+          dayTotals,
+          baseGoal,
+        ),
         daysLeft: daysLeft,
         daysElapsed: daysElapsed,
       );
@@ -142,6 +180,8 @@ class ProfileProvider extends ChangeNotifier {
       _weeklyEffectiveProtein = null;
       _weeklyEffectiveCarbs = null;
       _weeklyEffectiveFat = null;
+      _daysInToleranceThisWeek = 0;
+      _daysLoggedThisWeek = 0;
     }
   }
 

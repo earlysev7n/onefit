@@ -207,7 +207,8 @@ All selected values are stored together in `UserProfile.dietaryRestrictions`. Th
 
 Shown on tab 0. A scrollable dashboard with:
 - **Greeting card** — "Good morning/afternoon/evening, {name}".
-- **Calorie ring** — today's logged calories vs goal (from `FirestoreService.streamTodayFoodLogs`).
+- **Calorie ring** — today's logged calories vs goal (from `FirestoreService.streamTodayFoodLogs`), with a `CalorieStatusChip` under the macro rows: **On Target** while intake is inside the ±5% `CalorieTolerance` band, otherwise **Under/Over Target · ±N kcal**.
+- **"Today's Goal Adjusted" dialog** (`_maybeShowGoalDialog`, after the profile/goal load) — announces a weekly-adaptive shift in today's target. Gated by `CalorieTolerance.within(adjusted, base)`: a shift inside the ±5% band is measurement noise and stays silent (this also covers `adjusted == base`). Still additionally gated by the `hideGoalAdjustmentPopup` "Don't show again" flag and a once-per-day `goalAdjustmentLastShown` stamp in `SharedPreferences`.
 - **Workout card** — streams today's `WorkoutLog` via `FirestoreService.streamWorkoutLogForDate`; shows the day's exercises if a plan exists in `PlanProvider`.
 - **Quick-action chips** — Log Food / View Plan / Nutrition.
 
@@ -320,7 +321,7 @@ Calorie split: Breakfast 25%, Lunch 35%, Dinner 30%, Snack 10% of the daily effe
 **State:** `_selectedDate` (defaults to today).
 
 **Sub-tabs:**
-- **Calories** — pulls `FoodItem` logs for `_selectedDate` from Firestore; shows total calories vs goal, macro bar chart breakdown (protein/carbs/fat), and a per-meal expandable list.
+- **Calories** — pulls `FoodItem` logs for `_selectedDate` from Firestore; shows total calories vs goal, a `CalorieStatusChip` under the ring with the numeric on-target range ("On-target range 2850–3150 kcal (±5%)"), macro bar chart breakdown (protein/carbs/fat), and a per-meal expandable list.
 - **Nutrients** — shows the 14 vitamin/mineral fields aggregated from the same day's logs.
 
 **Date navigation:** chevron arrows + an `IconButton` opening `showDatePicker`. The "Today" label appears when the selected date is the current day.
@@ -412,9 +413,9 @@ Calorie split: Breakfast 25%, Lunch 35%, Dinner 30%, Snack 10% of the daily effe
 - **Current Week** — `_SummaryDetailView` for this week's summary, else an empty state ("No adaptive report yet — adapts at the start of each week once you have history").
 - **History** — `ListView` of past summaries (newest first), each row = date range + `Week N` + colored `adjustmentBadge` chip; tap → `_HistoryDetailScreen` reusing `_SummaryDetailView`. Empty state until weeks accumulate (no backfill).
 
-**`_SummaryDetailView` (shared body):** header "Week of {range}" (+ Current Week chip); **Performance Summary** (Calories %, Protein %, Workouts done/planned, Workout Feedback avg as emoji+Easy/Moderate/Hard — all from the *reviewed* prior week); **AI Adjustments** (Calories ±/new target, then **derived** Protein/Carbs/Fat ±/new targets only when calories moved, Workout Intensity Increased/Reduced/Maintained — intensity only flagged a change when `volumeChanged`); **Why These Changes?** = the summary `notes`.
+**`_SummaryDetailView` (shared body):** header "Week of {range}" (+ Current Week chip); **Performance Summary** (Calories %, **Days on Target** `n / m logged` with a Consistent/Mixed/Off Target tag, Protein %, Workouts done/planned, Workout Feedback avg as emoji+Easy/Moderate/Hard — all from the *reviewed* prior week); **AI Adjustments** (Calories ±/new target, then **derived** Protein/Carbs/Fat ±/new targets only when calories moved, Workout Intensity Increased/Reduced/Maintained — intensity only flagged a change when `volumeChanged`); **Why These Changes?** = the summary `notes`.
 
-**Honest-data notes:** macros are derived from the calorie goal (engine tunes calories only), so the "Increased Protein" badge from the mockup is intentionally absent. Framing is "last week reviewed → change active this week," matching when the engine actually runs.
+**Honest-data notes:** macros are derived from the calorie goal (engine tunes calories only), so the "Increased Protein" badge from the mockup is intentionally absent. Framing is "last week reviewed → change active this week," matching when the engine actually runs. The Calories tag uses the shared ±5% `CalorieTolerance` band (95–105% = "On Goal") — the same band the engine decides on — so the tag can never read "On Goal" beside a ±100 kcal adjustment; Protein keeps its looser 90/110 tag. The card footer states the tolerance ("Intake within ±5% of your target counts as on target"). `daysInTolerance` is 0 on summaries written before the tolerance shipped (no backfill).
 
 ---
 
@@ -508,6 +509,8 @@ Turning Developer Mode off resets `devDayChangerEnabled` and `debugDayOffset` so
 | `applyCalorieAdjustment(biasKcal)` | `save(profile.copyWith(calorieAdjustment: (current + biasKcal).clamp(-500, 500)))` — called once per new `weekId` from `PlansScreen._generate()` |
 
 `HomeScreen` calls `load(uid)` in `initState`; Home, Nutrition, Plans, and Profile `watch`/`read` it instead of querying Firestore.
+
+`_computeDailyGoal(uid)` (run on `load`/`refresh`/`save`/`recomputeGoal`) buckets this week's food logs **per day** and feeds `CalorieTolerance.effectiveWeekConsumed(dayTotals, base)` into `WeeklyAdaptiveGoal.adjust`, so a day inside the ±5% band counts as exactly on target and only meaningful deviations are redistributed into `dailyEffectiveGoal`. `daysElapsed` is the count of **logged** days (a day with no logs is missing data, not a zero-calorie day, and used to read as a full shortfall). Macros keep raw sums. It also exposes `daysInToleranceThisWeek` / `daysLoggedThisWeek`.
 
 ---
 
@@ -672,9 +675,11 @@ Session duration is honored by **exercise count** (the Greedy selection lever); 
 **Logic:**
 
 ```
-Calorie:
-  adherence < 85%  → calorieBias = +100 kcal
-  adherence > 110% → calorieBias = −100 kcal
+Calorie (dead zone = the shared ±5% CalorieTolerance band):
+  adherence < 95%  → calorieBias = +100 kcal
+  95%–105%         → calorieBias = 0 (measurement noise, no action)
+  adherence > 105% → calorieBias = −100 kcal
+                     (skipped for a Weight-Loss user who is actually losing)
 
 Difficulty:
   sleep < 6.5 h → difficultyBias = 'same' (recovery override — no step-up even if workouts were great)

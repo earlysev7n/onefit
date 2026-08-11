@@ -280,6 +280,7 @@ class FirestoreService {
         'avgFat': 0.0,
         'daysLogged': 0,
         'totalLogs': 0,
+        'dailyCalories': <double>[],
       };
     }
 
@@ -325,6 +326,9 @@ class FirestoreService {
       'avgFat': dailyFat.reduce((a, b) => a + b) / daysLogged,
       'daysLogged': daysLogged,
       'totalLogs': foodLogs.length,
+      // Per-day totals so callers can tally days inside the ±5% tolerance band
+      // (the weekly average alone hides how the week was distributed).
+      'dailyCalories': dailyCalories,
     };
   }
 

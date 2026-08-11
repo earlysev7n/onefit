@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
+import '../algorithms/calorie_tolerance.dart';
 import '../models/weekly_summary.dart';
 import '../providers/profile_provider.dart';
 import '../services/firestore_service.dart';
@@ -156,7 +157,8 @@ class _HistoryTab extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Changes are applied weekly based on your adherence, progress '
-                    'and feedback.',
+                    'and feedback. Intake within ±5% of your target counts as '
+                    'on target.',
                     style: GoogleFonts.inter(color: c.muted, fontSize: 11),
                   ),
                 ),
@@ -321,7 +323,19 @@ class _SummaryDetailView extends StatelessWidget {
                 context,
                 'Calories',
                 enoughNutrition ? '${s.calorieAdherence.round()}%' : '—',
-                _adherenceTag(enoughNutrition ? s.calorieAdherence : null),
+                _adherenceTag(
+                  enoughNutrition ? s.calorieAdherence : null,
+                  useTolerance: true,
+                ),
+              ),
+              _divider(context),
+              _perfRow(
+                context,
+                'Days on Target',
+                s.daysLogged > 0
+                    ? '${s.daysInTolerance} / ${s.daysLogged} logged'
+                    : '—',
+                _toleranceTag(s.daysInTolerance, s.daysLogged),
               ),
               _divider(context),
               _perfRow(
@@ -691,11 +705,26 @@ class _Arrow {
   const _Arrow(this.icon, this.color);
 }
 
-_Tag _adherenceTag(double? pct) {
+/// [useTolerance] switches the band to the shared ±5% [CalorieTolerance] used
+/// by the adaptation engine — calories pass it so the tag can never read
+/// "On Goal" beside a ±100 kcal adjustment. Protein keeps its looser 90/110
+/// band, matching its own 85% engine threshold.
+_Tag _adherenceTag(double? pct, {bool useTolerance = false}) {
   if (pct == null) return _Tag('No data', AppColors.dark.muted);
-  if (pct < 90) return const _Tag('Below Goal', AppColors.orange);
-  if (pct > 110) return const _Tag('Above Goal', AppColors.orange);
+  final low = useTolerance ? CalorieTolerance.lowerPct : 90.0;
+  final high = useTolerance ? CalorieTolerance.upperPct : 110.0;
+  if (pct < low) return const _Tag('Below Goal', AppColors.orange);
+  if (pct > high) return const _Tag('Above Goal', AppColors.orange);
   return const _Tag('On Goal', AppColors.primary);
+}
+
+/// Days inside the ±5% band, out of the days actually logged.
+_Tag _toleranceTag(int inTolerance, int daysLogged) {
+  if (daysLogged == 0) return _Tag('No data', AppColors.dark.muted);
+  final ratio = inTolerance / daysLogged;
+  if (ratio >= 0.7) return const _Tag('Consistent', AppColors.primary);
+  if (ratio >= 0.4) return const _Tag('Mixed', AppColors.yellow);
+  return const _Tag('Off Target', AppColors.orange);
 }
 
 _Tag _workoutTag(int done, int planned) {

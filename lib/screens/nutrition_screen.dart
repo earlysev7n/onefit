@@ -9,6 +9,7 @@ import '../models/food_item.dart';
 import '../app_clock.dart';
 import '../theme/app_colors.dart';
 import '../theme/responsive.dart';
+import '../widgets/calorie_status_chip.dart';
 import 'food_log_screen.dart';
 
 class NutritionScreen extends StatefulWidget {
@@ -303,7 +304,19 @@ class _CaloriesTabState extends State<_CaloriesTab>
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
+                // ±5% tolerance status + the numeric on-target range, so the
+                // ring's "kcal left" is read against a band, not a single
+                // number. Hidden on a day with nothing logged — an empty day is
+                // not a shortfall.
+                if (eaten > 0) ...[
+                  const SizedBox(height: 16),
+                  CalorieStatusChip(
+                    consumed: eaten.toDouble(),
+                    target: calorieGoal,
+                    showRange: true,
+                  ),
+                ],
+                const SizedBox(height: 20),
                 Row(
                   children: [
                     _buildCalCard('Goal', '$calorieGoal', c.inactive),

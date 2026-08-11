@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:math' as math;
+import '../algorithms/calorie_tolerance.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../models/user_profile.dart';
@@ -12,6 +13,7 @@ import '../providers/plan_provider.dart';
 import '../providers/profile_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/responsive.dart';
+import '../widgets/calorie_status_chip.dart';
 import '../app_clock.dart';
 import 'plans_screen.dart';
 import 'progress_screen.dart';
@@ -60,7 +62,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final adjusted = pp.dailyEffectiveGoal;
     final base = profile.calorieGoal;
-    if (adjusted == base) return;
+    // Only announce a *meaningful* shift. Anything inside the ±5% tolerance
+    // band is within measurement error (NASEM 2023 — see CalorieTolerance), so
+    // it would be an unnecessary warning. This also covers `adjusted == base`.
+    if (CalorieTolerance.within(adjusted, base)) return;
 
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool('hideGoalAdjustmentPopup') ?? false) return;
@@ -87,12 +92,14 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         content: Text(
           increased
-              ? "You've been slightly below your calorie target earlier this week "
-                    "that's okay. We've nudged today's goal up to $adjusted kcal "
-                    "($diff kcal above your usual) so your weekly total stays balanced."
-              : "You've been slightly above your calorie target earlier this week — "
-                    "no problem. We've nudged today's goal down to $adjusted kcal "
-                    "($diff kcal below your usual) so your weekly total stays on track.",
+              ? "You've been below your calorie target earlier this week by more "
+                    "than the ±5% we treat as on target — that's okay. We've nudged "
+                    "today's goal up to $adjusted kcal ($diff kcal above your usual) "
+                    "so your weekly total stays balanced."
+              : "You've been above your calorie target earlier this week by more "
+                    "than the ±5% we treat as on target — no problem. We've nudged "
+                    "today's goal down to $adjusted kcal ($diff kcal below your usual) "
+                    "so your weekly total stays on track.",
           style: GoogleFonts.inter(color: c.muted),
         ),
         actions: [
@@ -656,6 +663,21 @@ class _HomeDashboard extends StatelessWidget {
                                   AppColors.protein,
                                   colors: c,
                                 ),
+                                // ±5% tolerance status — logging noise reads as
+                                // "On Target" instead of a false shortfall.
+                                // Compact: the "Remaining" row above already
+                                // shows the kcal gap, and the card is narrow.
+                                if (caloriesEaten > 0) ...[
+                                  const SizedBox(height: 10),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: CalorieStatusChip(
+                                      consumed: caloriesEaten,
+                                      target: calorieGoal,
+                                      compact: true,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),

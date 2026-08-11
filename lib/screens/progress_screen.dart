@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:math' as math;
+import '../algorithms/calorie_tolerance.dart';
 import '../providers/progress_provider.dart';
 import '../providers/profile_provider.dart';
 import '../theme/app_colors.dart';
@@ -499,11 +500,19 @@ class _CalorieTrendChartState extends State<_CalorieTrendChart> {
     final labels = prov.bucketLabels(_range);
     final series = prov.calorieSeries(_range);
     final goal = prov.baseCalorieGoal.toDouble();
-    final maxY = math.max(goal * 1.3, 500.0);
+    // The axis must clear the tallest bar, not just the goal — a day well over
+    // target used to be drawn past the top of the plot area and spill out of
+    // the card. Headroom keeps the peak bar off the ceiling.
+    final peak = series.isEmpty ? 0.0 : series.reduce(math.max);
+    final maxY = math.max(math.max(goal * 1.3, peak * 1.08), 500.0);
 
     final bars = series.asMap().entries.map((e) {
       final cal = e.value;
-      final color = cal > goal * 1.05 ? AppColors.orange : AppColors.primary;
+      // Orange once the day clears the shared ±5% tolerance band — the same
+      // line the adaptation engine and the daily status chip use.
+      final color = cal > CalorieTolerance.upper(goal)
+          ? AppColors.orange
+          : AppColors.primary;
       return BarChartGroupData(
         x: e.key,
         barRods: [
