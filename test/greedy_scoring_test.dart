@@ -232,11 +232,7 @@ void main() {
             );
             // Never a limitation-contraindicated move.
             expect(
-              exerciseBlockedByLimitations(
-                e,
-                p.physicalLimitations,
-                p.avoidedMovements,
-              ),
+              exerciseBlockedByLimitations(e, p.physicalLimitations),
               isFalse,
               reason: '${e.name} is contraindicated for ${p.physicalLimitations}',
             );
@@ -251,7 +247,7 @@ void main() {
         profile: _profile(
           goal: 'Weight Loss',
           level: 'Beginner',
-          limitations: const ['Knee injury/pain'],
+          limitations: const ['Knee Pain'],
           sessionMinutes: 30,
         ),
       );

@@ -105,11 +105,7 @@ class GreedyAlgorithm {
     // Physical limitations (e.g. asthma) hard-exclude contraindicated moves.
     // Checked first so it applies to Gym users and blocks even bodyweight moves
     // like burpees. No-op when the user has no limitations (empty list).
-    if (exerciseBlockedByLimitations(
-      e,
-      p.physicalLimitations,
-      p.avoidedMovements,
-    )) {
+    if (exerciseBlockedByLimitations(e, p.physicalLimitations)) {
       return false;
     }
 

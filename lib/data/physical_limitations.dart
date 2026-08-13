@@ -1,12 +1,13 @@
 import '../models/exercise.dart';
 
-/// A specific movement a user can opt to avoid for a given [PhysicalLimitation].
-/// [keywords] are lowercase exercise-name substrings; [common] surfaces the
-/// movement in the sheet's first ("Commonly Affected") tier.
+/// A specific movement mapped to a [PhysicalLimitation]. When the parent area is
+/// selected these are always excluded (they used to be an opt-in checklist).
+/// [keywords] are lowercase exercise-name substrings to block. [common] is
+/// retained for back-compat but no longer drives any UI.
 class AvoidableMovement {
-  final String id; // display label + stored value, e.g. 'Barbell Squat'
+  final String id; // display label, e.g. 'Barbell Squat'
   final List<String> keywords; // lowercase name substrings to block
-  final bool common; // shown before the "Show All Exercises" expander
+  final bool common; // legacy: previously surfaced in the picker sheet
 
   const AvoidableMovement(this.id, this.keywords, {this.common = false});
 }
@@ -16,16 +17,14 @@ class AvoidableMovement {
 /// Flutter/Firebase — so both the greedy generator and the profiling UI can
 /// import it.
 ///
-/// Two blocking layers:
-///  1. **Auto-block** ([categories]/[muscles]/[keywords]) — always on when the
-///     area is selected; a small set of unambiguously high-risk movements.
-///  2. **Opt-in** ([movements]) — ambiguous movements the user personally
-///     chooses to avoid via the profiling sheet; matched only when their id is
-///     in the profile's `avoidedMovements`.
-///
-/// Blocks are intentionally **narrow** (specific movements, matched by category,
-/// primary muscle, or name keyword) so selecting a limitation never empties a
-/// whole training day — it removes higher-risk moves, not entire muscle groups.
+/// **One always-on layer.** Selecting an area blocks its full mapping — the
+/// auto-block set ([categories]/[muscles]/[keywords]) **and** every mapped
+/// [movements] entry (previously an opt-in checklist, now always applied). This
+/// is a hard filter during generation ("won't generate these"); the exercise
+/// picker instead surfaces a soft **"Add Anyway"** warning so the user can
+/// override for a specific move. Movement-heavy areas (Knee/Lower-Back/Hip) can
+/// therefore thin a training day — accepted, since the generator degrades
+/// gracefully (assist-mover + bodyweight fallback) and never empties a day.
 ///
 /// This is a conservative auto-filter, **not medical advice**.
 class PhysicalLimitation {
@@ -253,34 +252,38 @@ AvoidableMovement? movementById(String id) {
   return null;
 }
 
-/// True if [e] is contraindicated by either the user's selected areas
-/// ([areaIds], auto-block) or their opted-in movements ([avoidedMovementIds]).
-/// Empty inputs → false (no filtering, i.e. every existing user is unaffected).
-bool exerciseBlockedByLimitations(
-  Exercise e,
-  List<String> areaIds,
-  List<String> avoidedMovementIds,
-) {
-  if (areaIds.isEmpty && avoidedMovementIds.isEmpty) return false;
+/// True if [e] is contraindicated by any of the user's selected areas
+/// ([areaIds]). Each selected area blocks its auto-block set
+/// (`categories`/`muscles`/`keywords`) **and** every one of its mapped
+/// `movements` — the whole limitation, always on. Empty [areaIds] → false (no
+/// filtering, i.e. every existing user is unaffected).
+bool exerciseBlockedByLimitations(Exercise e, List<String> areaIds) {
+  return _blockingArea(e, areaIds) != null;
+}
+
+/// Returns the id of the first selected area that contraindicates [e] (e.g.
+/// `'Shoulder Pain'`), or null if none — used for the "Add Anyway" warning copy.
+String? limitationReasonFor(Exercise e, List<String> areaIds) =>
+    _blockingArea(e, areaIds);
+
+/// Shared matcher: the id of the first area in [areaIds] whose auto-block set or
+/// mapped movements match [e]; null if none.
+String? _blockingArea(Exercise e, List<String> areaIds) {
+  if (areaIds.isEmpty) return null;
   final name = e.name.toLowerCase();
   final cat = e.category.toLowerCase();
   final primary = e.primaryMuscles.map((m) => m.toLowerCase()).toList();
 
-  // Layer 1 — auto-block for each selected area.
   for (final id in areaIds) {
     final lim = limitationById(id);
     if (lim == null) continue;
-    if (lim.categories.contains(cat)) return true;
-    if (primary.any(lim.muscles.contains)) return true;
-    if (lim.keywords.any(name.contains)) return true;
+    if (lim.categories.contains(cat)) return id;
+    if (primary.any(lim.muscles.contains)) return id;
+    if (lim.keywords.any(name.contains)) return id;
+    // Movements are now always-on for a selected area (no longer opt-in).
+    for (final mv in lim.movements) {
+      if (mv.keywords.any(name.contains)) return id;
+    }
   }
-
-  // Layer 2 — opt-in movements the user chose to avoid.
-  for (final id in avoidedMovementIds) {
-    final mv = movementById(id);
-    if (mv == null) continue;
-    if (mv.keywords.any(name.contains)) return true;
-  }
-
-  return false;
+  return null;
 }

@@ -26,7 +26,6 @@ Exercise _ex({
 
 UserProfile _profile({
   List<String> limitations = const [],
-  List<String> avoided = const [],
   String location = 'Gym',
 }) => UserProfile(
   uid: 'u1',
@@ -41,15 +40,13 @@ UserProfile _profile({
   equipment: const [],
   dietaryRestrictions: const ['Balanced'],
   physicalLimitations: limitations,
-  avoidedMovements: avoided,
 );
 
-// Convenience: no opt-in movements.
-bool _blocked(Exercise e, List<String> areas, [List<String> avoided = const []]) =>
-    exerciseBlockedByLimitations(e, areas, avoided);
+bool _blocked(Exercise e, List<String> areas) =>
+    exerciseBlockedByLimitations(e, areas);
 
 void main() {
-  group('exerciseBlockedByLimitations — auto-block layer', () {
+  group('exerciseBlockedByLimitations — single always-on layer', () {
     test('empty inputs never block (existing users unaffected)', () {
       expect(
         _blocked(_ex(name: 'Burpee', category: 'cardio'), const []),
@@ -69,25 +66,19 @@ void main() {
 
     test('Asthma blocks a HIIT keyword (burpee) even if not cardio-tagged', () {
       expect(
-        _blocked(
-          _ex(name: 'Burpee', category: 'full body'),
-          const ['Asthma'],
-        ),
+        _blocked(_ex(name: 'Burpee', category: 'full body'), const ['Asthma']),
         isTrue,
       );
     });
 
     test('Asthma leaves a normal strength lift alone', () {
       expect(
-        _blocked(
-          _ex(name: 'Bench Press', category: 'chest'),
-          const ['Asthma'],
-        ),
+        _blocked(_ex(name: 'Bench Press', category: 'chest'), const ['Asthma']),
         isFalse,
       );
     });
 
-    group('Shoulder Pain auto-block covers overhead-press variants', () {
+    group('Shoulder Pain blocks overhead-press variants (auto-block)', () {
       for (final name in const [
         'Overhead Press',
         'Dumbbell Bench Seated Press',
@@ -99,12 +90,33 @@ void main() {
       ]) {
         test('blocks "$name"', () {
           expect(
-            _blocked(_ex(name: name, category: 'shoulders'),
-                const ['Shoulder Pain']),
+            _blocked(
+              _ex(name: name, category: 'shoulders'),
+              const ['Shoulder Pain'],
+            ),
             isTrue,
           );
         });
       }
+    });
+
+    test('Shoulder Pain now ALSO blocks its mapped movements (always-on)', () {
+      // Lateral/front raise were opt-in before; selecting the area now blocks
+      // them directly, with no avoidedMovements needed.
+      expect(
+        _blocked(
+          _ex(name: 'Dumbbell Lateral Raise', category: 'shoulders'),
+          const ['Shoulder Pain'],
+        ),
+        isTrue,
+      );
+      expect(
+        _blocked(
+          _ex(name: 'Cable Front Raise', category: 'shoulders'),
+          const ['Shoulder Pain'],
+        ),
+        isTrue,
+      );
     });
 
     group('Shoulder Pain leaves therapeutic rear-delt work alone', () {
@@ -116,8 +128,10 @@ void main() {
       ]) {
         test('does not block "$name"', () {
           expect(
-            _blocked(_ex(name: name, category: 'shoulders'),
-                const ['Shoulder Pain']),
+            _blocked(
+              _ex(name: name, category: 'shoulders'),
+              const ['Shoulder Pain'],
+            ),
             isFalse,
           );
         });
@@ -125,7 +139,6 @@ void main() {
     });
 
     test('specific "dip" keywords do not over-match unrelated moves', () {
-      // Bare "dip" substring should NOT trigger on an unrelated hip move.
       expect(
         _blocked(
           _ex(name: 'Standing Hip Dip', category: 'core'),
@@ -135,121 +148,127 @@ void main() {
       );
     });
 
-    test('Lower Back Pain auto-blocks sit-up but not squats/deadlift', () {
+    test('Lower Back Pain blocks sit-up (auto) AND squat/deadlift (movements)', () {
       expect(
-        _blocked(_ex(name: 'Sit-Up', category: 'core'),
-            const ['Lower Back Pain']),
+        _blocked(
+          _ex(name: 'Sit-Up', category: 'core'),
+          const ['Lower Back Pain'],
+        ),
         isTrue,
       );
-      // Squat & deadlift are opt-in, not auto-blocked.
+      // Squat & deadlift are now always-on for a selected area.
       expect(
-        _blocked(_ex(name: 'Barbell Back Squat', category: 'legs'),
-            const ['Lower Back Pain']),
-        isFalse,
+        _blocked(
+          _ex(name: 'Barbell Back Squat', category: 'legs'),
+          const ['Lower Back Pain'],
+        ),
+        isTrue,
       );
       expect(
-        _blocked(_ex(name: 'Barbell Deadlift', category: 'legs'),
-            const ['Lower Back Pain']),
-        isFalse,
+        _blocked(
+          _ex(name: 'Barbell Deadlift', category: 'legs'),
+          const ['Lower Back Pain'],
+        ),
+        isTrue,
       );
     });
 
     test('Ankle Pain auto-blocks box jump', () {
       expect(
-        _blocked(_ex(name: 'Box Jump', category: 'plyometrics'),
-            const ['Ankle Pain']),
-        isTrue,
-      );
-    });
-  });
-
-  group('exerciseBlockedByLimitations — opt-in movement layer', () {
-    test('lateral raise blocked ONLY when opted in', () {
-      final latRaise = _ex(name: 'Dumbbell Lateral Raise', category: 'shoulders');
-      expect(_blocked(latRaise, const ['Shoulder Pain']), isFalse);
-      expect(
-        _blocked(latRaise, const ['Shoulder Pain'], const ['Lateral Raise']),
+        _blocked(
+          _ex(name: 'Box Jump', category: 'plyometrics'),
+          const ['Ankle Pain'],
+        ),
         isTrue,
       );
     });
 
-    test('Lower Back: back squat blocked only when opted in', () {
-      final squat = _ex(name: 'Barbell Back Squat', category: 'legs');
-      expect(_blocked(squat, const ['Lower Back Pain']), isFalse);
-      expect(
-        _blocked(squat, const ['Lower Back Pain'], const ['Barbell Squat']),
-        isTrue,
-      );
+    group('formerly opt-in areas now block their movements on selection', () {
+      // area → an exercise name that should be blocked purely by selecting it.
+      final cases = {
+        'Wrist Pain': 'Diamond Push-Up',
+        'Elbow Pain': 'EZ-Bar Skullcrusher',
+        'Hip Pain': 'Trap Bar Deadlift',
+        'Neck Pain': 'Cable Upright Row',
+        'Knee Pain': 'Front Squat',
+      };
+      cases.forEach((area, exName) {
+        test('$area blocks "$exName" with no avoidedMovements', () {
+          expect(_blocked(_ex(name: exName), [area]), isTrue);
+        });
+      });
     });
 
-    test('precise keywords: opting out of Barbell Squat spares Front Squat', () {
+    test('precise keywords still avoid over-matching (leg curl under Knee)', () {
       expect(
         _blocked(
-          _ex(name: 'Front Squat', category: 'legs'),
+          _ex(name: 'Seated Leg Curl', category: 'legs'),
           const ['Knee Pain'],
-          const ['Barbell Squat'],
         ),
         isFalse,
       );
     });
+  });
 
-    group('new areas block a sample movement when opted in', () {
-      final cases = {
-        'Wrist Pain': ['Push-Up', 'Diamond Push-Up'],
-        'Elbow Pain': ['Skullcrusher', 'EZ-Bar Skullcrusher'],
-        'Hip Pain': ['Deadlift', 'Trap Bar Deadlift'],
-        'Neck Pain': ['Upright Row', 'Cable Upright Row'],
-      };
-      cases.forEach((area, pair) {
-        final movementId = pair[0];
-        final exName = pair[1];
-        test('$area + "$movementId" blocks "$exName"', () {
-          final ex = _ex(name: exName);
-          expect(_blocked(ex, [area]), isFalse);
-          expect(_blocked(ex, [area], [movementId]), isTrue);
-        });
-      });
+  group('limitationReasonFor', () {
+    test('returns the offending area id for a blocked move', () {
+      expect(
+        limitationReasonFor(
+          _ex(name: 'Overhead Press', category: 'shoulders'),
+          const ['Shoulder Pain'],
+        ),
+        'Shoulder Pain',
+      );
+    });
+
+    test('returns null for a move the user can safely perform', () {
+      expect(
+        limitationReasonFor(
+          _ex(name: 'Rear Delt Fly', category: 'shoulders'),
+          const ['Shoulder Pain'],
+        ),
+        isNull,
+      );
+    });
+
+    test('returns null when no areas are selected', () {
+      expect(
+        limitationReasonFor(_ex(name: 'Burpee', category: 'cardio'), const []),
+        isNull,
+      );
     });
   });
 
   group('isEligibleForUser respects limitations (even for Gym)', () {
-    test('Gym profile still excludes a cardio move when Asthma is set', () {
+    test('Gym profile excludes a cardio move when Asthma is set', () {
       final cardio = _ex(name: 'Jump Rope', category: 'cardio');
-      expect(
-        GreedyAlgorithm.isEligibleForUser(cardio, _profile()),
-        isTrue,
-        reason: 'no limitation → eligible',
-      );
+      expect(GreedyAlgorithm.isEligibleForUser(cardio, _profile()), isTrue);
       expect(
         GreedyAlgorithm.isEligibleForUser(
           cardio,
           _profile(limitations: const ['Asthma']),
         ),
         isFalse,
-        reason: 'Asthma → cardio excluded even at a gym',
       );
     });
 
-    test('Gym profile excludes an opted-in movement (Shoulder Pain)', () {
-      final latRaise = _ex(name: 'Dumbbell Lateral Raise', category: 'shoulders');
+    test('Gym profile excludes a mapped movement on selection (Shoulder Pain)', () {
+      final latRaise = _ex(
+        name: 'Dumbbell Lateral Raise',
+        category: 'shoulders',
+      );
+      expect(
+        GreedyAlgorithm.isEligibleForUser(latRaise, _profile()),
+        isTrue,
+        reason: 'no limitation → eligible',
+      );
       expect(
         GreedyAlgorithm.isEligibleForUser(
           latRaise,
           _profile(limitations: const ['Shoulder Pain']),
         ),
-        isTrue,
-        reason: 'lateral raise is opt-in, not auto-blocked',
-      );
-      expect(
-        GreedyAlgorithm.isEligibleForUser(
-          latRaise,
-          _profile(
-            limitations: const ['Shoulder Pain'],
-            avoided: const ['Lateral Raise'],
-          ),
-        ),
         isFalse,
-        reason: 'opted-in → excluded',
+        reason: 'selecting Shoulder Pain now excludes it directly',
       );
     });
   });

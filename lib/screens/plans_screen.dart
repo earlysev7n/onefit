@@ -2773,6 +2773,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
         'Rated ${e.difficulty}, above your ${p.experienceLevel} level.',
       );
     }
+    final limArea = limitationReasonFor(e, p.physicalLimitations);
+    if (limArea != null) {
+      reasons.add('May affect an area you marked as limited: $limArea.');
+    }
     return reasons;
   }
 
@@ -3696,17 +3700,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final ga = profile != null ? GreedyAlgorithm() : null;
     final relevant =
         allEx.where((e) {
-          // Physical limitations are a hard safety exclude — never offer a
-          // contraindicated move in the picker (equipment/tier stay warn-then-
-          // allow via _restrictionsFor, but limitations are not overridable).
-          if (profile != null &&
-              exerciseBlockedByLimitations(
-                e,
-                profile.physicalLimitations,
-                profile.avoidedMovements,
-              )) {
-            return false;
-          }
+          // Limitations are now warn-then-allow in the picker (surfaced via
+          // _restrictionsFor → the "Add Anyway" confirm on tap), so limited
+          // moves are shown here, not hidden. Automatic generation/gap-fill
+          // still hard-excludes them via isEligibleForUser.
           if (targetMuscles.isEmpty) return true;
           return e.primaryMuscles.any((m) => targetMuscles.contains(m));
         }).toList()..sort((a, b) {
@@ -3835,6 +3832,15 @@ class _WorkoutTabState extends State<_WorkoutTab>
                                       ex,
                                       _profile!,
                                     );
+                              // Limited moves are shown (warn-then-allow), so
+                              // flag them with the same amber cue as equipment.
+                              final limited =
+                                  _profile != null &&
+                                  limitationReasonFor(
+                                        ex,
+                                        _profile!.physicalLimitations,
+                                      ) !=
+                                      null;
                               return ListTile(
                                 enabled: !alreadyAdded,
                                 contentPadding: const EdgeInsets.symmetric(
@@ -3869,7 +3875,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                                         aboveTier,
                                       ),
                                     ],
-                                    if (equipReasons.isNotEmpty) ...[
+                                    if (equipReasons.isNotEmpty || limited) ...[
                                       const SizedBox(width: 6),
                                       Icon(
                                         Icons.warning_amber_rounded,

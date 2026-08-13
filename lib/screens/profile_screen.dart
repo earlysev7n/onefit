@@ -222,10 +222,7 @@ class ProfileScreen extends StatelessWidget {
                 'Limitations',
                 (profile?.physicalLimitations.isEmpty ?? true)
                     ? 'None'
-                    : profile!.physicalLimitations.join(', ') +
-                          (profile.avoidedMovements.isNotEmpty
-                              ? ' (+${profile.avoidedMovements.length} avoided)'
-                              : ''),
+                    : profile!.physicalLimitations.join(', '),
               ),
             ]),
             const SizedBox(height: 12),
