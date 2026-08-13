@@ -216,9 +216,15 @@ class ProfileProvider extends ChangeNotifier {
   }
 
   /// Persists [p] and updates the cache. Used by onboarding and the edit screen.
+  ///
+  /// Updates the in-memory profile **before** the write (which is non-blocking —
+  /// see [FirestoreService.saveUserProfile]) so weight logging, profile edits and
+  /// the weekly calorie adaptation take effect offline immediately. Because
+  /// `lastAdaptationWeekId` is set in memory here, the once-per-week adaptation
+  /// guard still prevents double-application offline and across reconnect.
   Future<void> save(UserProfile p) async {
-    await _fs.saveUserProfile(p);
     _profile = p;
+    await _fs.saveUserProfile(p);
     if (_uid != null) await _computeDailyGoal(_uid!);
     notifyListeners();
   }

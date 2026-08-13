@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/user_profile.dart';
 import '../models/food_item.dart';
 import '../models/workout_log.dart';
@@ -11,12 +13,31 @@ import '../app_clock.dart';
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  /// Issues a Firestore write WITHOUT awaiting the server ack. Firestore applies
+  /// the write to the on-device cache immediately and queues it durably, so the
+  /// UI must never block on the returned Future — offline it does not resolve
+  /// until the device reconnects (that was the "delete/regenerate/add hangs
+  /// offline" bug). Rare async failures (e.g. permission errors) are logged, not
+  /// thrown. Reads (`.get()`) must still be awaited — offline they read cache.
+  void _fireWrite(Future<void> write, String op) {
+    unawaited(
+      write.catchError((Object e) {
+        debugPrint('Firestore write failed ($op): $e');
+      }),
+    );
+  }
+
   // ========================================
   // USER PROFILE METHODS
   // ========================================
 
+  /// Non-blocking (see [_fireWrite]) so profile edits, weight syncs and the
+  /// weekly calorie adaptation persist offline without hanging.
   Future<void> saveUserProfile(UserProfile profile) async {
-    await _db.collection('users').doc(profile.uid).set(profile.toMap());
+    _fireWrite(
+      _db.collection('users').doc(profile.uid).set(profile.toMap()),
+      'saveUserProfile',
+    );
   }
 
   Future<UserProfile?> loadUserProfile(String uid) async {
@@ -66,13 +87,17 @@ class FirestoreService {
   // NUTRITION LOGGING METHODS
   // ========================================
 
-  /// Log a food item for a user
+  /// Log a food item for a user. Returns the new doc id synchronously (Firestore
+  /// ids are client-generated) and fires the write without awaiting the server
+  /// ack, so logging never blocks the UI — offline the item is cached + queued
+  /// immediately and surfaces through the food-log streams right away.
   Future<String> logFoodItem(FoodItem foodItem) async {
-    final docRef = await _db
+    final docRef = _db
         .collection('users')
         .doc(foodItem.userId)
         .collection('food_logs')
-        .add(foodItem.toMap());
+        .doc();
+    _fireWrite(docRef.set(foodItem.toMap()), 'logFoodItem');
     return docRef.id;
   }
 
@@ -128,28 +153,35 @@ class FirestoreService {
         .toList();
   }
 
-  /// Delete a food log entry
+  /// Delete a food log entry. Non-blocking (see [_fireWrite]) so deleting works
+  /// offline immediately.
   Future<void> deleteFoodLog(String userId, String foodLogId) async {
-    await _db
-        .collection('users')
-        .doc(userId)
-        .collection('food_logs')
-        .doc(foodLogId)
-        .delete();
+    _fireWrite(
+      _db
+          .collection('users')
+          .doc(userId)
+          .collection('food_logs')
+          .doc(foodLogId)
+          .delete(),
+      'deleteFoodLog',
+    );
   }
 
-  /// Update a food log entry (e.g., change quantity or meal type)
+  /// Update a food log entry (e.g., change quantity or meal type). Non-blocking.
   Future<void> updateFoodLog(
     String userId,
     String foodLogId,
     Map<String, dynamic> updates,
   ) async {
-    await _db
-        .collection('users')
-        .doc(userId)
-        .collection('food_logs')
-        .doc(foodLogId)
-        .update(updates);
+    _fireWrite(
+      _db
+          .collection('users')
+          .doc(userId)
+          .collection('food_logs')
+          .doc(foodLogId)
+          .update(updates),
+      'updateFoodLog',
+    );
   }
 
   /// Get total nutrition for today
@@ -336,32 +368,41 @@ class FirestoreService {
   // WORKOUT PLAN METHODS
   // ========================================
 
-  /// Save a typed 7-day workout plan for the given ISO week.
+  /// Save a typed 7-day workout plan for the given ISO week. Non-blocking (see
+  /// [_fireWrite]) so plan edits/regeneration apply offline immediately. No
+  /// caller reads back `savedAt`, so not awaiting the serverTimestamp is safe.
   Future<void> saveWeeklyWorkoutPlan(
     String userId,
     String weekId,
     List<WorkoutDay> plan,
   ) async {
-    await _db
-        .collection('users')
-        .doc(userId)
-        .collection('workout_plans')
-        .doc(weekId)
-        .set({
-          'days': plan.map((d) => d.toMap()).toList(),
-          'savedAt': FieldValue.serverTimestamp(),
-        });
+    _fireWrite(
+      _db
+          .collection('users')
+          .doc(userId)
+          .collection('workout_plans')
+          .doc(weekId)
+          .set({
+            'days': plan.map((d) => d.toMap()).toList(),
+            'savedAt': FieldValue.serverTimestamp(),
+          }),
+      'saveWeeklyWorkoutPlan',
+    );
   }
 
-  /// Delete the persisted workout plan for a given ISO week.
-  /// Used by the force-regenerate flow to escape a broken/empty plan.
+  /// Delete the persisted workout plan for a given ISO week. Non-blocking so the
+  /// force-regenerate flow proceeds immediately offline (the local delete is
+  /// reflected in the subsequent cache read).
   Future<void> deleteWeeklyWorkoutPlan(String userId, String weekId) async {
-    await _db
-        .collection('users')
-        .doc(userId)
-        .collection('workout_plans')
-        .doc(weekId)
-        .delete();
+    _fireWrite(
+      _db
+          .collection('users')
+          .doc(userId)
+          .collection('workout_plans')
+          .doc(weekId)
+          .delete(),
+      'deleteWeeklyWorkoutPlan',
+    );
   }
 
   /// Deletes every document from every user-history subcollection.
@@ -412,13 +453,18 @@ class FirestoreService {
 
   /// Persist one weekly adaptation snapshot at `weekly_summaries/{weekId}`.
   /// Written once per week by the adaptation flow (idempotent on the weekId).
+  /// Non-blocking so the generate/adaptation flow completes offline; the doc-id
+  /// is the weekId, so a re-sync never duplicates it.
   Future<void> saveWeeklySummary(String userId, WeeklySummary summary) async {
-    await _db
-        .collection('users')
-        .doc(userId)
-        .collection('weekly_summaries')
-        .doc(summary.weekId)
-        .set(summary.toMap());
+    _fireWrite(
+      _db
+          .collection('users')
+          .doc(userId)
+          .collection('weekly_summaries')
+          .doc(summary.weekId)
+          .set(summary.toMap()),
+      'saveWeeklySummary',
+    );
   }
 
   /// Read a single week's summary (e.g. the current week). Null if not found.
@@ -468,12 +514,16 @@ class FirestoreService {
     return date.subtract(Duration(days: offset));
   }
 
+  /// Saves a completed workout. Returns the client-generated id synchronously
+  /// and fires the write without awaiting the ack, so "Mark as Done" works
+  /// offline immediately (surfaces through [streamWorkoutLogForDate]).
   Future<String> saveWorkoutLog(WorkoutLog log) async {
-    final docRef = await _db
+    final docRef = _db
         .collection('users')
         .doc(log.userId)
         .collection('workout_logs')
-        .add(log.toMap());
+        .doc();
+    _fireWrite(docRef.set(log.toMap()), 'saveWorkoutLog');
     return docRef.id;
   }
 
@@ -524,21 +574,26 @@ class FirestoreService {
   // WEIGHT LOG METHODS
   // ========================================
 
+  /// Logs today's weight (doc-id = date, so re-logging overwrites). Non-blocking
+  /// so weight logging works offline immediately.
   Future<void> saveWeightLog(String userId, double weightKg) async {
     final now = appNow();
     final dateKey =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    await _db
-        .collection('users')
-        .doc(userId)
-        .collection('weight_logs')
-        .doc(dateKey)
-        .set({
-          'userId': userId,
-          'date': Timestamp.fromDate(DateTime(now.year, now.month, now.day)),
-          'weight': weightKg,
-          'loggedAt': FieldValue.serverTimestamp(),
-        });
+    _fireWrite(
+      _db
+          .collection('users')
+          .doc(userId)
+          .collection('weight_logs')
+          .doc(dateKey)
+          .set({
+            'userId': userId,
+            'date': Timestamp.fromDate(DateTime(now.year, now.month, now.day)),
+            'weight': weightKg,
+            'loggedAt': FieldValue.serverTimestamp(),
+          }),
+      'saveWeightLog',
+    );
   }
 
   Future<List<Map<String, dynamic>>> getWeightLogs(
@@ -591,16 +646,21 @@ class FirestoreService {
         bestDate = bd is Timestamp ? bd.toDate() : date;
       }
     }
-    await ref.set({
-      'exerciseId': exerciseId,
-      'name': name,
-      'lastWeightKg': weightKg,
-      'lastReps': reps,
-      'lastDate': Timestamp.fromDate(date),
-      'bestWeightKg': bestWeight,
-      'bestDate': Timestamp.fromDate(bestDate),
-      'lastSets': lastSets.map((s) => s.toMap()).toList(),
-    }, SetOptions(merge: true));
+    // Read-before-write: the `.get()` above resolves from cache offline; the
+    // `.set()` is fired non-blocking so saving stats never hangs offline.
+    _fireWrite(
+      ref.set({
+        'exerciseId': exerciseId,
+        'name': name,
+        'lastWeightKg': weightKg,
+        'lastReps': reps,
+        'lastDate': Timestamp.fromDate(date),
+        'bestWeightKg': bestWeight,
+        'bestDate': Timestamp.fromDate(bestDate),
+        'lastSets': lastSets.map((s) => s.toMap()).toList(),
+      }, SetOptions(merge: true)),
+      'saveExerciseStat',
+    );
   }
 
   /// Batch-reads per-exercise stats for [exerciseIds] → keyed by exerciseId.
