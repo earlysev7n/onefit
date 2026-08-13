@@ -217,9 +217,6 @@ class _WorkoutTabState extends State<_WorkoutTab>
   bool _setLogging = false;
   int _setRemaining = 0;
   int _setTotal = 0;
-  // Bodyweight exercises hide the weight field by default; tapping "Add weight"
-  // reveals it. Reset per exercise in _prefillTargetFor.
-  bool _showBodyweightWeight = false;
   Timer? _setTimer;
 
   // ── Warm-up phase ──────────────────────────────────────────────────────────
@@ -908,7 +905,6 @@ class _WorkoutTabState extends State<_WorkoutTab>
   /// exercise at [exIdx] (display units), so the user just confirms. Clears when
   /// there is no target.
   void _prefillTargetFor(int exIdx) {
-    _showBodyweightWeight = false;
     if (_selectedDay < 0 || _selectedDay >= _plan.length) return;
     final day = _plan[_selectedDay];
     if (exIdx < 0 || exIdx >= day.exercises.length) return;
@@ -1172,6 +1168,8 @@ class _WorkoutTabState extends State<_WorkoutTab>
         ? 'Last: ${_fmtWeight(stat.lastWeightKg)}'
               '${stat.lastReps != null ? ' × ${stat.lastReps}' : ''}'
               '   ·   PR ${_fmtWeight(stat.bestWeightKg)}'
+        : _isBodyweight(we)
+        ? 'Log your reps to track progress'
         : 'Log your working weight to track progress';
     InputDecoration deco(String h, {String? suffix}) => InputDecoration(
       hintText: h,
@@ -1222,33 +1220,14 @@ class _WorkoutTabState extends State<_WorkoutTab>
         child: Icon(icon, color: AppColors.primary, size: 20),
       ),
     );
-    // Bodyweight moves show reps only until the user taps "Add weight".
-    final showWeight = !_isBodyweight(we) || _showBodyweightWeight;
+    // Bodyweight moves are reps-only (no weight field / "Add weight" affordance).
+    final showWeight = !_isBodyweight(we);
     final target = _targetFor(we);
 
     final weightCol = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_isBodyweight(we) && _showBodyweightWeight)
-          Row(
-            children: [
-              Expanded(child: fieldLabel('WEIGHT')),
-              SizedBox(
-                width: 24,
-                height: 20,
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  icon: Icon(Icons.close_rounded, size: 16, color: c.muted),
-                  onPressed: () => setState(() {
-                    _showBodyweightWeight = false;
-                    _weightController.clear();
-                  }),
-                ),
-              ),
-            ],
-          )
-        else
-          fieldLabel('WEIGHT'),
+        fieldLabel('WEIGHT'),
         TextField(
           controller: _weightController,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -1301,27 +1280,6 @@ class _WorkoutTabState extends State<_WorkoutTab>
       ],
     );
 
-    final addWeightButton = SizedBox(
-      height: 48,
-      child: OutlinedButton.icon(
-        onPressed: () => setState(() => _showBodyweightWeight = true),
-        icon: const Icon(Icons.add_rounded, size: 18),
-        label: Text(
-          'Add weight',
-          overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
-        ),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primary,
-          side: BorderSide(color: AppColors.primary.withOpacity(0.5)),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-    );
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1354,20 +1312,14 @@ class _WorkoutTabState extends State<_WorkoutTab>
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Expanded(flex: 3, child: weightCol),
+              Expanded(child: weightCol),
               const SizedBox(width: 10),
-              Expanded(flex: 2, child: repsCol),
+              Expanded(child: repsCol),
             ],
           )
         else
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(flex: 2, child: repsCol),
-              const SizedBox(width: 10),
-              Expanded(flex: 3, child: addWeightButton),
-            ],
-          ),
+          // Bodyweight: reps only, full width.
+          repsCol,
       ],
     );
   }
