@@ -2860,11 +2860,6 @@ class _WorkoutTabState extends State<_WorkoutTab>
                 ),
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Add it anyway?',
-              style: GoogleFonts.inter(color: c.muted, fontSize: 14),
-            ),
           ],
         ),
         actions: [
