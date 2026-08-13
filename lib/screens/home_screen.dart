@@ -1150,9 +1150,11 @@ class _HomeDashboard extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        // Flexible so that a wide label + badge gives way before the value does
-        // — the number on the right is the point of the row.
-        Flexible(
+        // Label side takes all space the value doesn't need, so "Goal" only
+        // ellipsizes on a genuinely tiny width — not because a +N badge shares
+        // an equal half. The value (a bounded short numeric) is the point of
+        // the row, so it keeps its intrinsic width and stays fully readable.
+        Expanded(
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1175,17 +1177,15 @@ class _HomeDashboard extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        Flexible(
-          child: Text(
-            value,
-            textAlign: TextAlign.right,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.inter(
-              color: c.onBackground,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
+        Text(
+          value,
+          textAlign: TextAlign.right,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.inter(
+            color: c.onBackground,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ],

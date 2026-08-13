@@ -2585,12 +2585,18 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       'Set ${s + 1}',
                       style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                     ),
-                    Text(
-                      _setEntryLabel(sets[s]),
-                      style: GoogleFonts.inter(
-                        color: c.onBackground,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        _setEntryLabel(sets[s]),
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          color: c.onBackground,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ],
@@ -6695,10 +6701,15 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: GoogleFonts.inter(color: clr.muted, fontSize: 12.5),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.inter(color: clr.muted, fontSize: 12.5),
+            ),
           ),
+          const SizedBox(width: 8),
           Text(
             '$text $unit',
             style: GoogleFonts.inter(
