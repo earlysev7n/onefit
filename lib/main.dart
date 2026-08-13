@@ -1,7 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'firebase_options.dart';
 import 'services/auth_service.dart';
 import 'services/firestore_service.dart';
@@ -13,6 +15,7 @@ import 'providers/plan_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/progress_provider.dart';
 import 'providers/profile_provider.dart';
+import 'providers/connectivity_provider.dart';
 import 'theme/app_theme.dart';
 import 'theme/app_colors.dart';
 import 'theme/app_text_scale.dart';
@@ -28,8 +31,22 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
+  // A missing/unreadable .env must not block cold launch (e.g. offline first
+  // run) — the network services that read it fail gracefully on their own.
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint('dotenv load failed (continuing without it): $e');
+  }
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Make Firestore's on-device offline persistence explicit. It is on by
+  // default on Android, but configuring it here documents the intent and lets
+  // every cached read/queued write drive the offline experience deliberately.
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  );
 
   if (_DEBUG_FORCE_LOGOUT) {
     await FirebaseAuth.instance.signOut();
@@ -50,6 +67,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => PlanProvider()),
         ChangeNotifierProvider(create: (_) => ProgressProvider()),
         ChangeNotifierProvider(create: (_) => ProfileProvider()),
+        ChangeNotifierProvider(create: (_) => ConnectivityProvider()),
       ],
       child: const OneFitApp(),
     ),
@@ -116,8 +134,17 @@ class _OneFitAppState extends State<OneFitApp> {
               // Rebuilds only the day pill's label; the actual screen refresh on
               // a day change is driven by _onDayChanged re-pushing a fresh
               // HomeScreen.
-              builder: (context, offset, _) =>
-                  Stack(children: [child!, if (changerOn) _DebugDayChanger()]),
+              builder: (context, offset, _) => Stack(
+                children: [
+                  child!,
+                  // Slim "you're offline" banner — auto on connection loss and
+                  // on the dev Force-Offline toggle. Below the day pill so both
+                  // can coexist while testing.
+                  if (context.watch<ConnectivityProvider>().isOffline)
+                    const _OfflineBanner(),
+                  if (changerOn) _DebugDayChanger(),
+                ],
+              ),
             ),
           ),
         );
@@ -214,6 +241,57 @@ class _DebugDayChanger extends StatelessWidget {
       child: Icon(icon, color: AppColors.primary, size: 22),
     ),
   );
+}
+
+/// Slim top banner shown while [ConnectivityProvider.isOffline]. Reassures the
+/// user that logging still works and will sync — the offline promise is
+/// "nothing you type is lost". Visibility is decided by the caller in the
+/// `MaterialApp.builder` Stack; this widget only paints.
+class _OfflineBanner extends StatelessWidget {
+  const _OfflineBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Positioned(
+      left: 0,
+      right: 0,
+      top: 0,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          color: AppColors.amber.withValues(alpha: 0.16),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.cloud_off_rounded,
+                      color: AppColors.amber, size: 15),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      "You're offline — changes will sync when you reconnect.",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.inter(
+                        color: c.onBackground,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class AuthGate extends StatefulWidget {

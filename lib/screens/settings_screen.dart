@@ -263,6 +263,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   divider(),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: forceOfflineEnabled,
+                    builder: (context, on, _) => _settingsTile(
+                      context,
+                      icon: Icons.cloud_off_outlined,
+                      iconColor: AppColors.amber,
+                      title: 'Force Offline',
+                      subtitle: 'Simulate no connection (cuts Firestore too)',
+                      trailing: Switch(
+                        value: on,
+                        onChanged: (v) => forceOfflineEnabled.value = v,
+                        activeTrackColor: AppColors.primary,
+                        activeThumbColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                  divider(),
                   _scenarioPicker(context),
                   divider(),
                   _settingsTile(
@@ -449,9 +466,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final p = await SharedPreferences.getInstance();
     await p.setBool('developerMode', value);
     if (!value) {
-      // Never leave a real user on a shifted day.
+      // Never leave a real user on a shifted day or forced offline.
       devDayChangerEnabled.value = false;
       debugDayOffset.value = 0;
+      forceOfflineEnabled.value = false;
     }
   }
 

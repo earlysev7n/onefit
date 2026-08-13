@@ -20,6 +20,15 @@ final ValueNotifier<bool> devDayChangerEnabled = ValueNotifier<bool>(false);
 final ValueNotifier<DevScenario> devScenario =
     ValueNotifier<DevScenario>(DevScenario.levelUp);
 
+/// Developer-Mode "Force Offline" switch. When true (and Developer Mode is on),
+/// the app behaves as if the device has no connection: the offline banner shows
+/// and every network-only feature is disabled — without touching Wi-Fi. The
+/// [ConnectivityProvider] also drives Firestore's `disableNetwork()` off this so
+/// it is a *real* offline test (cached reads + queued writes), not just a UI gate.
+/// A sub-toggle of Developer Mode; turning Developer Mode off resets it to false.
+/// MUST default `false` — real users never reach it.
+final ValueNotifier<bool> forceOfflineEnabled = ValueNotifier<bool>(false);
+
 /// When true, shows an amber ⚡ "Auto-Complete" button on each training day
 /// card in the Workout tab so workouts can be logged without doing the full
 /// exercise flow. Use this to rapidly populate workout_logs for adaptation

@@ -17,6 +17,7 @@ import '../models/meal_ingredient.dart';
 import '../app_clock.dart';
 import 'barcode_scan_screen.dart';
 import '../theme/app_colors.dart';
+import '../widgets/offline.dart';
 
 class FoodLogScreen extends StatefulWidget {
   final String mealType;
@@ -221,6 +222,12 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   // ── Barcode ──────────────────────────────────────────────────────────────────
 
   Future<void> _scanBarcode() async {
+    // The product lookup (OpenFoodFacts) needs network — don't even open the
+    // camera offline.
+    if (isOffline(context)) {
+      showOfflineSnack(context, 'Barcode scanning');
+      return;
+    }
     // Capture before the async gaps — don't touch context after an await.
     final barcodeProfile = context.read<ProfileProvider>().profile;
     final restrictions =
@@ -450,6 +457,18 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
     _searchPage = 1;
     _totalPages = 0;
     if (_scrollController.hasClients) _scrollController.jumpTo(0);
+    // Offline: serve a previously-cached query, otherwise show the offline
+    // notice rather than firing a doomed request that just times out.
+    if (isOffline(context) && !_searchCache.containsKey(cacheKey)) {
+      setState(() {
+        _isLoading = false;
+        _hasSearched = true;
+        _hiddenCount = 0;
+        _results = [];
+        _error = 'Food search needs an internet connection.';
+      });
+      return;
+    }
     setState(() {
       _isLoading = true;
       _error = null;
@@ -525,6 +544,8 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
 
   Future<void> _loadMore() async {
     if (_isLoadingMore || _searchPage >= _totalPages) return;
+    // No pagination offline — silently stop rather than error mid-scroll.
+    if (isOffline(context)) return;
     final moreProfile = context.read<ProfileProvider>().profile;
     final restrictions = moreProfile?.dietaryRestrictions ?? const <String>[];
     final moreAllergies = moreProfile?.foodAllergies ?? const <String>[];

@@ -11,6 +11,7 @@ import '../models/food_item.dart';
 import '../models/workout_log.dart';
 import '../providers/plan_provider.dart';
 import '../providers/profile_provider.dart';
+import '../providers/connectivity_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/responsive.dart';
 import '../app_clock.dart';
@@ -145,13 +146,16 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
   DateTime? _lastBackPressTime;
+  ConnectivityProvider? _connectivity;
+  ProfileProvider? _profileProvider;
 
   @override
   void initState() {
     super.initState();
     final uid = AuthService().currentUser?.uid;
+    _profileProvider = context.read<ProfileProvider>();
     if (uid != null) {
-      final pp = context.read<ProfileProvider>();
+      final pp = _profileProvider!;
       if (pp.profile != null) {
         // Profile already cached — recompute daily goal in case the day/week changed
         pp.recomputeGoal(uid).then((_) {
@@ -163,6 +167,23 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }
+    // On reconnect, re-sync the adaptive layer: recompute today's weekly-adaptive
+    // goal from the now-synced logs. The weekly AdaptationEngine still runs on
+    // the next Plans open, guarded by lastAdaptationWeekId.
+    _connectivity = context.read<ConnectivityProvider>()
+      ..addReconnectListener(_onReconnect);
+  }
+
+  Future<void> _onReconnect() async {
+    final uid = AuthService().currentUser?.uid;
+    if (uid == null) return;
+    await _profileProvider?.recomputeGoal(uid);
+  }
+
+  @override
+  void dispose() {
+    _connectivity?.removeReconnectListener(_onReconnect);
+    super.dispose();
   }
 
   Future<void> _maybeShowGoalDialog() async {

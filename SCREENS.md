@@ -582,6 +582,15 @@ Turning Developer Mode off resets `devDayChangerEnabled` and `debugDayOffset` so
 
 ---
 
+### ConnectivityProvider
+**File:** `lib/providers/connectivity_provider.dart`
+
+**Purpose:** Single source of truth for `isOffline` — real connection loss (`connectivity_plus`) OR the Developer-Mode `forceOfflineEnabled` switch. Drives the offline banner (`_OfflineBanner` in `main.dart`'s builder Stack) and the network-feature guards in `lib/widgets/offline.dart` (`isOffline`, `showOfflineSnack`, `OfflineNotice`).
+
+**Key behavior:** The dev switch calls Firestore `disableNetwork()`/`enableNetwork()` for a real cached-reads/queued-writes test; real connectivity is left to the SDK. On each offline→online transition (after the queue flushes) it fires `addReconnectListener` callbacks — `HomeScreen` registers `ProfileProvider.recomputeGoal(uid)` so the daily adaptive goal re-syncs. Never re-runs the weekly `AdaptationEngine` (guarded by `lastAdaptationWeekId`). Firestore persistence is made explicit in `main.dart` so all Firestore-backed screens work offline from cache. See CLAUDE.md **Offline mode**.
+
+---
+
 ## 11. Algorithms
 
 ### GreedyAlgorithm

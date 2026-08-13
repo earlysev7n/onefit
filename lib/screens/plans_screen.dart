@@ -31,6 +31,7 @@ import '../models/food_item.dart';
 import '../app_clock.dart';
 import '../theme/app_colors.dart';
 import '../theme/responsive.dart';
+import '../widgets/offline.dart';
 
 enum _RemoveAction { cancel, delete, regenerate }
 
@@ -5320,6 +5321,12 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
   /// RecipeScreen before anything is logged.
   Future<void> _startGenerateFlow(String mealType, String label) async {
     if (_profile == null) return;
+    // Meal generation needs the USDA picker / AI recipe step — block offline.
+    // (Workout generation & the weekly adaptive system are local and stay live.)
+    if (isOffline(context)) {
+      showOfflineSnack(context, 'Meal generation');
+      return;
+    }
     final goal = context.read<ProfileProvider>().dailyEffectiveGoal.toDouble();
     final budget = (_ratioFor(mealType) * goal - _loggedCals(mealType)).clamp(
       0.0,
@@ -5553,6 +5560,10 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
 
   Future<void> _generateAll() async {
     if (_profile == null || !_guardIngredients()) return;
+    if (isOffline(context)) {
+      showOfflineSnack(context, 'Meal generation');
+      return;
+    }
     const allMeals = ['breakfast', 'lunch', 'dinner', 'snack'];
 
     setState(() => _loadingMeals.addAll(allMeals));

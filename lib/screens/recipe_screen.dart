@@ -8,6 +8,7 @@ import '../services/firestore_service.dart';
 import '../services/openai_service.dart';
 import '../app_clock.dart';
 import '../theme/app_colors.dart';
+import '../widgets/offline.dart';
 
 class RecipeScreen extends StatefulWidget {
   final Meal meal;
@@ -108,6 +109,16 @@ class _RecipeScreenState extends State<RecipeScreen> {
   }
 
   Future<void> _fetchRecipe({bool freshSearch = false}) async {
+    // The recipe writer (OpenAI) needs network. A saved recipe is served from
+    // cache in _loadSavedOrFetch; if we reach here offline there's nothing to
+    // fetch, so show a friendly notice instead of a raw network throw.
+    if (mounted && isOffline(context)) {
+      setState(() {
+        _isLoading = false;
+        _error = 'Recipe steps need an internet connection.';
+      });
+      return;
+    }
     setState(() {
       _isLoading = true;
       _error = null;
