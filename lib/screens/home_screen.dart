@@ -456,7 +456,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Text(
               label,
               style: GoogleFonts.inter(
-                fontSize: 10,
+                fontSize: 11,
                 color: isActive ? AppColors.primary : c.inactive,
                 fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
               ),
@@ -663,7 +663,7 @@ class _HomeDashboard extends StatelessWidget {
                                     Text(
                                       'left',
                                       style: GoogleFonts.inter(
-                                        fontSize: 11,
+                                        fontSize: 12,
                                         color: c.muted,
                                       ),
                                     ),
@@ -1131,7 +1131,7 @@ class _HomeDashboard extends StatelessWidget {
           '${up ? '+' : '−'}$diff',
           style: GoogleFonts.inter(
             color: color,
-            fontSize: 10,
+            fontSize: 11,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -1248,7 +1248,7 @@ class _HomeDashboard extends StatelessWidget {
                           (foodLogs.length > 2
                               ? ' +${foodLogs.length - 2} more'
                               : ''),
-                      style: GoogleFonts.inter(color: c.muted, fontSize: 11),
+                      style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),

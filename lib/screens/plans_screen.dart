@@ -1195,7 +1195,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         t,
         style: GoogleFonts.inter(
           color: c.muted,
-          fontSize: 11,
+          fontSize: 12,
           fontWeight: FontWeight.w500,
           letterSpacing: 0.5,
         ),
@@ -2237,7 +2237,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                             : isRest
                             ? c.inactive
                             : c.muted,
-                        fontSize: 10,
+                        fontSize: 11,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -2791,7 +2791,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         difficulty[0].toUpperCase() + difficulty.substring(1),
         style: GoogleFonts.inter(
           color: color,
-          fontSize: 11,
+          fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -3061,7 +3061,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
               child: Text(
                 'Edit',
                 style: GoogleFonts.inter(
-                  fontSize: 11,
+                  fontSize: 12,
                   color: AppColors.primary,
                   fontWeight: FontWeight.w600,
                 ),
@@ -4973,7 +4973,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
             label,
             style: GoogleFonts.inter(
               color: color.withOpacity(0.7),
-              fontSize: 11,
+              fontSize: 12,
             ),
           ),
         ],
@@ -4997,7 +4997,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         d,
         style: GoogleFonts.inter(
           color: c,
-          fontSize: 11,
+          fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -6740,7 +6740,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
           label,
           style: GoogleFonts.inter(
             color: context.colors.disabled,
-            fontSize: 10,
+            fontSize: 11,
           ),
         ),
       ],

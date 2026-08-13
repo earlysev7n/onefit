@@ -160,11 +160,11 @@ class _TodaySnapshot extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   'Calories',
-                  style: GoogleFonts.inter(color: c.muted, fontSize: 11),
+                  style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                 ),
                 Text(
                   '/ ${prov.calorieGoal} kcal',
-                  style: GoogleFonts.inter(color: c.inactive, fontSize: 10),
+                  style: GoogleFonts.inter(color: c.inactive, fontSize: 11),
                 ),
               ],
             ),
@@ -176,7 +176,7 @@ class _TodaySnapshot extends StatelessWidget {
               children: [
                 Text(
                   'Protein',
-                  style: GoogleFonts.inter(color: c.muted, fontSize: 11),
+                  style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                 ),
                 const SizedBox(height: 4),
                 ClipRRect(
@@ -231,13 +231,13 @@ class _TodaySnapshot extends StatelessWidget {
                     color: prov.todayWorkoutLog != null
                         ? AppColors.primary
                         : c.muted,
-                    fontSize: 11,
+                    fontSize: 12,
                   ),
                 ),
                 if (prov.todayWorkoutLog != null)
                   Text(
                     '${prov.todayWorkoutLog!.durationMinutes} min',
-                    style: GoogleFonts.inter(color: c.inactive, fontSize: 10),
+                    style: GoogleFonts.inter(color: c.inactive, fontSize: 11),
                   ),
               ],
             ),
@@ -304,7 +304,7 @@ class _WeeklyReportCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       'View your performance review, adjustments and reasoning',
-                      style: GoogleFonts.inter(color: c.muted, fontSize: 11),
+                      style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                     ),
                   ],
                 ),
@@ -466,7 +466,7 @@ class _ChartEmptyState extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(color: c.inactive, fontSize: 11),
+              style: GoogleFonts.inter(color: c.inactive, fontSize: 12),
             ),
           ],
         ),
@@ -577,7 +577,7 @@ class _CalorieTrendChartState extends State<_CalorieTrendChart> {
                             labels[i],
                             style: GoogleFonts.inter(
                               color: c.inactive,
-                              fontSize: 9,
+                              fontSize: 11,
                             ),
                           );
                         },
@@ -602,7 +602,7 @@ class _CalorieTrendChartState extends State<_CalorieTrendChart> {
                         GoogleFonts.inter(
                           color: c.onBackground,
                           fontWeight: FontWeight.w600,
-                          fontSize: 11,
+                          fontSize: 12,
                         ),
                       ),
                     ),
@@ -757,7 +757,7 @@ class _MacroTrendChartState extends State<_MacroTrendChart> {
                                 labels[i],
                                 style: GoogleFonts.inter(
                                   color: c.inactive,
-                                  fontSize: 9,
+                                  fontSize: 11,
                                 ),
                               );
                             },
@@ -844,7 +844,7 @@ class _WeightSectionState extends State<_WeightSection> {
                           v.toStringAsFixed(1),
                           style: GoogleFonts.inter(
                             color: c.inactive,
-                            fontSize: 9,
+                            fontSize: 11,
                           ),
                         ),
                       ),
@@ -976,7 +976,7 @@ class _WeightSectionState extends State<_WeightSection> {
               fontSize: 14,
             ),
           ),
-          Text(label, style: GoogleFonts.inter(color: c.muted, fontSize: 11)),
+          Text(label, style: GoogleFonts.inter(color: c.muted, fontSize: 12)),
         ],
       );
 
@@ -1201,7 +1201,7 @@ class _BadgeChip extends StatelessWidget {
             badge.label,
             style: GoogleFonts.inter(
               color: badge.unlocked ? badge.color : c.subtle,
-              fontSize: 9,
+              fontSize: 11,
               fontWeight: FontWeight.w600,
             ),
             textAlign: TextAlign.center,
@@ -1318,7 +1318,7 @@ class _SectionCard extends StatelessWidget {
                         subtitle!,
                         style: GoogleFonts.inter(
                           color: c.inactive,
-                          fontSize: 11,
+                          fontSize: 12,
                         ),
                       ),
                     ],
@@ -1377,7 +1377,7 @@ class _StatTile extends StatelessWidget {
                 ),
                 Text(
                   label,
-                  style: GoogleFonts.inter(color: c.muted, fontSize: 10),
+                  style: GoogleFonts.inter(color: c.muted, fontSize: 11),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

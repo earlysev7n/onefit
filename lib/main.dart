@@ -15,6 +15,7 @@ import 'providers/progress_provider.dart';
 import 'providers/profile_provider.dart';
 import 'theme/app_theme.dart';
 import 'theme/app_colors.dart';
+import 'theme/app_text_scale.dart';
 import 'app_clock.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -102,13 +103,12 @@ class _OneFitAppState extends State<OneFitApp> {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       builder: (context, child) {
-        // Cap OS/accessibility font scaling so large text can't overflow the
-        // app's many fixed-height rows/cards. Users still get bigger text up to
-        // 1.3×; beyond that the layout stays intact instead of clipping.
+        // Lift the app's authored font sizes (they run 1–2pt under the platform
+        // norm) and cap the total so large text can't overflow the app's many
+        // fixed-height rows/cards. See AppTextScale — one constant tunes it.
         final mq = MediaQuery.of(context);
-        final clamped = mq.textScaler.clamp(maxScaleFactor: 1.3);
         return MediaQuery(
-          data: mq.copyWith(textScaler: clamped),
+          data: mq.copyWith(textScaler: AppTextScale.resolve(mq.textScaler)),
           child: ValueListenableBuilder<bool>(
             valueListenable: devDayChangerEnabled,
             builder: (context, changerOn, _) => ValueListenableBuilder<int>(

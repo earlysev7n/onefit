@@ -868,7 +868,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
       title.toUpperCase(),
       style: GoogleFonts.spaceGrotesk(
         color: c.muted,
-        fontSize: 11,
+        fontSize: 12,
         fontWeight: FontWeight.w600,
         letterSpacing: 1.2,
       ),
@@ -936,7 +936,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
                     const SizedBox(height: 2),
                     Text(
                       desc,
-                      style: GoogleFonts.inter(color: c.inactive, fontSize: 11),
+                      style: GoogleFonts.inter(color: c.inactive, fontSize: 12),
                     ),
                   ],
                 ),
@@ -973,7 +973,7 @@ class _NutrientsTabState extends State<_NutrientsTab>
                     statusText,
                     style: GoogleFonts.inter(
                       color: isOver ? AppColors.overTarget : barColor,
-                      fontSize: 10,
+                      fontSize: 11,
                     ),
                   ),
                 ],

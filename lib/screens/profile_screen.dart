@@ -332,7 +332,7 @@ class ProfileScreen extends StatelessWidget {
           ),
           Text(
             label,
-            style: GoogleFonts.inter(color: context.colors.muted, fontSize: 11),
+            style: GoogleFonts.inter(color: context.colors.muted, fontSize: 12),
           ),
         ],
       ),

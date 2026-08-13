@@ -164,6 +164,28 @@ All screens share a consistent dark theme. Use these constants inline (they are 
 | Header font | `GoogleFonts.spaceGrotesk` | Titles, headings (`w700`) |
 | Body font | `GoogleFonts.inter` | Body copy, labels |
 
+**Text scale.** Every `fontSize:` in `lib/` is an *authored* value that gets multiplied at
+render time — `AppTextScale.resolve()` (`lib/theme/app_text_scale.dart`) is wired into
+`MaterialApp.builder` in `main.dart` and is the only place the app's type size is set.
+`AppTextScale.bump` (1.08) lifts the authored sizes, which ran 1–2pt under the platform
+norm, putting the dominant 13px body on the 14px Material baseline; `AppTextScale.maxTotal`
+(1.30) caps the *total* (OS accessibility scaling × bump) so the bump can never stack on an
+accessibility setting. So `fontSize: 13` renders at ~14 — **write authored values, not
+rendered ones**, and keep **11 as the floor** (nothing in `lib/` declares a size below it).
+1.08 is the largest bump at which every label still fits: at 1.15 the Home calorie card runs
+out of room and `Remaining` clips to `Remaini…`, so going bigger means widening that card's
+label column first. Asserted in `test/app_text_scale_test.dart`.
+
+**When touching a fixed height that holds text, do not "unbind" it.** Swapping
+`SizedBox(height: n)` for `ConstrainedBox(minHeight: n)` is *not* a safe refactor: the
+`SizedBox` passes a **tight** constraint, and subtrees here rely on it — `Column`s default
+to `MainAxisSize.max` and `Center`/`Align` without a `heightFactor` both expand to fill
+whatever they are given. Loosening the constraint makes them grow to the parent's maximum.
+That is exactly how the bottom nav bar in `home_screen.dart` was once made to swallow the
+whole screen. If such a box genuinely needs to grow, scale the tight value
+(`SizedBox(height: MediaQuery.textScalerOf(context).scale(n))`) rather than removing the
+upper bound.
+
 ### Firestore security rules and indexes
 
 `firestore.rules` and `firestore.indexes.json` are in the project root. Deploy with `firebase deploy --only firestore --project onefit-392b8`. The only composite index needed is on `workout_logs` (date ASC + userId ASC) — single-field indexes are managed automatically by Firestore. The `workout_plans` subcollection is fetched by doc ID so no composite index is needed.

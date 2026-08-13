@@ -1317,7 +1317,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
                   ),
                   Text(
                     'per ${food.servingSize.round()}${food.servingUnit}',
-                    style: GoogleFonts.inter(color: c.subtle, fontSize: 11),
+                    style: GoogleFonts.inter(color: c.subtle, fontSize: 12),
                   ),
                 ],
               ),
@@ -1504,7 +1504,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
       text,
       style: GoogleFonts.inter(
         color: color,
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: FontWeight.w600,
       ),
     ),
@@ -1522,7 +1522,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
       ),
       Text(
         label,
-        style: GoogleFonts.inter(color: context.colors.disabled, fontSize: 10),
+        style: GoogleFonts.inter(color: context.colors.disabled, fontSize: 11),
       ),
     ],
   );

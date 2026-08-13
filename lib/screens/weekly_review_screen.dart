@@ -159,7 +159,7 @@ class _HistoryTab extends StatelessWidget {
                     'Changes are applied weekly based on your adherence, progress '
                     'and feedback. Intake within ±5% of your target counts as '
                     'on target.',
-                    style: GoogleFonts.inter(color: c.muted, fontSize: 11),
+                    style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                   ),
                 ),
               ],
@@ -301,7 +301,7 @@ class _SummaryDetailView extends StatelessWidget {
                   style: GoogleFonts.inter(
                     color: AppColors.primary,
                     fontWeight: FontWeight.w600,
-                    fontSize: 11,
+                    fontSize: 12,
                   ),
                 ),
               ),
@@ -378,7 +378,7 @@ class _SummaryDetailView extends StatelessWidget {
                           'logged last week — adherence needs ≥4 days to count.',
                           style: GoogleFonts.inter(
                             color: c.muted,
-                            fontSize: 11,
+                            fontSize: 12,
                             height: 1.35,
                           ),
                         ),
@@ -550,7 +550,7 @@ class _SummaryDetailView extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: GoogleFonts.inter(color: c.muted, fontSize: 11),
+                  style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                 ),
               ],
             ),
@@ -607,7 +607,7 @@ class _Card extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               subtitle!,
-              style: GoogleFonts.inter(color: c.muted, fontSize: 11),
+              style: GoogleFonts.inter(color: c.muted, fontSize: 12),
             ),
           ],
           const SizedBox(height: 8),
@@ -637,7 +637,7 @@ class _BadgeChip extends StatelessWidget {
         style: GoogleFonts.inter(
           color: color,
           fontWeight: FontWeight.w600,
-          fontSize: 10.5,
+          fontSize: 11,
         ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,

@@ -594,7 +594,7 @@ class _RecipeScreenState extends State<RecipeScreen> {
                     '${recipe.missingIngredients.length} extra',
                     style: GoogleFonts.inter(
                       color: AppColors.yellow,
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
