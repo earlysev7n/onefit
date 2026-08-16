@@ -37,6 +37,18 @@ class UserProfile {
   final String
   workoutSplit; // weekly split style (see ProfileInputScreen split cards)
 
+  /// Training prescription bias — 'heavy' | 'balanced' | 'high' | '' (default).
+  ///
+  /// This is a PRESCRIPTION preference, not a selection one: it never changes
+  /// which exercises the greedy generator picks, only how the SELECTED exercises
+  /// are dosed (rep ranges, and a small rest nudge). Empty means "use the
+  /// fitness-goal default" — see [effectiveTrainingFocus]. Kept separate from
+  /// [goalPriorities] (which now only ranks Compound vs Isolation for selection)
+  /// so the two axes can't stack into one misleading score. Defaults empty for
+  /// backward-compatible Firestore reads; legacy profiles therefore fall back to
+  /// the goal default, which reproduces the old goal-only rep behaviour.
+  final String trainingFocus;
+
   /// Accumulated weekly calorie-goal adaptation (kcal). Added on top of the
   /// goal-derived base in [calorieGoal]; fed by [AdaptationEngine] each new
   /// week and by manual edits. Clamped to ±500 by the provider to prevent drift.
@@ -60,14 +72,17 @@ class UserProfile {
   /// empty for backward-compatible Firestore reads.
   final List<String> blockedExercises;
 
-  /// User's ranking of the greedy scorer's exercise "features"
-  /// (`compound`, `isolation`, `heavyLift`, `fullBody`, `highRep`), most
-  /// important first. The generator maps rank position → points
-  /// ([GreedyAlgorithm._rankPoints]: 12/9/6/4/2) so a higher-ranked feature
-  /// makes exercises with that trait score higher. Empty (the default) means
-  /// "use the selected goal's built-in order" via
-  /// [GreedyAlgorithm.defaultGoalPriorities], so legacy profiles keep today's
-  /// behavior. Set/edited in the profile screen under Fitness Goal.
+  /// Stored ranking of the greedy scorer's exercise "features" (`compound`,
+  /// `isolation`, `heavyLift`, `fullBody`, `highRep`). After the three-axis
+  /// refactor the scorer reads **only the Compound-vs-Isolation order** from this
+  /// list (preferred type → +12, other → +9 via
+  /// [GreedyAlgorithm.rankPoints][0..1]); the remaining keys are retained for
+  /// backward-compatible storage but no longer affect selection (Heavy Lift /
+  /// High Rep moved to [trainingFocus] as prescription; Full Body is workout
+  /// coverage, enforced structurally, not scored). Empty (the default) → the
+  /// goal's built-in order via [GreedyAlgorithm.defaultGoalPriorities], so legacy
+  /// profiles are unchanged. Edited in the profile screen as a 2-item Compound /
+  /// Isolation drag list (reconstructed to the full 5-item shape on save).
   final List<String> goalPriorities;
 
   /// When the account was created. Anchors the adaptive "week" so days **before**
@@ -97,6 +112,7 @@ class UserProfile {
     this.workoutDaysPerWeek = 3,
     this.sessionMinutes = 45,
     this.workoutSplit = 'Full Body Training',
+    this.trainingFocus = '',
     this.calorieAdjustment = 0,
     this.lastAdaptationWeekId = '',
     this.pinnedExercises = const {},
@@ -104,6 +120,27 @@ class UserProfile {
     this.goalPriorities = const [],
     this.createdAt,
   });
+
+  /// Resolved training focus: the explicit [trainingFocus] when set, otherwise
+  /// the fitness-goal default. This is the single value the greedy prescription
+  /// reads, so a legacy profile (empty [trainingFocus]) behaves exactly like a
+  /// fresh profile on that goal. The user's explicit choice always wins over the
+  /// default (e.g. Weight Loss + 'heavy' stays heavy — the goal never locks it).
+  String get effectiveTrainingFocus {
+    if (trainingFocus == 'heavy' ||
+        trainingFocus == 'balanced' ||
+        trainingFocus == 'high') {
+      return trainingFocus;
+    }
+    switch (fitnessGoal) {
+      case 'Weight Loss':
+      case 'Endurance':
+        return 'high';
+      case 'Muscle Gain':
+      default:
+        return 'balanced'; // Muscle Gain + General Fitness
+    }
+  }
 
   // Mifflin-St Jeor Formula
   int get bmr {
@@ -246,6 +283,7 @@ class UserProfile {
       workoutDaysPerWeek: map['workoutDaysPerWeek'] ?? 3,
       sessionMinutes: map['sessionMinutes'] ?? 45,
       workoutSplit: map['workoutSplit'] ?? 'Full Body Training',
+      trainingFocus: map['trainingFocus'] ?? '',
       calorieAdjustment: map['calorieAdjustment'] ?? 0,
       lastAdaptationWeekId: map['lastAdaptationWeekId'] ?? '',
       pinnedExercises:
@@ -282,6 +320,7 @@ class UserProfile {
       'workoutDaysPerWeek': workoutDaysPerWeek,
       'sessionMinutes': sessionMinutes,
       'workoutSplit': workoutSplit,
+      'trainingFocus': trainingFocus,
       'calorieAdjustment': calorieAdjustment,
       'lastAdaptationWeekId': lastAdaptationWeekId,
       'pinnedExercises': pinnedExercises,
@@ -311,6 +350,7 @@ class UserProfile {
     int? workoutDaysPerWeek,
     int? sessionMinutes,
     String? workoutSplit,
+    String? trainingFocus,
     int? calorieAdjustment,
     String? lastAdaptationWeekId,
     Map<String, List<String>>? pinnedExercises,
@@ -338,6 +378,7 @@ class UserProfile {
       workoutDaysPerWeek: workoutDaysPerWeek ?? this.workoutDaysPerWeek,
       sessionMinutes: sessionMinutes ?? this.sessionMinutes,
       workoutSplit: workoutSplit ?? this.workoutSplit,
+      trainingFocus: trainingFocus ?? this.trainingFocus,
       calorieAdjustment: calorieAdjustment ?? this.calorieAdjustment,
       lastAdaptationWeekId: lastAdaptationWeekId ?? this.lastAdaptationWeekId,
       pinnedExercises: pinnedExercises ?? this.pinnedExercises,

@@ -437,4 +437,188 @@ void main() {
           reason: 'compound ranked last must be stated as the #5 priority');
     });
   });
+
+  // ── The refactor: selection (type-only) is separate from prescription ───────
+  group('SELECTION scores exercise TYPE only (no attribute stacking)', () {
+    double s(Exercise e, UserProfile p) => ga.scoreExercise(
+          exercise: e,
+          profile: p,
+          targetMuscles: const [],
+          weeklyHits: const {},
+          dayHits: const {},
+        );
+
+    test('a Compound+HeavyLift move is not double-scored (heavy adds nothing)',
+        () {
+      // Both are compound + goal-matched + beginner; one is ALSO a heavy barbell
+      // compound. Under the old 5-feature scoring the heavy one stacked extra
+      // heavyLift points; now both score identically because only the TYPE
+      // (compound) counts.
+      final p = _profile(goal: 'Muscle Gain', level: 'Beginner');
+      final heavyCompound = _ex(
+        id: 'h', name: 'Barbell Squat', primaryMuscles: ['quads'],
+        secondaryMuscles: ['glutes', 'hamstrings'], goals: ['muscle_gain'],
+      );
+      final plainCompound = _ex(
+        id: 'p', name: 'Push-up', primaryMuscles: ['pectorals'],
+        secondaryMuscles: ['triceps'], goals: ['muscle_gain'],
+        equipment: ['bodyweight'],
+      );
+      expect(s(heavyCompound, p), s(plainCompound, p),
+          reason: 'Heavy Lift is prescription, not a selection score');
+    });
+
+    test('full-body coverage adds no selection score', () {
+      // Two compounds, both goal-matched + beginner; one hits 4 muscles
+      // (full-body), the other 1. Coverage is structural, not scored — equal.
+      final p = _profile(goal: 'Muscle Gain', level: 'Beginner');
+      final wide = _ex(
+        id: 'w', name: 'Barbell Squat', primaryMuscles: ['quads'],
+        secondaryMuscles: ['glutes', 'hamstrings', 'lats'],
+        goals: ['muscle_gain'],
+      );
+      final narrow = _ex(
+        id: 'n', name: 'Barbell Bench Press', primaryMuscles: ['pectorals'],
+        goals: ['muscle_gain'],
+      );
+      expect(s(wide, p), s(narrow, p),
+          reason: 'Full Body is workout coverage, not an exercise-type score');
+    });
+
+    test('Compound>Isolation vs Isolation>Compound flips only the type points',
+        () {
+      final iso = _ex(
+        id: 'iso', name: 'Cable Curl', primaryMuscles: ['biceps'],
+        equipment: ['cable'], locations: ['gym'],
+      );
+      final compoundFirst = _profile(goal: 'Muscle Gain', level: 'Beginner')
+          .copyWith(goalPriorities: const ['compound', 'isolation']);
+      final isolationFirst = _profile(goal: 'Muscle Gain', level: 'Beginner')
+          .copyWith(goalPriorities: const ['isolation', 'compound']);
+      // Isolation preferred → +12; not preferred → +9. Delta is exactly 3.
+      expect(s(iso, isolationFirst) - s(iso, compoundFirst), closeTo(3, 0.001),
+          reason: 'preferred type +12, other +9 — a clean 3-point swing');
+    });
+  });
+
+  group('PRESCRIPTION tracks Training Focus, independent of selection', () {
+    int upper(String reps) => RegExp(r'\d+')
+        .allMatches(reps)
+        .map((m) => int.parse(m.group(0)!))
+        .last;
+    List<String> repsOf(WorkoutDay d) => d.exercises
+        .where((e) => e.exercise.category != 'cardio')
+        .map((e) => e.reps)
+        .toList();
+
+    test('effectiveTrainingFocus: goal defaults + explicit override', () {
+      expect(_profile(goal: 'Weight Loss').effectiveTrainingFocus, 'high');
+      expect(_profile(goal: 'Muscle Gain').effectiveTrainingFocus, 'balanced');
+      expect(_profile(goal: 'Endurance').effectiveTrainingFocus, 'high');
+      expect(_profile(goal: 'General Fitness').effectiveTrainingFocus,
+          'balanced');
+      expect(
+          _profile(goal: 'Weight Loss')
+              .copyWith(trainingFocus: 'heavy')
+              .effectiveTrainingFocus,
+          'heavy',
+          reason: 'an explicit choice always beats the goal default');
+    });
+
+    test('changing focus changes reps but NOT which exercises are selected', () {
+      final base =
+          _profile(goal: 'Muscle Gain', level: 'Advanced', sessionMinutes: 90);
+      WorkoutDay day(String focus) => ga
+          .generatePlan(
+            allExercises: _catalog,
+            profile: base.copyWith(trainingFocus: focus),
+          )
+          .firstWhere((d) => !d.isRest);
+      final heavy = day('heavy');
+      final high = day('high');
+      final balanced = day('balanced');
+
+      // Same exercises, same order across all three focuses (focus is
+      // prescription-only, so selection/count are focus-independent).
+      final ids = (WorkoutDay d) =>
+          d.exercises.map((e) => e.exercise.id).toList();
+      expect(ids(heavy), ids(high));
+      expect(ids(heavy), ids(balanced));
+
+      // Heavy never prescribes more reps than High for the same exercise, and at
+      // least one exercise actually differs.
+      var anyDiff = false;
+      for (var i = 0; i < heavy.exercises.length; i++) {
+        if (heavy.exercises[i].exercise.category == 'cardio') continue;
+        expect(upper(heavy.exercises[i].reps),
+            lessThanOrEqualTo(upper(high.exercises[i].reps)));
+        if (heavy.exercises[i].reps != high.exercises[i].reps) anyDiff = true;
+      }
+      expect(anyDiff, isTrue, reason: 'focus must move the rep ranges');
+    });
+
+    test('Muscle Gain + Balanced is a role-based MIX (heavy main, high iso)',
+        () {
+      final p = _profile(goal: 'Muscle Gain', level: 'Advanced',
+              sessionMinutes: 90)
+          .copyWith(trainingFocus: 'balanced');
+      final day =
+          ga.generatePlan(allExercises: _catalog, profile: p).firstWhere(
+                (d) => !d.isRest,
+              );
+      final reps = repsOf(day);
+      expect(reps.toSet().length, greaterThan(1),
+          reason: 'Balanced must vary reps by role, not one flat range');
+      expect(reps.contains('4-8'), isTrue,
+          reason: 'the main compound trains at the heavy 4-8 end');
+      expect(reps.any((r) => upper(r) >= 12), isTrue,
+          reason: 'isolation work goes to the higher-rep end');
+    });
+
+    test('Muscle Gain + Heavy biases the whole day low', () {
+      final p = _profile(goal: 'Muscle Gain', level: 'Advanced',
+              sessionMinutes: 90)
+          .copyWith(trainingFocus: 'heavy');
+      final day =
+          ga.generatePlan(allExercises: _catalog, profile: p).firstWhere(
+                (d) => !d.isRest,
+              );
+      for (final r in repsOf(day)) {
+        expect(upper(r), lessThanOrEqualTo(10),
+            reason: 'Heavy keeps every role at/under 10 reps');
+      }
+    });
+
+    test('Muscle Gain + High biases the whole day high', () {
+      final p = _profile(goal: 'Muscle Gain', level: 'Advanced',
+              sessionMinutes: 90)
+          .copyWith(trainingFocus: 'high');
+      final day =
+          ga.generatePlan(allExercises: _catalog, profile: p).firstWhere(
+                (d) => !d.isRest,
+              );
+      for (final r in repsOf(day)) {
+        expect(upper(r), greaterThanOrEqualTo(12),
+            reason: 'High keeps every role at 10-12 / 12-15 (upper ≥ 12)');
+      }
+    });
+
+    test('Weight Loss + Heavy override is respected (not forced to High)', () {
+      final wl =
+          _profile(goal: 'Weight Loss', level: 'Advanced', sessionMinutes: 90);
+      final byDefault = ga
+          .generatePlan(allExercises: _catalog, profile: wl)
+          .firstWhere((d) => !d.isRest); // goal default = high
+      final overridden = ga
+          .generatePlan(
+            allExercises: _catalog,
+            profile: wl.copyWith(trainingFocus: 'heavy'),
+          )
+          .firstWhere((d) => !d.isRest);
+      // The heavy override pulls the lead exercise's reps below the High default.
+      expect(upper(overridden.exercises.first.reps),
+          lessThan(upper(byDefault.exercises.first.reps)),
+          reason: 'the user override must win over the goal default');
+    });
+  });
 }

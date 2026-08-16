@@ -554,8 +554,33 @@ class _WorkoutTabState extends State<_WorkoutTab>
           );
         }).toList();
 
-        planProvider.setWorkoutPlan(ordered);
-        if (sanitized.changed || orderChanged) {
+        // Re-derive reps/rest from the CURRENT profile's Training Focus so a
+        // focus change (heavy/balanced/high) updates the prescription on load —
+        // selection and order are untouched (represcribeDay reuses each exercise
+        // and its adaptation-owned set count). Runs after the display sort so
+        // exercise ROLES (main compound → isolation) match the on-card order.
+        // Re-persist if any rep/rest value actually changed.
+        final greedy = GreedyAlgorithm();
+        bool prescriptionChanged = false;
+        final represcribed = ordered.map((day) {
+          if (day.isRest || day.exercises.isEmpty) return day;
+          final redosed = greedy.represcribeDay(profile, day.exercises);
+          for (int i = 0; i < redosed.length; i++) {
+            if (redosed[i].reps != day.exercises[i].reps ||
+                redosed[i].restSeconds != day.exercises[i].restSeconds) {
+              prescriptionChanged = true;
+            }
+          }
+          return WorkoutDay(
+            dayName: day.dayName,
+            focus: day.focus,
+            isRest: day.isRest,
+            exercises: redosed,
+          );
+        }).toList();
+
+        planProvider.setWorkoutPlan(represcribed);
+        if (sanitized.changed || orderChanged || prescriptionChanged) {
           await planProvider.persistWorkoutPlan(uid, weekId);
         }
 

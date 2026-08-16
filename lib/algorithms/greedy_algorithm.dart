@@ -2,6 +2,14 @@ import '../data/physical_limitations.dart';
 import '../models/exercise.dart';
 import '../models/user_profile.dart';
 
+/// An exercise's role within a session, used ONLY by the rep/rest prescription
+/// (never by selection). Assigned after the day is selected and ordered:
+/// [mainCompound] is the first compound in the day, [secondaryCompound] any
+/// later compound, [isolation] everything else. Training Focus × goal × role
+/// then picks the rep range so, e.g., a Balanced Muscle-Gain day opens heavy on
+/// the main compound and finishes with higher-rep isolation.
+enum _ExerciseRole { mainCompound, secondaryCompound, isolation }
+
 class WorkoutDay {
   final String dayName;
   final String focus;
@@ -244,19 +252,33 @@ class GreedyAlgorithm {
     return true;
   }
 
-  //  SCORING — profile-driven. Runs over candidates that already passed the
-  //  hard filters (limitation ban / gender / location / equipment / experience
-  //  gate), so those carry no score weight (they'd be constants). Two terms are
-  //  fixed STRUCTURAL anchors: the day-focus bonus (+50) and the muscle-balance
-  //  penalties (-25 day / -15 week). The middle block — Goal (user-ranked
-  //  Exercise Priority) + Experience — is selected from the user's UserProfile so
-  //  the same eligible pool ranks differently per user, and is CLAMPED to
-  //  [-20, +45] so it can never overpower the balance penalties. sessionMinutes
-  //  is deliberately NOT a ranking term — it only sizes the exercise COUNT via
-  //  _fitExerciseCount, so a short session gives fewer exercises without
-  //  overriding which TYPE the user prioritised. Reuses isStapleCompound /
-  //  isHeavyCompound / difficultyAllowed / _goalKey. See the goal/experience
-  //  tables below.
+  //  SCORING — three SEPARATE dimensions, never mixed into one comparable score:
+  //
+  //    1. WORKOUT STRUCTURE (what muscles the session covers) — enforced
+  //       structurally UPSTREAM (the day-focus hard pool + per-muscle cap +
+  //       balance penalties), NOT scored here. An exercise is never picked
+  //       *because* it is "full body"; the collection of picks provides the
+  //       coverage.
+  //    2. EXERCISE PREFERENCE (which TYPE) — the ONLY selection-relevant user
+  //       ranking: Compound vs Isolation. The preferred type scores +12, the
+  //       other +9 (see _exerciseTypePoints). An exercise is compound XOR
+  //       isolation, so exactly ONE type value is ever awarded — overlapping
+  //       traits (heavy/high/full-body) add NOTHING here, which is what fixes
+  //       the old double-count (a Bench Press no longer stacked compound+heavy).
+  //    3. TRAINING FOCUS (how the picks are dosed) — heavy/balanced/high is a
+  //       PRESCRIPTION preference applied AFTER selection (reps/rest, see
+  //       _getReps / _getRestSeconds). It never influences the score.
+  //
+  //  Runs over candidates that already passed the hard filters (limitation ban /
+  //  gender / location / equipment / experience gate), so those carry no score
+  //  weight (they'd be constants). Two terms are fixed STRUCTURAL anchors: the
+  //  day-focus bonus (+50) and the muscle-balance penalties (-25 day / -15 week).
+  //  The middle block — Exercise-Type preference + goal match + Experience — is
+  //  selected from the user's UserProfile so the same eligible pool ranks
+  //  differently per user, and is CLAMPED to [-20, +45] so it can never overpower
+  //  the balance penalties. sessionMinutes is deliberately NOT a ranking term —
+  //  it only sizes the exercise COUNT via _fitExerciseCount. Reuses
+  //  isStapleCompound / isHeavyCompound / difficultyAllowed / _goalKey.
 
   // Goal weight columns
   static const Map<String, Map<String, int>> _goalWeights = {
@@ -335,6 +357,21 @@ class GreedyAlgorithm {
     return keys;
   }
 
+  /// Selection points for an exercise's TYPE (Compound vs Isolation), from the
+  /// user's [priorities] ranking. Whichever of the two the user ranks higher is
+  /// the preferred type → +12 (rankPoints[0]); the other → +9 (rankPoints[1]).
+  /// An exercise is compound XOR isolation, so exactly one value is ever awarded
+  /// — there is NO stacking from heavy/high/full-body traits (they aren't
+  /// selection signals). Fallback when the list has neither key: compound
+  /// preferred (the historical default).
+  static int _exerciseTypePoints(List<String> priorities, bool isCompound) {
+    final ci = priorities.indexOf('compound');
+    final ii = priorities.indexOf('isolation');
+    final compoundPreferred = ii < 0 || (ci >= 0 && ci < ii);
+    final isPreferred = isCompound ? compoundPreferred : !compoundPreferred;
+    return isPreferred ? rankPoints[0] : rankPoints[1];
+  }
+
   // Graduated experience score
   static const Map<String, Map<String, int>> _experienceWeights = {
     'Beginner': {'beginner': 8},
@@ -359,36 +396,21 @@ class GreedyAlgorithm {
     // Structural anchor 1 — day focus (also a hard pool constraint upstream).
     if (exercise.primaryMuscles.any(targetMuscles.contains)) score += 50;
 
-    // Exercise features, all derived from the existing Exercise model.
+    // ── Selection block: goal match + Exercise-TYPE preference + Experience ──
+    // Only the exercise TYPE (Compound vs Isolation) is a user-ranked selection
+    // signal now. heavy/high (prescription) and full-body (coverage) contribute
+    // NOTHING to the score, so an exercise can't collect points for several
+    // overlapping traits. goalMatch stays a fixed +15. Empty goalPriorities
+    // falls back to the goal's built-in order so legacy profiles are unchanged.
     final compound = isStapleCompound(exercise) || isHeavyCompound(exercise);
-    final isolation = !compound;
-    final heavyLift = isHeavyCompound(exercise);
-    final fullBody =
-        (exercise.primaryMuscles.length + exercise.secondaryMuscles.length) >=
-        4;
-    final highRep = exercise.goals.contains('endurance');
-
-    // ── Profile-driven block: Goal + Experience + Time ──────────────────────
-    // Feature weights come from the user's ranking (rank position → _rankPoints
-    // 12/9/6/4/2). Empty goalPriorities falls back to the goal's built-in order
-    // so legacy profiles are unchanged. goalMatch stays a fixed +15 bonus,
-    // separate from the reorderable features.
     final goalKey = _goalKey(profile.fitnessGoal);
     final priorities = profile.goalPriorities.isNotEmpty
         ? profile.goalPriorities
         : defaultGoalPriorities(profile.fitnessGoal);
-    int rankWeight(String feature) {
-      final i = priorities.indexOf(feature);
-      return (i >= 0 && i < rankPoints.length) ? rankPoints[i] : 0;
-    }
 
     int goalScore = 0;
     if (exercise.goals.contains(goalKey)) goalScore += 15; // goalMatch — fixed
-    if (compound) goalScore += rankWeight('compound');
-    if (isolation) goalScore += rankWeight('isolation');
-    if (heavyLift) goalScore += rankWeight('heavyLift');
-    if (fullBody) goalScore += rankWeight('fullBody');
-    if (highRep) goalScore += rankWeight('highRep');
+    goalScore += _exerciseTypePoints(priorities, compound); // +12 or +9
 
     int expScore = 0;
     if (difficultyAllowed(exercise.difficulty, profile.experienceLevel)) {
@@ -464,34 +486,36 @@ class GreedyAlgorithm {
       reasons.add('Matches your ${profile.fitnessGoal} goal (+15).');
     }
 
-    // Feature priorities — the user's Exercise Priority ranking.
+    // Exercise-TYPE preference — Compound vs Isolation, the only user-ranked
+    // selection signal. Reported with its rank position and the actual points
+    // awarded (+12 preferred / +9 other). No heavy/high/full-body reasons —
+    // those are prescription/coverage, not selection.
     final priorities = profile.goalPriorities.isNotEmpty
         ? profile.goalPriorities
         : defaultGoalPriorities(profile.fitnessGoal);
     final compound = isStapleCompound(exercise) || isHeavyCompound(exercise);
-    final features = <String>[
-      compound ? 'compound' : 'isolation',
-      if (isHeavyCompound(exercise)) 'heavyLift',
-      if ((exercise.primaryMuscles.length + exercise.secondaryMuscles.length) >=
-          4)
-        'fullBody',
-      if (exercise.goals.contains('endurance')) 'highRep',
-    ];
-    final featureReasons = <({int points, String text})>[];
-    for (final f in features) {
-      final rank = priorities.indexOf(f);
-      if (rank >= 0 && rank < rankPoints.length) {
-        final label = goalFeatureLabels[f] ?? f;
-        featureReasons.add((
-          points: rankPoints[rank],
-          text:
-              "It's a $label move — your #${rank + 1} exercise priority "
-              '(+${rankPoints[rank]}).',
-        ));
-      }
+    final typeKey = compound ? 'compound' : 'isolation';
+    final typeLabel = compound ? 'Compound' : 'Isolation';
+    final typePoints = _exerciseTypePoints(priorities, compound);
+    final typeRank = priorities.indexOf(typeKey);
+    if (typeRank >= 0) {
+      reasons.add(
+        "It's a $typeLabel move — your #${typeRank + 1} exercise-type "
+        'priority (+$typePoints).',
+      );
+    } else {
+      reasons.add("It's a $typeLabel move (+$typePoints).");
     }
-    featureReasons.sort((a, b) => b.points.compareTo(a.points));
-    reasons.addAll(featureReasons.map((e) => e.text));
+
+    // Training Focus — decides the REPS, not the selection. Surfaced so the
+    // sheet explains why the rep range is what it is.
+    final focusNote = <String, String>{
+      'heavy': 'Heavy Lift focus — prescribed at lower reps / heavier load.',
+      'high': 'High Rep focus — prescribed at higher reps.',
+      'balanced': "Balanced focus — reps scale with the exercise's role "
+          '(main compound heavier, isolation higher-rep).',
+    }[profile.effectiveTrainingFocus];
+    if (focusNote != null) reasons.add(focusNote);
 
     // Experience level — graduated bonus for level-appropriate difficulty.
     if (difficultyAllowed(exercise.difficulty, profile.experienceLevel)) {
@@ -566,10 +590,13 @@ class GreedyAlgorithm {
 
       final targetMuscles = musclesForFocus(focus);
       // Session duration drives the exercise COUNT; NSCA goal loading drives the
-      // per-set sets/reps/rest (computed inside _selectExercisesForDay).
+      // per-set sets/reps/rest (computed inside _selectExercisesForDay). The
+      // count budget uses FOCUS-INDEPENDENT rest + reps (_getRestSeconds
+      // applyFocus:false, _countBudgetReps) so that changing Training Focus
+      // changes the prescription but never the number of exercises.
       final daySets = _getSets(profile, difficultyBias);
-      final dayRest = _getRestSeconds(profile);
-      final dayWork = _estimateWorkSeconds(_getReps(profile, 'strength'));
+      final dayRest = _getRestSeconds(profile, applyFocus: false);
+      final dayWork = _estimateWorkSeconds(_countBudgetReps(profile));
       final dayExercises = _selectExercisesForDay(
         exercises: filtered,
         targetMuscles: targetMuscles,
@@ -664,27 +691,18 @@ class GreedyAlgorithm {
     return 4; // single-joint isolation (default)
   }
 
-  /// Primary ordering key for the post-selection sort: the BEST (lowest) index
-  /// in the user's [priorities] ranking among the features [e] possesses, so the
-  /// session order mirrors the "Exercise Priority" list the user ranked (their #1
-  /// feature leads). Features are derived exactly as in [_scoreExercise], reusing
-  /// the same predicates so ordering and scoring never drift. Every exercise is
-  /// at least compound or isolation (both rankable), so a match always exists;
-  /// the `priorities.length` default is a safety fallback only.
+  /// Primary ordering key for the post-selection sort: the index of the
+  /// exercise's TYPE (Compound/Isolation) in the user's [priorities] ranking, so
+  /// the preferred type leads within a muscle group. Only Compound vs Isolation
+  /// order the session now — heavy/high are prescription and full-body is
+  /// coverage, so they no longer influence display order (the ACSM tier tiebreak
+  /// still keeps big compounds ahead of accessories). Falls back to
+  /// compound-first when the key is absent from the list.
   static int _priorityOrderIndex(Exercise e, List<String> priorities) {
     final compound = isStapleCompound(e) || isHeavyCompound(e);
-    final features = <String>[
-      compound ? 'compound' : 'isolation',
-      if (isHeavyCompound(e)) 'heavyLift',
-      if ((e.primaryMuscles.length + e.secondaryMuscles.length) >= 4) 'fullBody',
-      if (e.goals.contains('endurance')) 'highRep',
-    ];
-    int best = priorities.length;
-    for (final f in features) {
-      final i = priorities.indexOf(f);
-      if (i >= 0 && i < best) best = i;
-    }
-    return best;
+    final key = compound ? 'compound' : 'isolation';
+    final i = priorities.indexOf(key);
+    return i >= 0 ? i : (compound ? 0 : 1);
   }
 
   /// Muscle-importance key for display ordering: the BEST (lowest) index of any
@@ -886,20 +904,82 @@ class GreedyAlgorithm {
     );
     final ordered = selected;
 
-    // Sets and rest are profile-derived (NSCA goal loading) and constant for the
-    // whole day; per-set reps/work-timer length vary per exercise (cardio vs lift).
+    // Prescription. Sets are day-constant (NSCA goal loading + adaptation's
+    // difficultyBias); rest is day-constant with a Training-Focus nudge; reps
+    // come from Training Focus × goal × per-exercise ROLE. Roles are assigned
+    // over the DISPLAY ORDER so the main compound leads and isolation trails.
     final daySets = _getSets(profile, difficultyBias);
     final dayRest = _getRestSeconds(profile);
-    return ordered.map((e) {
-      final reps = _getReps(profile, e.category);
-      return WorkoutExercise(
-        exercise: e,
-        sets: daySets,
-        reps: reps,
-        restSeconds: dayRest,
-        timePerSetSeconds: _estimateWorkSeconds(reps),
+    final roles = _assignRoles(ordered);
+    final result = <WorkoutExercise>[];
+    for (int i = 0; i < ordered.length; i++) {
+      final e = ordered[i];
+      final reps = _getReps(profile, e.category, roles[i]);
+      result.add(
+        WorkoutExercise(
+          exercise: e,
+          sets: daySets,
+          reps: reps,
+          restSeconds: dayRest,
+          timePerSetSeconds: _estimateWorkSeconds(reps),
+        ),
       );
-    }).toList();
+    }
+    return result;
+  }
+
+  /// Assigns a prescription [_ExerciseRole] to each exercise in DISPLAY ORDER:
+  /// the first non-cardio compound is [_ExerciseRole.mainCompound], later
+  /// compounds are [_ExerciseRole.secondaryCompound], everything else (including
+  /// cardio, whose reps come from the timed branch anyway) is
+  /// [_ExerciseRole.isolation]. Pure/stateless; shared by generation and the
+  /// persisted-plan re-prescription path ([represcribeDay]) so both dose alike.
+  static List<_ExerciseRole> _assignRoles(List<Exercise> ordered) {
+    final roles = <_ExerciseRole>[];
+    bool mainAssigned = false;
+    for (final e in ordered) {
+      final isComp = isStapleCompound(e) || isHeavyCompound(e);
+      if (e.category == 'cardio') {
+        roles.add(_ExerciseRole.isolation);
+      } else if (isComp && !mainAssigned) {
+        roles.add(_ExerciseRole.mainCompound);
+        mainAssigned = true;
+      } else if (isComp) {
+        roles.add(_ExerciseRole.secondaryCompound);
+      } else {
+        roles.add(_ExerciseRole.isolation);
+      }
+    }
+    return roles;
+  }
+
+  /// Re-derive reps/rest/timer for an already-selected, already-ordered day from
+  /// the CURRENT profile, preserving each exercise's set count (adaptation owns
+  /// sets via difficultyBias; Training Focus owns reps/rest). Selection is
+  /// untouched — same exercises, same order. Used by the persisted-plan load
+  /// path so switching Training Focus updates the prescription with no
+  /// regenerate. Returns null-free list in the same order it was given.
+  List<WorkoutExercise> represcribeDay(
+    UserProfile profile,
+    List<WorkoutExercise> ordered,
+  ) {
+    final roles = _assignRoles(ordered.map((w) => w.exercise).toList());
+    final dayRest = _getRestSeconds(profile);
+    final result = <WorkoutExercise>[];
+    for (int i = 0; i < ordered.length; i++) {
+      final w = ordered[i];
+      final reps = _getReps(profile, w.exercise.category, roles[i]);
+      result.add(
+        WorkoutExercise(
+          exercise: w.exercise,
+          sets: w.sets, // preserve adaptation-owned set count
+          reps: reps,
+          restSeconds: dayRest,
+          timePerSetSeconds: _estimateWorkSeconds(reps),
+        ),
+      );
+    }
+    return result;
   }
 
   /// Per-set work-timer length (seconds), estimated from the prescription so the
@@ -1118,42 +1198,112 @@ class GreedyAlgorithm {
     return sets.clamp(lo, hi);
   }
 
-  /// Reps — from goal and split style, within the NSCA goal-loading ranges
-  /// (Essentials of S&C, 4th ed.): hypertrophy 6–12, muscular endurance ≥12,
-  /// general 8–15; conditioning splits use timed/higher-rep work.
-  String _getReps(UserProfile profile, String category) {
+  /// Reps — the TRAINING-FOCUS prescription. Driven by the resolved Training
+  /// Focus ([UserProfile.effectiveTrainingFocus]) × fitness goal × per-exercise
+  /// [role], within NSCA goal-loading ranges (Essentials of S&C, 4th ed.):
+  /// hypertrophy 6–12, muscular endurance ≥12, general 8–15, strength-leaning
+  /// 4–8. Training Focus never changes WHICH exercise is picked — only how it is
+  /// dosed here.
+  ///   • heavy    → lower reps everywhere (main 4–6, secondary 6–8, iso 8–10)
+  ///   • high     → higher reps everywhere (compounds 10–12, isolation 12–15)
+  ///   • balanced → goal-dependent mix by role ([_balancedReps]); e.g. Muscle
+  ///                Gain opens heavy on the main compound and finishes higher-rep
+  /// Cardio + conditioning splits stay timed/circuit and ignore focus/role.
+  String _getReps(UserProfile profile, String category, _ExerciseRole role) {
     final split = profile.workoutSplit;
     if (split == 'HIIT + Strength Split' || split == 'Circuit Training Split') {
       return category == 'cardio' ? '60 sec' : '15-20';
     }
-    if (split == 'Strength + Conditioning Split') {
-      return category == 'cardio' ? '45 sec' : '8-12';
-    }
     if (category == 'cardio') return '45 sec';
+    return switch (profile.effectiveTrainingFocus) {
+      'heavy' => switch (role) {
+        _ExerciseRole.mainCompound => '4-6',
+        _ExerciseRole.secondaryCompound => '6-8',
+        _ExerciseRole.isolation => '8-10',
+      },
+      'high' => role == _ExerciseRole.isolation ? '12-15' : '10-12',
+      _ => _balancedReps(profile.fitnessGoal, role), // 'balanced'
+    };
+  }
+
+  /// Balanced prescription — a goal-dependent MIX of rep ranges by exercise
+  /// role, so "Balanced" is never a flat 8–12: the main compound trains at the
+  /// goal's heavier end, isolation at its higher-rep end. Stays inside the NSCA
+  /// ranges the app already uses per goal.
+  String _balancedReps(String goal, _ExerciseRole role) => switch (goal) {
+    'Muscle Gain' => switch (role) {
+      _ExerciseRole.mainCompound => '4-8',
+      _ExerciseRole.secondaryCompound => '8-12',
+      _ExerciseRole.isolation => '10-15',
+    },
+    'Weight Loss' => switch (role) {
+      _ExerciseRole.mainCompound => '8-12',
+      _ExerciseRole.secondaryCompound => '10-12',
+      _ExerciseRole.isolation => '12-15',
+    },
+    'Endurance' => switch (role) {
+      _ExerciseRole.mainCompound => '10-12',
+      _ExerciseRole.secondaryCompound => '12-15',
+      _ExerciseRole.isolation => '15-20',
+    },
+    _ => switch (role) {
+      // General Fitness — moderate mixture.
+      _ExerciseRole.mainCompound => '8-10',
+      _ExerciseRole.secondaryCompound => '10-12',
+      _ExerciseRole.isolation => '12-15',
+    },
+  };
+
+  /// FOCUS-INDEPENDENT representative rep range per goal, used ONLY to size the
+  /// session-fit exercise COUNT ([_fitExerciseCount]). Keeping it independent of
+  /// Training Focus is what guarantees that changing focus changes the reps but
+  /// never the number of exercises. Mirrors the legacy goal-based rep bands so
+  /// counts are unchanged from before this refactor.
+  String _countBudgetReps(UserProfile profile) {
+    if (profile.fitnessGoal == 'Muscle Gain') return '8-12';
     if (profile.fitnessGoal == 'Weight Loss' ||
         profile.fitnessGoal == 'Endurance') {
       return '15-20';
     }
-    if (profile.fitnessGoal == 'Muscle Gain') return '8-12';
     return '12-15';
   }
 
   /// Rest seconds — within the NSCA goal-loading rest ranges (Essentials of S&C,
   /// 4th ed.): hypertrophy 30 s–1.5 min, muscular endurance ≤30 s (circuit
   /// tolerance up to ~45 s for weight loss), strength 2–5 min; conditioning-style
-  /// splits get the shortest rests.
-  int _getRestSeconds(UserProfile profile) {
+  /// splits get the shortest rests. A modest Training-Focus nudge (heavy → longer
+  /// rest, high → shorter) keeps the loading coherent (heavy 4–6-rep work needs
+  /// more recovery), clamped to a NSCA-reasonable [30, 180] s.
+  ///
+  /// [applyFocus] is false when sizing the exercise COUNT ([_fitExerciseCount]),
+  /// so that changing Training Focus never changes how many exercises fit — only
+  /// the prescription. It is true (default) for the actual per-set prescription.
+  int _getRestSeconds(UserProfile profile, {bool applyFocus = true}) {
     final split = profile.workoutSplit;
+    int base;
     if (split == 'HIIT + Strength Split' || split == 'Circuit Training Split') {
-      return 30; // NSCA endurance / circuit
-    }
-    if (split == 'Strength + Conditioning Split') return 60;
-    if (profile.fitnessGoal == 'Muscle Gain') return 90; // NSCA hypertrophy max
-    if (profile.fitnessGoal == 'Weight Loss' ||
+      base = 30; // NSCA endurance / circuit
+    } else if (split == 'Strength + Conditioning Split') {
+      base = 60;
+    } else if (profile.fitnessGoal == 'Muscle Gain') {
+      base = 90; // NSCA hypertrophy max
+    } else if (profile.fitnessGoal == 'Weight Loss' ||
         profile.fitnessGoal == 'Endurance') {
-      return 45; // NSCA endurance baseline (≤30 s) + circuit tolerance
+      base = 45; // NSCA endurance baseline (≤30 s) + circuit tolerance
+    } else {
+      base = 60; // general
     }
-    return 60; // general
+    if (applyFocus) {
+      switch (profile.effectiveTrainingFocus) {
+        case 'heavy':
+          base += 30;
+          break;
+        case 'high':
+          base -= 15;
+          break;
+      }
+    }
+    return base.clamp(30, 180);
   }
 
   String _dayName(int index, {int anchorWeekday = 1}) {

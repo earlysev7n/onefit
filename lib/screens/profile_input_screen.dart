@@ -50,12 +50,19 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   int _workoutDays = 3;
   int _sessionMinutes = 45;
   String _workoutSplit = 'Full Body Training';
-  // User's ranking of the greedy scorer's exercise features, most important
-  // first. Seeded from the selected goal's default order; re-seeded when the
-  // goal changes; editable via the drag list under Fitness Goal.
-  List<String> _goalPriorities = GreedyAlgorithm.defaultGoalPriorities(
+  // Exercise PREFERENCE — the user's Compound-vs-Isolation ranking, the only
+  // selection-relevant type preference. Stored inside the full 5-item
+  // goalPriorities list (reconstructed on save) for back-compat, but the UI only
+  // edits these two. Seeded from the goal's default order; re-seeded on goal
+  // change. The higher-ranked type scores +12, the other +9.
+  List<String> _exerciseTypeOrder = GreedyAlgorithm.defaultGoalPriorities(
     'Weight Loss',
-  );
+  ).where((k) => k == 'compound' || k == 'isolation').toList();
+  // Training FOCUS — the prescription bias ('heavy'|'balanced'|'high'). Decides
+  // rep ranges/rest for the SELECTED exercises, never which are selected. Seeded
+  // from the fitness goal's default; user can override (e.g. Weight Loss +
+  // Heavy Lift is valid).
+  String _trainingFocus = 'high'; // Weight Loss default
   // Common physical limitations that hard-exclude contraindicated exercises.
   List<String> _physicalLimitations = [];
 
@@ -185,17 +192,15 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
       _gender = p.gender;
       _unitSystem = p.unitSystem;
       _fitnessGoal = p.fitnessGoal;
-      // Restore the saved feature ranking, or seed the goal's default order.
-      // Guard against stale/partial saved lists by ensuring it holds exactly the
-      // current feature keys.
-      _goalPriorities =
-          (p.goalPriorities.isNotEmpty &&
-              p.goalPriorities.toSet().containsAll(
-                GreedyAlgorithm.goalFeatureKeys,
-              ) &&
-              p.goalPriorities.length == GreedyAlgorithm.goalFeatureKeys.length)
-          ? List<String>.from(p.goalPriorities)
-          : GreedyAlgorithm.defaultGoalPriorities(p.fitnessGoal);
+      // Restore the Compound-vs-Isolation order from the saved ranking (whichever
+      // appears first is preferred); default compound-first for legacy/partial
+      // lists. Restore Training Focus from the saved value, or seed the goal's
+      // default when it was never set (legacy profiles).
+      _exerciseTypeOrder = _exerciseTypeOrderFrom(
+        p.goalPriorities,
+        p.fitnessGoal,
+      );
+      _trainingFocus = p.effectiveTrainingFocus;
       _experienceLevel = p.experienceLevel;
       _workoutLocation = p.workoutLocation;
       // Old Gym profiles store []; ensure Bodyweight is present so the locked
@@ -452,7 +457,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               workoutDaysPerWeek: _workoutDays,
               sessionMinutes: _sessionMinutes,
               workoutSplit: _workoutSplit,
-              goalPriorities: _goalPriorities,
+              goalPriorities: _reconstructGoalPriorities(),
+              trainingFocus: _trainingFocus,
             )
           : UserProfile(
               uid: FirebaseAuth.instance.currentUser!.uid,
@@ -474,7 +480,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               workoutDaysPerWeek: _workoutDays,
               sessionMinutes: _sessionMinutes,
               workoutSplit: _workoutSplit,
-              goalPriorities: _goalPriorities,
+              goalPriorities: _reconstructGoalPriorities(),
+              trainingFocus: _trainingFocus,
               createdAt: appNow(),
             );
       await profileProvider.save(profile);
@@ -849,22 +856,36 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           _buildChipGroup(
             _goals,
             _fitnessGoal,
-            // Switching goal re-seeds the priority order to that goal's default.
+            // Switching goal re-seeds BOTH the exercise-type order and the
+            // Training Focus to that goal's defaults (the user can still override
+            // either afterward).
             (v) => setState(() {
               _fitnessGoal = v;
-              _goalPriorities = GreedyAlgorithm.defaultGoalPriorities(v);
+              _exerciseTypeOrder = _exerciseTypeOrderFrom(const [], v);
+              _trainingFocus = _defaultTrainingFocusFor(v);
             }),
           ),
           const SizedBox(height: 24),
-          _buildLabelWithHelp('Exercise Priority', _goalPriorityHelp()),
+          _buildLabelWithHelp('Exercise Preference', _exercisePreferenceHelp()),
           const SizedBox(height: 4),
           Text(
-            'Drag to rank what matters most. Higher = more points, so the '
-            'generator favours those exercises.',
+            'Drag to rank the exercise TYPE you prefer. When several exercises '
+            'fit, the higher-ranked type is favoured (+12 vs +9).',
             style: GoogleFonts.inter(color: c.muted, fontSize: 12),
           ),
           const SizedBox(height: 8),
-          _buildGoalPriorityList(),
+          _buildExerciseTypeList(),
+          const SizedBox(height: 24),
+          _buildLabelWithHelp('Training Focus', _trainingFocusHelp()),
+          const SizedBox(height: 4),
+          Text(
+            'Sets how your chosen exercises are dosed (reps/rest) — it never '
+            'changes which exercises are picked. Seeded from your goal; change '
+            'it any time.',
+            style: GoogleFonts.inter(color: c.muted, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          _buildTrainingFocusSelector(),
           const SizedBox(height: 24),
           _buildLabelWithHelp('Experience Level', const {
             'How it works':
@@ -1326,28 +1347,81 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     style: GoogleFonts.inter(color: context.colors.muted, fontSize: 14),
   );
 
-  /// Help content for the Exercise Priority list — explains the 12/9/6/4/2 scale
-  /// (and why) plus what each feature means. Keyed for [_showHelpSheet].
-  Map<String, String> _goalPriorityHelp() => {
-    'How scoring works':
-        'The generator scores every candidate exercise and picks the highest. '
-            'Your #1 priority adds 12 points, then 9, 6, 4, 2 down the list — so '
-            'a higher-ranked trait makes exercises with that trait win more '
-            'often. The steps stay inside the range the algorithm is tuned for, '
-            'so re-ranking changes emphasis without breaking variety (day-focus '
-            'and repeat-muscle balancing still apply). A separate +15 is always '
-            'added when an exercise is tagged for your goal.',
+  // ── Preference/Focus helpers ───────────────────────────────────────────────
+
+  /// The fitness goal's default Training Focus (mirrors
+  /// [UserProfile.effectiveTrainingFocus]).
+  static String _defaultTrainingFocusFor(String goal) {
+    switch (goal) {
+      case 'Weight Loss':
+      case 'Endurance':
+        return 'high';
+      default:
+        return 'balanced'; // Muscle Gain + General Fitness
+    }
+  }
+
+  /// Derives the Compound-vs-Isolation order from a saved [goalPriorities] list
+  /// (whichever key appears first is preferred). Falls back to the goal's default
+  /// order for empty/partial lists so legacy profiles behave sensibly.
+  static List<String> _exerciseTypeOrderFrom(
+    List<String> goalPriorities,
+    String goal,
+  ) {
+    final ci = goalPriorities.indexOf('compound');
+    final ii = goalPriorities.indexOf('isolation');
+    if (ci >= 0 && ii >= 0) {
+      return ci < ii ? ['compound', 'isolation'] : ['isolation', 'compound'];
+    }
+    // Legacy/partial — use the goal's built-in ordering.
+    return GreedyAlgorithm.defaultGoalPriorities(
+      goal,
+    ).where((k) => k == 'compound' || k == 'isolation').toList();
+  }
+
+  /// Rebuilds the full 5-item [UserProfile.goalPriorities] for storage: the
+  /// user's chosen Compound/Isolation order first, then the remaining keys in the
+  /// goal's default order. The greedy scorer now only reads the Compound vs
+  /// Isolation order, so the trailing keys are cosmetic — this keeps the stored
+  /// shape backward-compatible (and passes the load-time completeness guard).
+  List<String> _reconstructGoalPriorities() {
+    final others = GreedyAlgorithm.defaultGoalPriorities(
+      _fitnessGoal,
+    ).where((k) => k != 'compound' && k != 'isolation').toList();
+    return [..._exerciseTypeOrder, ...others];
+  }
+
+  /// Help content for the Exercise Preference list. Keyed for [_showHelpSheet].
+  Map<String, String> _exercisePreferenceHelp() => {
+    'How it works':
+        'This ranks the TYPE of exercise you prefer. When several eligible '
+            'exercises fit a slot, the higher-ranked type is favoured: the '
+            'preferred type adds +12, the other +9. It only affects WHICH '
+            'exercises are chosen — how they are dosed is set by Training Focus. '
+            'A separate +15 is added when an exercise matches your goal, and '
+            'day-focus + repeat-muscle balancing still apply.',
     'Compound': 'Multi-joint moves that work several muscles (e.g. squat, row).',
     'Isolation': 'Single-muscle moves (e.g. biceps curl, lateral raise).',
-    'Heavy Lift': 'Heavy barbell compounds meant for low-rep strength work.',
-    'Full Body': 'Moves that work four or more muscles at once.',
-    'High Rep': 'Endurance-oriented, higher-repetition exercises.',
   };
 
-  /// Drag-to-rank list of the five exercise features. Position → points
-  /// (12/9/6/4/2); the badge updates live as the user reorders. Feeds
-  /// [UserProfile.goalPriorities], which the greedy scorer reads.
-  Widget _buildGoalPriorityList() {
+  /// Help content for the Training Focus selector. Keyed for [_showHelpSheet].
+  Map<String, String> _trainingFocusHelp() => {
+    'How it works':
+        'Training Focus decides how your SELECTED exercises are prescribed '
+            '(rep ranges and rest) — it never changes which exercises are '
+            'picked. Your fitness goal seeds a sensible default, but you can '
+            'override it (e.g. Weight Loss with Heavy Lift is valid).',
+    'Heavy Lift': 'Lower reps, heavier loading (roughly 4–8 reps), longer rests.',
+    'Balanced':
+        'A goal-based mix: the main compound trains heavier, isolation work '
+            'goes higher-rep.',
+    'High Rep': 'Higher reps (roughly 10–15+), shorter rests.',
+  };
+
+  /// Drag-to-rank list of the two exercise TYPES (Compound / Isolation).
+  /// Position → points (top +12, second +9). Feeds the Compound/Isolation order
+  /// stored in [UserProfile.goalPriorities], which the greedy scorer reads.
+  Widget _buildExerciseTypeList() {
     final c = context.colors;
     return ReorderableListView(
       shrinkWrap: true,
@@ -1356,14 +1430,14 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
       onReorder: (oldIndex, newIndex) {
         setState(() {
           if (newIndex > oldIndex) newIndex -= 1;
-          final key = _goalPriorities.removeAt(oldIndex);
-          _goalPriorities.insert(newIndex, key);
+          final key = _exerciseTypeOrder.removeAt(oldIndex);
+          _exerciseTypeOrder.insert(newIndex, key);
         });
       },
       children: [
-        for (int i = 0; i < _goalPriorities.length; i++)
+        for (int i = 0; i < _exerciseTypeOrder.length; i++)
           ReorderableDragStartListener(
-            key: ValueKey(_goalPriorities[i]),
+            key: ValueKey(_exerciseTypeOrder[i]),
             index: i,
             child: Container(
               margin: const EdgeInsets.only(bottom: 8),
@@ -1394,8 +1468,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      GreedyAlgorithm.goalFeatureLabels[_goalPriorities[i]] ??
-                          _goalPriorities[i],
+                      GreedyAlgorithm.goalFeatureLabels[_exerciseTypeOrder[i]] ??
+                          _exerciseTypeOrder[i],
                       style: GoogleFonts.inter(
                         color: c.onBackground,
                         fontWeight: FontWeight.w600,
@@ -1405,6 +1479,54 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                   ),
                   Icon(Icons.drag_handle, color: c.muted, size: 20),
                 ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Three-way Training Focus selector (Heavy Lift / Balanced / High Rep).
+  /// Stores the code ('heavy'|'balanced'|'high') in [_trainingFocus].
+  Widget _buildTrainingFocusSelector() {
+    final c = context.colors;
+    const options = [
+      ('heavy', 'Heavy Lift'),
+      ('balanced', 'Balanced'),
+      ('high', 'High Rep'),
+    ];
+    return Row(
+      children: [
+        for (final (code, label) in options)
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _trainingFocus = code),
+              child: Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: _trainingFocus == code
+                      ? AppColors.primary.withValues(alpha: 0.15)
+                      : c.inputFill,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: _trainingFocus == code
+                        ? AppColors.primary
+                        : Colors.transparent,
+                  ),
+                ),
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    color: _trainingFocus == code
+                        ? AppColors.primary
+                        : c.onBackground,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
               ),
             ),
           ),
