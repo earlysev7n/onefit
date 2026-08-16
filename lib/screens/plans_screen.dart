@@ -522,8 +522,40 @@ class _WorkoutTabState extends State<_WorkoutTab>
         // now-ineligible exercises and refill each day with eligible ones
         // (bodyweight is always eligible, so days never end up empty).
         final sanitized = _sanitizePlanForProfile(rehydrated, profile);
-        planProvider.setWorkoutPlan(sanitized.plan);
-        if (sanitized.changed) {
+
+        // Re-apply the display ordering (muscle focus → Exercise Priority → ACSM
+        // tier) to the saved plan so a plan generated before the current
+        // ordering rules picks them up on load — without a manual regenerate.
+        // Shares GreedyAlgorithm.compareForDisplay with generation so the two
+        // never disagree. Re-persist only if the order actually changed.
+        bool orderChanged = false;
+        final ordered = sanitized.plan.map((day) {
+          if (day.isRest || day.exercises.length < 2) return day;
+          final target = GreedyAlgorithm.musclesForFocus(day.focus);
+          final sortedEx = [...day.exercises]..sort(
+            (a, b) => GreedyAlgorithm.compareForDisplay(
+              a.exercise,
+              b.exercise,
+              targetMuscles: target,
+              profile: profile,
+            ),
+          );
+          for (int i = 0; i < sortedEx.length; i++) {
+            if (sortedEx[i].exercise.id != day.exercises[i].exercise.id) {
+              orderChanged = true;
+              break;
+            }
+          }
+          return WorkoutDay(
+            dayName: day.dayName,
+            focus: day.focus,
+            isRest: day.isRest,
+            exercises: sortedEx,
+          );
+        }).toList();
+
+        planProvider.setWorkoutPlan(ordered);
+        if (sanitized.changed || orderChanged) {
           await planProvider.persistWorkoutPlan(uid, weekId);
         }
 

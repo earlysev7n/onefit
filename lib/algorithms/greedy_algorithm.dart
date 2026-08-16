@@ -629,11 +629,14 @@ class GreedyAlgorithm {
             q2 == 'dumbbells';
       });
 
-  // ── ACSM/NSCA 5-tier post-selection ordering ─────────────────────────────
+  // ── ACSM/NSCA 5-tier ordering — now the TIEBREAK, not the primary sort ────
   // Haff & Triplett, "Program Design for Resistance Training," Essentials of
   // S&C, 4th ed.: power/explosive first (peak CNS demand), then large
   // multi-joint lifts, then secondary compounds, then isolations, accessories
-  // last. Applied after greedy selection so scores/selection are unchanged.
+  // last. The post-selection sort now orders primarily by the user's Exercise
+  // Priority ranking (see _priorityOrderIndex) and uses these tiers only to
+  // break ties within a priority bucket. Applied after greedy selection so
+  // scores/selection are unchanged.
 
   // Tier 1 — Olympic/plyometric movements. "jump" alone is omitted (would
   // catch "jumping jack"); "swing" omitted (too broad across the catalog).
@@ -651,7 +654,7 @@ class GreedyAlgorithm {
   );
 
   /// Returns the ACSM/NSCA ordering tier for [e] (1 = first, 5 = last).
-  /// Used only by the post-selection stable sort — not a scoring input.
+  /// Used only as the TIEBREAK in the post-selection sort — not a scoring input.
   static int _exerciseTier(Exercise e) {
     final name = e.name.toLowerCase();
     if (_powerKeywords.hasMatch(name)) return 1;
@@ -659,6 +662,80 @@ class GreedyAlgorithm {
     if (isStapleCompound(e)) return 3;
     if (_accessoryKeywords.hasMatch(name)) return 5;
     return 4; // single-joint isolation (default)
+  }
+
+  /// Primary ordering key for the post-selection sort: the BEST (lowest) index
+  /// in the user's [priorities] ranking among the features [e] possesses, so the
+  /// session order mirrors the "Exercise Priority" list the user ranked (their #1
+  /// feature leads). Features are derived exactly as in [_scoreExercise], reusing
+  /// the same predicates so ordering and scoring never drift. Every exercise is
+  /// at least compound or isolation (both rankable), so a match always exists;
+  /// the `priorities.length` default is a safety fallback only.
+  static int _priorityOrderIndex(Exercise e, List<String> priorities) {
+    final compound = isStapleCompound(e) || isHeavyCompound(e);
+    final features = <String>[
+      compound ? 'compound' : 'isolation',
+      if (isHeavyCompound(e)) 'heavyLift',
+      if ((e.primaryMuscles.length + e.secondaryMuscles.length) >= 4) 'fullBody',
+      if (e.goals.contains('endurance')) 'highRep',
+    ];
+    int best = priorities.length;
+    for (final f in features) {
+      final i = priorities.indexOf(f);
+      if (i >= 0 && i < best) best = i;
+    }
+    return best;
+  }
+
+  /// Muscle-importance key for display ordering: the BEST (lowest) index of any
+  /// of [e]'s PRIMARY muscles within the day's [targetMuscles] list. The focus
+  /// lists ([_focusMuscleMap]) are authored big→small, so this yields "chest
+  /// before triceps" on a Chest & Triceps day and groups the big movers first on
+  /// a Full Body day. An exercise with no focus-primary muscle (an assist-only
+  /// mover, e.g. a triceps close-grip bench on a Full Body day) gets
+  /// `targetMuscles.length` → it sorts AFTER every focus mover. Empty
+  /// targetMuscles → 0 for all (no muscle preference; matches selection, where an
+  /// empty focus makes the whole pool eligible).
+  static int _muscleFocusIndex(Exercise e, List<String> targetMuscles) {
+    if (targetMuscles.isEmpty) return 0;
+    int best = targetMuscles.length; // assist-only / no focus-primary → last
+    for (final m in e.primaryMuscles) {
+      final i = targetMuscles.indexOf(m);
+      if (i >= 0 && i < best) best = i;
+    }
+    return best;
+  }
+
+  /// Public display-ordering comparator — the single source of truth for the
+  /// on-card exercise sequence, shared by generation ([_selectExercisesForDay])
+  /// and the persisted-plan load path (PlansScreen), so a saved plan reorders to
+  /// the same rules without a manual regenerate. Keys, applied in order:
+  ///   1. MUSCLE FOCUS ([_muscleFocusIndex]) — the day's big movers first, assist
+  ///      movers last; this is what keeps a triceps close-grip bench below the
+  ///      chest work even though it ranks as the user's #1 Heavy Lift.
+  ///   2. EXERCISE PRIORITY ([_priorityOrderIndex]) — the user's ranked features
+  ///      (heavy lifts lead WITHIN a muscle group).
+  ///   3. ACSM/NSCA TIER ([_exerciseTier]) — final tiebreak.
+  /// Pure/stateless; a stable sort with this comparator preserves the incoming
+  /// order beneath equal keys.
+  static int compareForDisplay(
+    Exercise a,
+    Exercise b, {
+    required List<String> targetMuscles,
+    required UserProfile profile,
+  }) {
+    final ma = _muscleFocusIndex(a, targetMuscles);
+    final mb = _muscleFocusIndex(b, targetMuscles);
+    if (ma != mb) return ma.compareTo(mb);
+
+    final priorities = profile.goalPriorities.isNotEmpty
+        ? profile.goalPriorities
+        : defaultGoalPriorities(profile.fitnessGoal);
+    final pa = _priorityOrderIndex(a, priorities);
+    final pb = _priorityOrderIndex(b, priorities);
+    if (pa != pb) return pa.compareTo(pb);
+
+    return _exerciseTier(a).compareTo(_exerciseTier(b));
   }
 
   List<WorkoutExercise> _selectExercisesForDay({
@@ -793,11 +870,20 @@ class GreedyAlgorithm {
     if (selected.length < count) fill(primaryPool, false);
     if (selected.length < count) fill(assistPool, false);
 
-    // 5-tier ACSM/NSCA sort (Haff & Triplett, Essentials of S&C, 4th ed.):
-    // Power → Primary compound → Secondary compound → Isolation → Accessory.
-    // Dart's List.sort is stable, so the greedy pick order is preserved within
-    // each tier — selection, scores, and muscle balance are completely unchanged.
-    selected.sort((a, b) => _exerciseTier(a).compareTo(_exerciseTier(b)));
+    // Post-selection display ordering — muscle-focus (big movers first, assist
+    // movers last) → Exercise Priority (heavy lifts lead within a muscle) → ACSM
+    // tier. Shared with the persisted-plan load path via compareForDisplay so
+    // generation and reload never disagree. Dart's List.sort is stable, so greedy
+    // pick order is preserved beneath equal keys — selection, scores, and muscle
+    // balance are completely unchanged.
+    selected.sort(
+      (a, b) => GreedyAlgorithm.compareForDisplay(
+        a,
+        b,
+        targetMuscles: targetMuscles,
+        profile: profile,
+      ),
+    );
     final ordered = selected;
 
     // Sets and rest are profile-derived (NSCA goal loading) and constant for the
