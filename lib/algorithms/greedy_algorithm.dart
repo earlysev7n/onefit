@@ -281,11 +281,13 @@ class GreedyAlgorithm {
   //  it only sizes the exercise COUNT via _fitExerciseCount. Reuses
   //  isStapleCompound / isHeavyCompound / difficultyAllowed / _goalKey.
 
-  // Goal weight columns
+  // Goal weight columns — used only by [defaultGoalPriorities] to order the
+  // reorderable features (see [goalFeatureKeys]) high→low for a goal. `goalMatch`
+  // is intentionally absent: it is not a reorderable feature (fixed +15 bonus in
+  // _scoreExercise) and was never read here.
   static const Map<String, Map<String, int>> _goalWeights = {
-    // feature: goalMatch compound isolation heavyLift fullBody highRep
+    // feature: compound isolation heavyLift fullBody highRep
     'weight_loss': {
-      'goalMatch': 15,
       'compound': 12,
       'isolation': 2,
       'heavyLift': 4,
@@ -293,7 +295,6 @@ class GreedyAlgorithm {
       'highRep': 6,
     },
     'muscle_gain': {
-      'goalMatch': 15,
       'compound': 10,
       'isolation': 6,
       'heavyLift': 8,
@@ -301,7 +302,6 @@ class GreedyAlgorithm {
       'highRep': 2,
     },
     'endurance': {
-      'goalMatch': 15,
       'compound': 6,
       'isolation': 4,
       'heavyLift': 0,
@@ -309,7 +309,6 @@ class GreedyAlgorithm {
       'highRep': 12,
     },
     'general': {
-      'goalMatch': 15,
       'compound': 10,
       'isolation': 4,
       'heavyLift': 6,
@@ -337,13 +336,6 @@ class GreedyAlgorithm {
     'fullBody': 'Full Body',
     'highRep': 'High Rep',
   };
-
-  // Rank position → points. The user's #1 feature earns 12, then 9/6/4/2 down
-  // the list. Kept inside the range the scorer was tuned for so the
-  // Goal+Experience+Time block stays under its [-20, +45] clamp and the
-  // variety/balance safeguards (day-focus +50, repeat-muscle penalties) are
-  // untouched.
-  static const List<int> rankPoints = [12, 9, 6, 4, 2];
 
   /// Default feature ranking for a goal, derived from [_goalWeights] so an
   /// untouched profile reproduces today's *ordering* of importance. Sorts the
@@ -413,7 +405,7 @@ class GreedyAlgorithm {
 
     int goalScore = 0;
     if (exercise.goals.contains(goalKey)) goalScore += 15; // goalMatch — fixed
-    goalScore += _exerciseTypePoints(priorities, compound); // +12 or +9
+    goalScore += _exerciseTypePoints(priorities, compound); // +2 or +1
 
     int expScore = 0;
     if (difficultyAllowed(exercise.difficulty, profile.experienceLevel)) {
@@ -491,7 +483,7 @@ class GreedyAlgorithm {
 
     // Exercise-TYPE preference — Compound vs Isolation, the only user-ranked
     // selection signal. Reported with its rank position and the actual points
-    // awarded (+12 preferred / +9 other). No heavy/high/full-body reasons —
+    // awarded (+2 preferred / +1 other). No heavy/high/full-body reasons —
     // those are prescription/coverage, not selection.
     final priorities = profile.goalPriorities.isNotEmpty
         ? profile.goalPriorities
@@ -1055,7 +1047,6 @@ class GreedyAlgorithm {
       final effectiveTrain = trainDays.clamp(1, 6);
       final fullSecondTriple = effectiveTrain == 6;
 
-      // Build the session order.
       final sessions = <String>[];
       for (int i = 0; i < effectiveTrain; i++) {
         if (i < 3) {
@@ -1066,20 +1057,15 @@ class GreedyAlgorithm {
           sessions.add(seq[(weekIndex + (i - 3)) % 3]); // partial → rotate
         }
       }
-
-      // Place sessions, skipping a slot (leaving 'Rest') after each completed
-      // triple, capped so every training session still fits in 7 days.
-      final maxRests = (7 - effectiveTrain).clamp(0, 7);
-      int restsUsed = 0;
-      int dayPtr = 0;
-      for (int s = 0; s < sessions.length && dayPtr < 7; s++) {
-        schedule[dayPtr++] = sessions[s];
-        final completedTriple = (s + 1) % 3 == 0;
-        if (completedTriple && restsUsed < maxRests && dayPtr < 7) {
-          dayPtr++; // leave this slot as 'Rest'
-          restsUsed++;
-        }
-      }
+      return _placeWithCycleRests(sessions, 3);
+    } else if (focusSequence.length == 2 &&
+        profile.workoutSplit == 'Upper / Lower Split') {
+      // Upper/Lower — PAIRED ("connected"): train Upper then Lower back-to-back
+      // (different muscle groups, safe consecutively), then rest, repeat. An odd
+      // trailing day is always the FIRST focus (Upper) — fixed, no rotation
+      // (seq[i % 2] yields U on even indices). No cap: non-rest count == days.
+      final sessions = [for (int i = 0; i < trainDays; i++) focusSequence[i % 2]];
+      return _placeWithCycleRests(sessions, 2);
     } else if (focusSequence.length > 3) {
       // Legacy 5-focus splits (Bro / Body-Part) — pack training days
       // consecutively so rest days fall after the full cycle, not inside it.
@@ -1088,8 +1074,9 @@ class GreedyAlgorithm {
         schedule[i] = focusSequence[i % focusSequence.length];
       }
     } else {
-      // Single/dual-focus splits (Full Body, Upper/Lower, S+C) — spread days
-      // evenly so the same muscle groups get adequate mid-week recovery.
+      // Remaining single/dual-focus splits (Full Body, Functional, S+C) —
+      // spread days evenly so the same muscle groups get adequate mid-week
+      // recovery.
       final trainPositions = <int>{};
       for (int i = 0; i < trainDays; i++) {
         trainPositions.add((i * 7 / trainDays).floor());
@@ -1103,6 +1090,26 @@ class GreedyAlgorithm {
       }
     }
 
+    return schedule;
+  }
+
+  /// Places [sessions] into a 7-slot week (pre-filled 'Rest'), leaving a rest
+  /// after each completed cycle of [cycleLen] sessions, capped so every session
+  /// still fits in 7 days (`maxRests = 7 − sessions.length`). Shared by the
+  /// PPL (cycleLen 3) and Upper/Lower (cycleLen 2) paired schedules.
+  List<String> _placeWithCycleRests(List<String> sessions, int cycleLen) {
+    final schedule = List<String>.filled(7, 'Rest');
+    final maxRests = (7 - sessions.length).clamp(0, 7);
+    int restsUsed = 0;
+    int dayPtr = 0;
+    for (int s = 0; s < sessions.length && dayPtr < 7; s++) {
+      schedule[dayPtr++] = sessions[s];
+      final completedCycle = (s + 1) % cycleLen == 0;
+      if (completedCycle && restsUsed < maxRests && dayPtr < 7) {
+        dayPtr++; // leave this slot as 'Rest'
+        restsUsed++;
+      }
+    }
     return schedule;
   }
 

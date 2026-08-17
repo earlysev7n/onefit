@@ -310,6 +310,41 @@ void main() {
     });
   });
 
+  group('Upper/Lower scheduling — paired (connected), fixed Upper on odd days', () {
+    const ul = 'Upper / Lower Split';
+    List<WorkoutDay> plan(int days) => ga.generatePlan(
+          allExercises: _catalog,
+          profile: _profile(split: ul, days: days),
+        );
+
+    test('d=4: Upper, Lower, Rest, Upper, Lower, Rest, Rest', () {
+      final p = plan(4);
+      expect(p.where((d) => !d.isRest).length, 4);
+      expect(p[0].focus, 'Upper Body');
+      expect(p[1].focus, 'Lower Body');
+      expect(p[2].isRest, isTrue, reason: 'rest after the first pair');
+      expect(p[3].focus, 'Upper Body');
+      expect(p[4].focus, 'Lower Body');
+      expect(p[5].isRest, isTrue, reason: 'rest after the second pair');
+      expect(p[6].isRest, isTrue);
+    });
+
+    test('d=3: trailing single day is fixed Upper (no rotation)', () {
+      final p = plan(3);
+      expect(p.where((d) => !d.isRest).length, 3);
+      expect([p[0].focus, p[1].focus], ['Upper Body', 'Lower Body']);
+      expect(p[2].isRest, isTrue);
+      expect(p[3].focus, 'Upper Body', reason: 'odd trailing day is always Upper');
+    });
+
+    test('d=5: five training days, trailing day is Upper', () {
+      final p = plan(5);
+      expect(p.where((d) => !d.isRest).length, 5);
+      final training = p.where((d) => !d.isRest).toList();
+      expect(training.last.focus, 'Upper Body');
+    });
+  });
+
   group('focusLabel — display-only split-role labels', () {
     test('adds the Push/Pull role to muscle-only labels', () {
       expect(GreedyAlgorithm.focusLabel('Back & Biceps'), 'Pull (Back & Biceps)');

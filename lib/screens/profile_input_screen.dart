@@ -54,7 +54,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   // selection-relevant type preference. Stored inside the full 5-item
   // goalPriorities list (reconstructed on save) for back-compat, but the UI only
   // edits these two. Seeded from the goal's default order; re-seeded on goal
-  // change. The higher-ranked type scores +12, the other +9.
+  // change. The higher-ranked type scores +2, the other +1.
   List<String> _exerciseTypeOrder = GreedyAlgorithm.defaultGoalPriorities(
     'Weight Loss',
   ).where((k) => k == 'compound' || k == 'isolation').toList();
