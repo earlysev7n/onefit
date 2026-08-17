@@ -30,7 +30,7 @@ Built with Firebase (Auth + Cloud Firestore), Provider state management, and fre
    ```bash
    flutter pub get
    ```
-2. **Configure API keys** — copy `.env.example` to `.env` and fill in:
+2. **Configure API keys** — create a `.env` file in the project root (gitignored) with:
    - `OPENAI_API_KEY` — recipe instruction generation
    - `USDA_API_KEY` — food search / ingredient seeding (free at fdc.nal.usda.gov)
    - `EDAMAM_APP_ID` / `EDAMAM_APP_KEY` — optional, future recipe features
