@@ -4288,10 +4288,12 @@ class _WorkoutTabState extends State<_WorkoutTab>
             const SizedBox(height: 12),
           ],
 
-          // Start Workout button (today, not completed, not yet started, has exercises)
+          // Start Workout button (today, not completed, not yet started, not
+          // editing, has exercises) — hidden in edit mode so it can't be pressed.
           if (isToday &&
               !isCompleted &&
               !workoutStarted &&
+              !_editMode &&
               day.exercises.isNotEmpty) ...[
             SizedBox(
               width: double.infinity,
@@ -4345,9 +4347,10 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
           // Exercise cards
           if (_editMode && !workoutStarted) ...[
-            // Drag-to-reorder list with edit controls + drag handles
-            _buildReorderableExerciseList(day),
+            // Add exercise on top, then the drag-to-reorder list with edit
+            // controls + drag handles.
             _buildAddExerciseButton(day),
+            _buildReorderableExerciseList(day),
           ] else if (exercisesLocked)
             IgnorePointer(
               child: Opacity(
