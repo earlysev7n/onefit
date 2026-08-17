@@ -542,6 +542,8 @@ class GreedyAlgorithm {
     required UserProfile profile,
     String difficultyBias = 'same', // 'up' | 'down' | 'same'
     int anchorWeekday = 1,
+    int weekIndex = 0, // 0-based week since the user started — drives the PPL
+    // partial-block rotation so the "extra" day advances each week.
   }) {
     // Hard constraints: gender variant + location + equipment + bench (what
     // the user can physically do). Goal is a scoring signal, not a gate —
@@ -556,7 +558,7 @@ class GreedyAlgorithm {
     // workoutDaysPerWeek is a hard constraint: adaptation never adds or
     // removes training days — difficultyBias modulates per-day volume
     // (exercise count and sets) instead, per ACSM progression guidance.
-    final schedule = _getSchedule(profile);
+    final schedule = _getSchedule(profile, weekIndex: weekIndex);
 
     final List<WorkoutDay> plan = [];
     // Per-focus hit tracker. The weekly muscle penalty is scoped to
@@ -1038,16 +1040,50 @@ class GreedyAlgorithm {
   }
 
   // ── SCHEDULE — driven by workoutSplit + workoutDaysPerWeek ──────────────────
-  List<String> _getSchedule(UserProfile profile) {
+  List<String> _getSchedule(UserProfile profile, {int weekIndex = 0}) {
     final trainDays = profile.workoutDaysPerWeek.clamp(1, 7);
     final focusSequence = _splitFocusSequence(profile.workoutSplit);
     final schedule = List<String>.filled(7, 'Rest');
 
-    if (focusSequence.length >= 3) {
-      // Multi-focus splits (PPL, Bro Split) — pack training days consecutively
-      // so rest days fall after the full cycle, not inside it.
-      // Each day in the cycle targets different muscles, so consecutive days
-      // are safe from a recovery standpoint (Push ≠ Pull ≠ Legs).
+    if (focusSequence.length == 3) {
+      // 3-focus cycle (PPL, legacy Hybrid) — a rest follows each completed
+      // triple, and any PARTIAL trailing block rotates across weeks so the
+      // "extra" day is balanced over time. The first triple always restarts
+      // Push/Pull/Legs in order; the split is capped at 6 effective training
+      // days so a week always keeps ≥1 rest (a 7-day selection trains 6).
+      final seq = focusSequence;
+      final effectiveTrain = trainDays.clamp(1, 6);
+      final fullSecondTriple = effectiveTrain == 6;
+
+      // Build the session order.
+      final sessions = <String>[];
+      for (int i = 0; i < effectiveTrain; i++) {
+        if (i < 3) {
+          sessions.add(seq[i]); // first triple — natural order every week
+        } else if (fullSecondTriple) {
+          sessions.add(seq[i - 3]); // full 2nd triple — no rotation
+        } else {
+          sessions.add(seq[(weekIndex + (i - 3)) % 3]); // partial → rotate
+        }
+      }
+
+      // Place sessions, skipping a slot (leaving 'Rest') after each completed
+      // triple, capped so every training session still fits in 7 days.
+      final maxRests = (7 - effectiveTrain).clamp(0, 7);
+      int restsUsed = 0;
+      int dayPtr = 0;
+      for (int s = 0; s < sessions.length && dayPtr < 7; s++) {
+        schedule[dayPtr++] = sessions[s];
+        final completedTriple = (s + 1) % 3 == 0;
+        if (completedTriple && restsUsed < maxRests && dayPtr < 7) {
+          dayPtr++; // leave this slot as 'Rest'
+          restsUsed++;
+        }
+      }
+    } else if (focusSequence.length > 3) {
+      // Legacy 5-focus splits (Bro / Body-Part) — pack training days
+      // consecutively so rest days fall after the full cycle, not inside it.
+      // Each day targets different muscles, so consecutive days are safe.
       for (int i = 0; i < trainDays; i++) {
         schedule[i] = focusSequence[i % focusSequence.length];
       }
@@ -1141,6 +1177,22 @@ class GreedyAlgorithm {
   static List<String> musclesForFocus(String focus) =>
       _focusMuscleMap[focus] ??
       const ['pectorals', 'lats', 'quads', 'glutes', 'abs', 'delts'];
+
+  /// Human-facing label for a stored [focus] key. DISPLAY ONLY — the raw focus
+  /// string stays the [_focusMuscleMap] key and the persisted value, so this must
+  /// NEVER be used where focus is a lookup/equality key. Adds the split ROLE
+  /// (Push/Pull/…) to muscle-only labels so a PPL day reads "Pull (Back &
+  /// Biceps)" instead of a bare "Back & Biceps". Labels that already read as a
+  /// role (Full Body, Upper/Lower Body, Legs, Arms, Core, Rest Day) pass through.
+  static String focusLabel(String focus) =>
+      const {
+        'Chest & Triceps': 'Push (Chest & Triceps)',
+        'Back & Biceps': 'Pull (Back & Biceps)',
+        'Shoulders & Arms': 'Push (Shoulders & Arms)', // legacy Bro/Body-Part
+        'Cardio': 'Conditioning (Cardio)',
+        'Full Body Cardio': 'Full Body Conditioning',
+      }[focus] ??
+      focus;
 
   //  HELPERS
   static String _goalKey(String goal) {

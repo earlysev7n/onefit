@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:math' as math;
 import '../algorithms/calorie_tolerance.dart';
+import '../algorithms/greedy_algorithm.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../models/user_profile.dart';
@@ -998,7 +999,7 @@ class _HomeDashboard extends StatelessWidget {
                                                 CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                '$todayName — ${todayWorkout.focus}',
+                                                '$todayName — ${GreedyAlgorithm.focusLabel(todayWorkout.focus)}',
                                                 style: GoogleFonts.spaceGrotesk(
                                                   color: c.onBackground,
                                                   fontWeight: FontWeight.w600,
@@ -1042,7 +1043,7 @@ class _HomeDashboard extends StatelessWidget {
                                           ),
                                         ),
                                         child: Text(
-                                          'Completed · ${workoutLog.durationMinutes} min · ${workoutLog.focus}',
+                                          'Completed · ${workoutLog.durationMinutes} min · ${GreedyAlgorithm.focusLabel(workoutLog.focus)}',
                                           style: GoogleFonts.inter(
                                             color: AppColors.primary,
                                             fontSize: 12,

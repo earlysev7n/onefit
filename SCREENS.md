@@ -241,7 +241,9 @@ Switching tabs programmatically:
 4. If no persisted plan: fetches all exercises from `ExerciseDBService`, then — **only when last week has real history** (a persisted `workout_plans/{lastWeekId}` doc or ≥1 workout log; otherwise a new user's empty week reads as 0% completion and would wrongly trigger `'down'`) — runs `AdaptationEngine.compute(...)` with last week's nutrition adherence, workout completion, and the user's `avgHoursSlept`. With no history it uses a neutral result (`'same'`, 0 kcal). Then calls `GreedyAlgorithm.generatePlan(...)`.
 5. Saves the new plan via `PlanProvider.persistWorkoutPlan(uid, weekId)`.
 
-**Plan shape:** `List<WorkoutDay>` — 7 entries, Mon–Sun. Days marked `isRest: true` show a rest card; training days show their exercises.
+**Plan shape:** `List<WorkoutDay>` — 7 entries, Mon–Sun. Days marked `isRest: true` show a rest card; training days show their exercises. **PPL scheduling:** for Push/Pull/Legs (a 3-focus split) `_generate()` passes a `weekIndex` (weeks since `createdAt`) into `generatePlan`; the schedule inserts a rest after each completed Push/Pull/Legs triple, caps at 6 training days (a 7-day selection trains 6), and **rotates the partial extra day** (4–5-day plans) across weeks — wk0 Push, wk1 Pull, wk2 Legs.
+
+**Focus labels:** the day-focus subtitle on each workout card/header (and the Home today/completed cards) renders `GreedyAlgorithm.focusLabel(day.focus)`, which prefixes the split role onto muscle-only focuses — e.g. "Pull (Back & Biceps)", "Push (Chest & Triceps)". Display-only; the stored `focus` string is unchanged.
 
 **Workout flow (set-by-set):**
 

@@ -474,6 +474,17 @@ class _WorkoutTabState extends State<_WorkoutTab>
       final today = DateTime(now.year, now.month, now.day);
       final anchor = profile.createdAt?.weekday ?? 1;
       final weekId = FirestoreService.weekIdFor(now, anchorWeekday: anchor);
+      // 0-based week since the user started — drives the PPL partial-block
+      // rotation (wk0 extra = Push, wk1 = Pull, wk2 = Legs). Null createdAt → 0
+      // (no rotation, safe). Only affects fresh generation, so each new week's
+      // plan advances the rotation naturally.
+      final created = profile.createdAt ?? now;
+      final weekIndex = (today.difference(DateTime(created.year, created.month,
+                      created.day))
+                  .inDays /
+              7)
+          .floor()
+          .clamp(0, 100000);
       if (!mounted) return;
       final planProvider = context.read<PlanProvider>();
 
@@ -724,6 +735,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
         profile: profile,
         difficultyBias: adaptation.difficultyBias,
         anchorWeekday: anchor,
+        weekIndex: weekIndex,
       );
 
       // W2: an 'up'/'down' that the NSCA set-range clamp fully absorbs makes no
@@ -1821,7 +1833,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
       final msg = prs.isNotEmpty
           ? '🏆 New PR: ${prs.first}'
                 '${prs.length > 1 ? ' +${prs.length - 1} more' : ''}!'
-          : 'All done! ${day.focus} logged · ${durationMinutes}m';
+          : 'All done! ${GreedyAlgorithm.focusLabel(day.focus)} logged · ${durationMinutes}m';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -2427,7 +2439,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       ),
                     ),
                     Text(
-                      day.focus,
+                      GreedyAlgorithm.focusLabel(day.focus),
                       style: GoogleFonts.inter(
                         color: AppColors.primary,
                         fontWeight: FontWeight.w500,
@@ -3764,7 +3776,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                   Padding(
                     padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
                     child: Text(
-                      'Add exercise — ${day.focus}',
+                      'Add exercise — ${GreedyAlgorithm.focusLabel(day.focus)}',
                       style: GoogleFonts.spaceGrotesk(
                         color: c.onBackground,
                         fontWeight: FontWeight.w700,
@@ -4082,7 +4094,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       ),
                     ),
                     Text(
-                      day.focus,
+                      GreedyAlgorithm.focusLabel(day.focus),
                       style: GoogleFonts.inter(
                         color: AppColors.primary,
                         fontWeight: FontWeight.w500,

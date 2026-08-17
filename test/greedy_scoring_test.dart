@@ -261,6 +261,71 @@ void main() {
     });
   });
 
+  group('PPL scheduling — rest after each triple + weekly rotation', () {
+    const ppl = 'Push / Pull / Legs (PPL)';
+    List<WorkoutDay> plan(int days, int weekIndex) => ga.generatePlan(
+          allExercises: _catalog,
+          profile: _profile(split: ppl, days: days),
+          weekIndex: weekIndex,
+        );
+
+    test('d=4: Push/Pull/Legs, rest at index 3, extra day rotates weekly', () {
+      for (final (wk, expectedExtra) in const [
+        (0, 'Chest & Triceps'), // Push
+        (1, 'Back & Biceps'), // Pull
+        (2, 'Legs'),
+        (3, 'Chest & Triceps'), // wraps back to Push
+      ]) {
+        final p = plan(4, wk);
+        expect(p.where((d) => !d.isRest).length, 4,
+            reason: 'wk$wk: exactly 4 training days');
+        expect(p[0].focus, 'Chest & Triceps');
+        expect(p[1].focus, 'Back & Biceps');
+        expect(p[2].focus, 'Legs');
+        expect(p[3].isRest, isTrue, reason: 'wk$wk: rest after the triple');
+        expect(p[4].focus, expectedExtra,
+            reason: 'wk$wk: the extra day rotates');
+      }
+    });
+
+    test('d=6: PPL R PPL — full second triple, no rotation', () {
+      for (final wk in const [0, 1, 2]) {
+        final p = plan(6, wk);
+        expect(p.where((d) => !d.isRest).length, 6);
+        expect([p[0].focus, p[1].focus, p[2].focus],
+            ['Chest & Triceps', 'Back & Biceps', 'Legs']);
+        expect(p[3].isRest, isTrue);
+        expect([p[4].focus, p[5].focus, p[6].focus],
+            ['Chest & Triceps', 'Back & Biceps', 'Legs'],
+            reason: 'wk$wk: second triple is fixed PPL regardless of week');
+      }
+    });
+
+    test('d=7: capped at 6 training days + 1 rest', () {
+      final p = plan(7, 0);
+      expect(p.where((d) => !d.isRest).length, 6,
+          reason: '7-day PPL trains 6 (always keeps a rest)');
+      expect(p.where((d) => d.isRest).length, 1);
+      expect(p[3].isRest, isTrue);
+    });
+  });
+
+  group('focusLabel — display-only split-role labels', () {
+    test('adds the Push/Pull role to muscle-only labels', () {
+      expect(GreedyAlgorithm.focusLabel('Back & Biceps'), 'Pull (Back & Biceps)');
+      expect(
+          GreedyAlgorithm.focusLabel('Chest & Triceps'), 'Push (Chest & Triceps)');
+    });
+
+    test('passes through role labels and unmapped focuses unchanged', () {
+      expect(GreedyAlgorithm.focusLabel('Full Body'), 'Full Body');
+      expect(GreedyAlgorithm.focusLabel('Upper Body'), 'Upper Body');
+      expect(GreedyAlgorithm.focusLabel('Legs'), 'Legs');
+      expect(GreedyAlgorithm.focusLabel('Rest Day'), 'Rest Day');
+      expect(GreedyAlgorithm.focusLabel('Something New'), 'Something New');
+    });
+  });
+
   group('SCORING is profile-driven (the "better / personalised" proof)', () {
     // Isolate the profile block: empty targetMuscles => no focus bonus, empty
     // hit maps => no balance penalty. So score == the clamped Goal+Exp+Time
