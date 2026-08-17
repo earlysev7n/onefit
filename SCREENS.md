@@ -245,6 +245,8 @@ Switching tabs programmatically:
 
 **Focus labels:** the day-focus subtitle on each workout card/header (and the Home today/completed cards) renders `GreedyAlgorithm.focusLabel(day.focus)`, which prefixes the split role onto muscle-only focuses — e.g. "Pull (Back & Biceps)", "Push (Chest & Triceps)". Display-only; the stored `focus` string is unchanged.
 
+**Conditioning finisher:** for **Weight Loss / Endurance** goals, `_generate()` runs `ConditioningFinisher.apply(...)` after `generatePlan` (a post-generation step outside the greedy scorer) so each training day ends with a conditioning move. **Gym** users get a **treadmill · 15 min** finisher (a built-in treadmill whose gif comes from the same CDN the app streams all gifs from, since the ExerciseDB catalog has no treadmill entry); **Home** users get a bodyweight conditioning move (cardio/endurance, respecting limitations). Muscle Gain / General get none — this is how the fitness goal visibly changes the plan.
+
 **Week strip navigation:** the 7-day strip (`_buildWeekDayStrip`) is **horizontally swipeable** — a swipe jumps ±1 week (same weekday preserved) via `_onWorkoutDateChanged(_selectedDate ± 7d)`, with a slide-in animation (`AnimatedSwitcher` keyed by `weekStart`, direction from `_weekSlideDir`). The `< date >` navigator arrows still move ±1 day, and tapping a day / the date picker still work. Everything re-derives from `_selectedDate`, so the header label (Today/Tomorrow/date) updates with the swipe.
 
 **Workout flow (set-by-set):**

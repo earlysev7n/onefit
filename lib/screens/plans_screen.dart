@@ -9,6 +9,7 @@ import '../models/meal_ingredient.dart';
 import '../models/user_profile.dart';
 import '../models/exercise.dart';
 import '../algorithms/greedy_algorithm.dart';
+import '../algorithms/conditioning_finisher.dart';
 import '../algorithms/genetic_algorithm.dart';
 import '../services/firestore_service.dart';
 import '../services/exercise_db_service.dart';
@@ -737,13 +738,18 @@ class _WorkoutTabState extends State<_WorkoutTab>
             );
 
       final greedy = GreedyAlgorithm();
-      final plan = greedy.generatePlan(
+      final base = greedy.generatePlan(
         allExercises: exercises,
         profile: profile,
         difficultyBias: adaptation.difficultyBias,
         anchorWeekday: anchor,
         weekIndex: weekIndex,
       );
+      // Post-generation, OUTSIDE the greedy scorer: metabolic goals (Weight
+      // Loss / Endurance) get a conditioning finisher appended to each training
+      // day, so the fitness goal visibly changes the plan (see
+      // ConditioningFinisher). No-op for Muscle Gain / General.
+      final plan = ConditioningFinisher.apply(base, profile, exercises);
 
       // W2: an 'up'/'down' that the NSCA set-range clamp fully absorbs makes no
       // real volume change — the "stepped" message would mislead. Detect it and
