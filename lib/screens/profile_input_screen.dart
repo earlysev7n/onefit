@@ -870,7 +870,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           const SizedBox(height: 4),
           Text(
             'Drag to rank the exercise TYPE you prefer. When several exercises '
-            'fit, the higher-ranked type is favoured (+12 vs +9).',
+            'fit a slot, the one on top is favoured.',
             style: GoogleFonts.inter(color: c.muted, fontSize: 12),
           ),
           const SizedBox(height: 8),
@@ -1395,11 +1395,10 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   Map<String, String> _exercisePreferenceHelp() => {
     'How it works':
         'This ranks the TYPE of exercise you prefer. When several eligible '
-            'exercises fit a slot, the higher-ranked type is favoured: the '
-            'preferred type adds +12, the other +9. It only affects WHICH '
-            'exercises are chosen — how they are dosed is set by Training Focus. '
-            'A separate +15 is added when an exercise matches your goal, and '
-            'day-focus + repeat-muscle balancing still apply.',
+            'exercises fit a slot, the type on top is favoured as a tie-breaker. '
+            'It only affects WHICH exercises are chosen — how they are dosed is '
+            'set by Training Focus. Matching your goal and the day-focus + '
+            'repeat-muscle balancing still carry the most weight.',
     'Compound': 'Multi-joint moves that work several muscles (e.g. squat, row).',
     'Isolation': 'Single-muscle moves (e.g. biceps curl, lateral raise).',
   };
@@ -1418,9 +1417,10 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     'High Rep': 'Higher reps (roughly 10–15+), shorter rests.',
   };
 
-  /// Drag-to-rank list of the two exercise TYPES (Compound / Isolation).
-  /// Position → points (top +12, second +9). Feeds the Compound/Isolation order
-  /// stored in [UserProfile.goalPriorities], which the greedy scorer reads.
+  /// Drag-to-rank list of the two exercise TYPES (Compound / Isolation). The
+  /// order (top = preferred) feeds the Compound/Isolation ranking stored in
+  /// [UserProfile.goalPriorities], which the greedy scorer reads as a small
+  /// selection tie-breaker. No point badges — the order alone is the signal.
   Widget _buildExerciseTypeList() {
     final c = context.colors;
     return ReorderableListView(
@@ -1448,24 +1448,6 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               ),
               child: Row(
                 children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '+${GreedyAlgorithm.rankPoints[i]}',
-                      style: GoogleFonts.inter(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       GreedyAlgorithm.goalFeatureLabels[_exerciseTypeOrder[i]] ??

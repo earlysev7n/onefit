@@ -495,9 +495,9 @@ void main() {
           .copyWith(goalPriorities: const ['compound', 'isolation']);
       final isolationFirst = _profile(goal: 'Muscle Gain', level: 'Beginner')
           .copyWith(goalPriorities: const ['isolation', 'compound']);
-      // Isolation preferred → +12; not preferred → +9. Delta is exactly 3.
-      expect(s(iso, isolationFirst) - s(iso, compoundFirst), closeTo(3, 0.001),
-          reason: 'preferred type +12, other +9 — a clean 3-point swing');
+      // Isolation preferred → +2; not preferred → +1. Delta is exactly 1.
+      expect(s(iso, isolationFirst) - s(iso, compoundFirst), closeTo(1, 0.001),
+          reason: 'preferred type +2, other +1 — a clean 1-point tie-breaker');
     });
   });
 

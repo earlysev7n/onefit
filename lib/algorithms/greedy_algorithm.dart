@@ -260,9 +260,10 @@ class GreedyAlgorithm {
   //       *because* it is "full body"; the collection of picks provides the
   //       coverage.
   //    2. EXERCISE PREFERENCE (which TYPE) — the ONLY selection-relevant user
-  //       ranking: Compound vs Isolation. The preferred type scores +12, the
-  //       other +9 (see _exerciseTypePoints). An exercise is compound XOR
-  //       isolation, so exactly ONE type value is ever awarded — overlapping
+  //       ranking: Compound vs Isolation. The preferred type scores +2, the
+  //       other +1 (see _exerciseTypePoints) — a small tie-breaker, not a lever.
+  //       An exercise is compound XOR isolation, so exactly ONE type value is
+  //       ever awarded — overlapping
   //       traits (heavy/high/full-body) add NOTHING here, which is what fixes
   //       the old double-count (a Bench Press no longer stacked compound+heavy).
   //    3. TRAINING FOCUS (how the picks are dosed) — heavy/balanced/high is a
@@ -358,18 +359,20 @@ class GreedyAlgorithm {
   }
 
   /// Selection points for an exercise's TYPE (Compound vs Isolation), from the
-  /// user's [priorities] ranking. Whichever of the two the user ranks higher is
-  /// the preferred type → +12 (rankPoints[0]); the other → +9 (rankPoints[1]).
-  /// An exercise is compound XOR isolation, so exactly one value is ever awarded
-  /// — there is NO stacking from heavy/high/full-body traits (they aren't
-  /// selection signals). Fallback when the list has neither key: compound
-  /// preferred (the historical default).
+  /// user's [priorities] ranking. With only two mutually-exclusive types the
+  /// score just needs a small, consistent tie-breaker: the preferred type → +2,
+  /// the other → +1. An exercise is compound XOR isolation, so exactly one value
+  /// is ever awarded — no stacking from heavy/high/full-body traits (they aren't
+  /// selection signals). The gap (1) is deliberately far smaller than the
+  /// day-focus (+50) and muscle-balance (−25/−15) anchors, so type taste only
+  /// breaks a genuine tie and never overrides coverage/variety. Fallback when
+  /// the list has neither key: compound preferred (the historical default).
   static int _exerciseTypePoints(List<String> priorities, bool isCompound) {
     final ci = priorities.indexOf('compound');
     final ii = priorities.indexOf('isolation');
     final compoundPreferred = ii < 0 || (ci >= 0 && ci < ii);
     final isPreferred = isCompound ? compoundPreferred : !compoundPreferred;
-    return isPreferred ? rankPoints[0] : rankPoints[1];
+    return isPreferred ? 2 : 1;
   }
 
   // Graduated experience score

@@ -75,8 +75,8 @@ class UserProfile {
   /// Stored ranking of the greedy scorer's exercise "features" (`compound`,
   /// `isolation`, `heavyLift`, `fullBody`, `highRep`). After the three-axis
   /// refactor the scorer reads **only the Compound-vs-Isolation order** from this
-  /// list (preferred type → +12, other → +9 via
-  /// [GreedyAlgorithm.rankPoints][0..1]); the remaining keys are retained for
+  /// list (preferred type → +2, other → +1, a small tie-breaker via
+  /// [GreedyAlgorithm]._exerciseTypePoints); the remaining keys are retained for
   /// backward-compatible storage but no longer affect selection (Heavy Lift /
   /// High Rep moved to [trainingFocus] as prescription; Full Body is workout
   /// coverage, enforced structurally, not scored). Empty (the default) → the
