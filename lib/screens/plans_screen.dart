@@ -194,6 +194,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
   Map<String, WorkoutLog> _historyLogByDay = {};
   int _historyDayIndex = 0;
   bool _historyLoading = false;
+  // Direction of the last week change (1 = forward/next, -1 = back) — drives the
+  // week-strip slide-in animation when the user swipes the strip.
+  int _weekSlideDir = 1;
+  // Accumulated horizontal drag distance for the current week-strip swipe, so a
+  // slow MOUSE drag (which ends at ~zero velocity, unlike a touch fling) still
+  // registers via distance, not velocity alone.
+  double _weekDragDx = 0;
 
   // ── Workout flow ───────────────────────────────────────────────────────────
   int _activeExerciseIndex = -1;
@@ -2218,7 +2225,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
     const abbrevs = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-    return Padding(
+    final strip = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: List.generate(7, (i) {
@@ -2294,6 +2301,46 @@ class _WorkoutTabState extends State<_WorkoutTab>
             ),
           );
         }),
+      ),
+    );
+
+    // Horizontal swipe → jump ±1 week (same weekday), with a slide-in animation.
+    // The nested drag detector claims swipes that start on the strip; drags
+    // elsewhere still switch the Workout/Meal tabs.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragStart: (_) => _weekDragDx = 0,
+      onHorizontalDragUpdate: (d) => _weekDragDx += d.delta.dx,
+      onHorizontalDragEnd: (d) {
+        // Trigger on a fast fling (velocity) OR a deliberate drag (distance) so
+        // both touch and mouse work. Negative = leftward = next week.
+        final v = d.primaryVelocity ?? 0;
+        final dx = _weekDragDx;
+        const velThreshold = 100.0; // px/s
+        const distThreshold = 40.0; // px
+        bool forward;
+        if (v.abs() > velThreshold) {
+          forward = v < 0;
+        } else if (dx.abs() > distThreshold) {
+          forward = dx < 0;
+        } else {
+          return; // too small — ignore
+        }
+        setState(() => _weekSlideDir = forward ? 1 : -1);
+        _onWorkoutDateChanged(
+          _selectedDate.add(Duration(days: forward ? 7 : -7)),
+        );
+      },
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 250),
+        transitionBuilder: (child, anim) => SlideTransition(
+          position: Tween<Offset>(
+            begin: Offset(_weekSlideDir * 0.25, 0),
+            end: Offset.zero,
+          ).animate(anim),
+          child: FadeTransition(opacity: anim, child: child),
+        ),
+        child: KeyedSubtree(key: ValueKey(weekStart), child: strip),
       ),
     );
   }
