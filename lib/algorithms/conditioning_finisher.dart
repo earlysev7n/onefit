@@ -1,3 +1,4 @@
+import '../data/physical_limitations.dart';
 import '../models/exercise.dart';
 import '../models/user_profile.dart';
 import 'greedy_algorithm.dart';
@@ -50,6 +51,13 @@ class ConditioningFinisher {
     List<Exercise> pool,
   ) {
     if (!_metabolicGoals.contains(profile.fitnessGoal) || pool.isEmpty) {
+      return plan;
+    }
+    // Physical-limitation modifier: skip the high-intensity conditioning finisher
+    // entirely for Asthma / High Blood Pressure (conservative dosing). This also
+    // closes the edge where a non-cardio endurance-tagged move could otherwise
+    // slip past Asthma's cardio exclusion.
+    if (limitationsReduceIntensity(profile.physicalLimitations)) {
       return plan;
     }
 

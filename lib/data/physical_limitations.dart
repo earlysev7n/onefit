@@ -34,6 +34,12 @@ class PhysicalLimitation {
   final Set<String> muscles; // primaryMuscle strings to block (lowercase)
   final List<String> keywords; // auto-block exercise-name substrings (lowercase)
   final List<AvoidableMovement> movements; // opt-in checklist
+  // When true, the area is not only a hard EXCLUSION filter but also a
+  // conservative PRESCRIPTION modifier layered on top of the fitness goal:
+  // slightly fewer sets, longer rest, and no high-intensity conditioning
+  // finisher. Reps are never touched (they stay goal-driven). See
+  // [limitationsReduceIntensity] and greedy_algorithm `_getSets`/`_getRestSeconds`.
+  final bool intensityCaution;
 
   const PhysicalLimitation({
     required this.id,
@@ -42,6 +48,7 @@ class PhysicalLimitation {
     this.muscles = const {},
     this.keywords = const [],
     this.movements = const [],
+    this.intensityCaution = false,
   });
 }
 
@@ -51,7 +58,9 @@ const List<PhysicalLimitation> kPhysicalLimitations = [
     id: 'Asthma',
     note:
         'Avoids sustained high-intensity cardio, which can trigger '
-        'exercise-induced bronchoconstriction.',
+        'exercise-induced bronchoconstriction. Also flagged for conservative '
+        'dosing (fewer sets, longer rest, no high-intensity finisher) so effort '
+        'stays sustainable.',
     categories: {'cardio'},
     muscles: {'cardiovascular system'},
     keywords: [
@@ -66,12 +75,26 @@ const List<PhysicalLimitation> kPhysicalLimitations = [
       AvoidableMovement('Battle Ropes', ['battle rope'], common: true),
       AvoidableMovement('Shuttle Run', ['shuttle run']),
     ],
+    intensityCaution: true,
   ),
   PhysicalLimitation(
     id: 'High Blood Pressure',
+    // Beyond excluding Valsalva-heavy work, this area also drives a conservative
+    // prescription modifier (slightly fewer sets, longer rest between sets, and
+    // no high-intensity conditioning finisher; reps stay goal-driven). This
+    // dosing is OUR conservative implementation choice informed by — not a
+    // verbatim protocol prescribed by — the following, which collectively support
+    // conservative progression, appropriate resistance-training volume, and
+    // longer recovery intervals for hypertensive trainees:
+    //   • ACSM Hypertension FITT recommendations:
+    //     https://www.acsm.org/wp-content/uploads/2025/01/fitt-recommendations-for-hypertension_update.pdf
+    //   • ACSM — Exercise for the Prevention and Treatment of Hypertension:
+    //     https://acsm.org/exercise-for-the-prevention-and-treatment-of-hypertension/
+    //   • Rest-interval study (PubMed): https://pubmed.ncbi.nlm.nih.gov/36196336/
     note:
         'Avoids sustained isometric holds and max-effort straining that spike '
-        'blood pressure (Valsalva).',
+        'blood pressure (Valsalva). Also flagged for conservative dosing '
+        '(fewer sets, longer rest, no high-intensity finisher).',
     keywords: [
       'isometric',
       'plank',
@@ -89,6 +112,7 @@ const List<PhysicalLimitation> kPhysicalLimitations = [
       AvoidableMovement("Farmer's Carry", ['farmer'], common: true),
       AvoidableMovement('Overhead Press', ['overhead press', 'military press']),
     ],
+    intensityCaution: true,
   ),
   PhysicalLimitation(
     id: 'Shoulder Pain',
@@ -233,6 +257,16 @@ const List<PhysicalLimitation> kPhysicalLimitations = [
     ],
   ),
 ];
+
+/// True if any selected area warrants conservative dosing (slightly fewer sets,
+/// longer rest, no high-intensity finisher) layered ON TOP of the fitness goal.
+/// Currently Asthma + High Blood Pressure. Reps are never modified here.
+bool limitationsReduceIntensity(List<String> areaIds) {
+  for (final id in areaIds) {
+    if (limitationById(id)?.intensityCaution ?? false) return true;
+  }
+  return false;
+}
 
 /// Lookup by [id]; null if not a recognised limitation.
 PhysicalLimitation? limitationById(String id) {

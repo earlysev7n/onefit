@@ -591,7 +591,14 @@ class GreedyAlgorithm {
       // count budget uses FOCUS-INDEPENDENT rest + reps (_getRestSeconds
       // applyFocus:false, _countBudgetReps) so that changing Training Focus
       // changes the prescription but never the number of exercises.
-      final daySets = _getSets(profile, difficultyBias);
+      // Count budget uses focus- AND limitation-independent sets/rest so neither
+      // Training Focus nor a physical-limitation modifier changes how many
+      // exercises fit — only the per-set prescription.
+      final daySets = _getSets(
+        profile,
+        difficultyBias,
+        applyLimitation: false,
+      );
       final dayRest = _getRestSeconds(profile, applyFocus: false);
       final dayWork = _estimateWorkSeconds(_countBudgetReps(profile));
       final dayExercises = _selectExercisesForDay(
@@ -1228,7 +1235,24 @@ class GreedyAlgorithm {
   int setsForDifficulty(UserProfile profile, String difficultyBias) =>
       _getSets(profile, difficultyBias);
 
-  int _getSets(UserProfile profile, String difficultyBias) {
+  // Physical-limitation prescription modifier (Asthma / High Blood Pressure).
+  // A conservative dosing layer on top of the goal — informed by ACSM
+  // hypertension guidance + rest-interval literature (see
+  // physical_limitations.dart), not a verbatim prescribed protocol.
+  static const int _kLimitationSetReduction = 1; // −1 set
+  static const int _kLimitationSetFloor = 2; // never below 2 working sets
+  static const int _kLimitationRestBonus = 45; // +45 s rest
+  static const int _kLimitationRestCeiling = 210; // extended rest clamp (s)
+
+  /// Public view of the per-set rest this profile trains at (real prescription,
+  /// focus + limitation applied). Mirrors [setsForDifficulty]; used by tests.
+  int restSecondsForProfile(UserProfile profile) => _getRestSeconds(profile);
+
+  int _getSets(
+    UserProfile profile,
+    String difficultyBias, {
+    bool applyLimitation = true,
+  }) {
     int sets;
     int lo, hi; // NSCA set range for the goal
     if (profile.fitnessGoal == 'Muscle Gain') {
@@ -1257,7 +1281,18 @@ class GreedyAlgorithm {
     // Adaptation: great week → +1 set, rough week → −1 set
     if (difficultyBias == 'up') sets++;
     if (difficultyBias == 'down') sets--;
-    return sets.clamp(lo, hi);
+    sets = sets.clamp(lo, hi);
+    // Physical-limitation modifier (Asthma / High Blood Pressure): slightly fewer
+    // sets, layered ON TOP of the goal — never below 2 working sets (a real
+    // stimulus). Reps are untouched. Supports conservative resistance volume per
+    // ACSM hypertension guidance (see physical_limitations.dart). Skipped for the
+    // session-fit COUNT budget (applyLimitation:false) so exercise count is
+    // unchanged — only the real prescription is dosed down.
+    if (applyLimitation &&
+        limitationsReduceIntensity(profile.physicalLimitations)) {
+      sets = (sets - _kLimitationSetReduction).clamp(_kLimitationSetFloor, hi);
+    }
+    return sets;
   }
 
   /// Reps — the TRAINING-FOCUS prescription. Driven by the resolved Training
@@ -1363,6 +1398,16 @@ class GreedyAlgorithm {
         case 'high':
           base -= 15;
           break;
+      }
+      // Physical-limitation modifier (Asthma / High Blood Pressure): longer rest
+      // between sets for fuller recovery, layered on top of the goal/focus rest.
+      // Supports longer recovery intervals per ACSM hypertension guidance + the
+      // rest-interval literature (see physical_limitations.dart). Only applied
+      // with the focus (real prescription) — the count budget uses
+      // applyFocus:false, so exercise count is unchanged.
+      if (limitationsReduceIntensity(profile.physicalLimitations)) {
+        base += _kLimitationRestBonus;
+        return base.clamp(30, _kLimitationRestCeiling);
       }
     }
     return base.clamp(30, 180);
