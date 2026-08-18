@@ -12,6 +12,7 @@ import '../models/food_item.dart';
 import '../models/workout_log.dart';
 import '../providers/plan_provider.dart';
 import '../providers/profile_provider.dart';
+import '../providers/progress_provider.dart';
 import '../providers/connectivity_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/responsive.dart';
@@ -156,6 +157,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final uid = AuthService().currentUser?.uid;
     _profileProvider = context.read<ProfileProvider>();
     if (uid != null) {
+      // Load workout history for the header streak chip (lightweight — logs only).
+      context.read<ProgressProvider>().loadWorkoutLogsForStreak(uid);
       final pp = _profileProvider!;
       if (pp.profile != null) {
         // Profile already cached — recompute daily goal in case the day/week changed
@@ -465,7 +468,17 @@ class _HomeScreenState extends State<HomeScreen> {
     final isActive = _currentIndex == index;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _currentIndex = index),
+        onTap: () {
+          setState(() => _currentIndex = index);
+          // Returning to Home refreshes the streak so a workout just completed
+          // on the Plans tab is reflected right away.
+          if (index == 0) {
+            final uid = AuthService().currentUser?.uid;
+            if (uid != null) {
+              context.read<ProgressProvider>().loadWorkoutLogsForStreak(uid);
+            }
+          }
+        },
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -507,6 +520,37 @@ class _HomeDashboard extends StatelessWidget {
     if (hour < 12) return 'Good morning';
     if (hour < 17) return 'Good afternoon';
     return 'Good evening';
+  }
+
+  /// Streak "thunder" chip: bolt + day count. Lights up in the streak colour
+  /// once a streak is running, muted at zero.
+  Widget _streakChip(BuildContext context, int streak) {
+    final active = streak > 0;
+    final color = active ? AppColors.orange : context.colors.muted;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: active
+            ? AppColors.orange.withOpacity(0.12)
+            : context.colors.inputFill,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.bolt_rounded, size: 16, color: color),
+          const SizedBox(width: 3),
+          Text(
+            '$streak',
+            style: GoogleFonts.spaceGrotesk(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   String _getDate() {
@@ -553,6 +597,7 @@ class _HomeDashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final streak = context.watch<ProgressProvider>().workoutStreak;
     if (isLoading) {
       return Center(child: CircularProgressIndicator(color: AppColors.primary));
     }
@@ -638,9 +683,19 @@ class _HomeDashboard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 12),
-                      Text(
-                        _getDate(),
-                        style: GoogleFonts.inter(color: c.muted, fontSize: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          _streakChip(context, streak),
+                          const SizedBox(height: 6),
+                          Text(
+                            _getDate(),
+                            style: GoogleFonts.inter(
+                              color: c.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

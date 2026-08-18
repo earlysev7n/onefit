@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../algorithms/workout_streak.dart';
 import '../services/firestore_service.dart';
 import '../models/user_profile.dart';
 import '../models/food_item.dart';
@@ -136,24 +137,14 @@ class ProgressProvider extends ChangeNotifier {
   /// same metric, so it must use the same denominator.
   double get calorieAdherence => calorieAdherenceFor(TrendRange.week);
 
-  int get workoutStreak {
-    int streak = 0;
-    final today = appNow();
-    for (int i = 0; i < 365; i++) {
-      final date = today.subtract(Duration(days: i));
-      final dayStart = DateTime(date.year, date.month, date.day);
-      final hasLog = _yearWorkoutLogs.any((l) {
-        final ld = DateTime(l.date.year, l.date.month, l.date.day);
-        return ld == dayStart;
-      });
-      if (hasLog) {
-        streak++;
-      } else if (i > 0) {
-        break;
-      }
-    }
-    return streak;
-  }
+  /// "Days on plan" streak — rest-day agnostic, week-based, spans weeks.
+  /// Only resets when a finished week fell short of [plannedWorkoutDays].
+  /// See [WorkoutStreak.days].
+  int get workoutStreak => WorkoutStreak.days(
+        _yearWorkoutLogs,
+        plannedPerWeek: plannedWorkoutDays,
+        now: appNow(),
+      );
 
   double get proteinConsistency => proteinConsistencyFor(TrendRange.week);
 
@@ -285,6 +276,25 @@ class ProgressProvider extends ChangeNotifier {
 
     _isLoading = false;
     notifyListeners();
+  }
+
+  /// Lightweight refresh for the Home-screen streak chip: fetches only the
+  /// (small) workout logs so [workoutStreak] is available without the full
+  /// [loadAll]. Safe to call repeatedly; it only touches `_yearWorkoutLogs`,
+  /// which [loadAll] also owns, so the two never disagree.
+  Future<void> loadWorkoutLogsForStreak(String uid) async {
+    final now = appNow();
+    final yearAgo = DateTime(now.year - 1, now.month, now.day);
+    try {
+      _yearWorkoutLogs = await _fs.getWorkoutLogsForDateRange(
+        uid,
+        yearAgo,
+        now.add(const Duration(days: 1)),
+      );
+      notifyListeners();
+    } catch (_) {
+      // Non-fatal — the chip simply shows the last known streak.
+    }
   }
 
   Future<void> logWeight(String userId, double weightKg) async {
