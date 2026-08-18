@@ -2315,23 +2315,6 @@ class _WorkoutTabState extends State<_WorkoutTab>
                           ? c.subtle
                           : (isCompleted ? AppColors.primary : c.subtle),
                     ),
-                    // What the day trains (working days only) so the target is
-                    // visible at a glance across the week.
-                    if (!isRest && dayPlan != null) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        dayPlan.focus,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.inter(
-                          fontSize: 9,
-                          height: 1.1,
-                          fontWeight: FontWeight.w500,
-                          color: isSelected ? AppColors.primary : c.muted,
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
