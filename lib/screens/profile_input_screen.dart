@@ -885,8 +885,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           _buildLabelWithHelp('Exercise Preference', _exercisePreferenceHelp()),
           const SizedBox(height: 4),
           Text(
-            'Drag to rank the exercise TYPE you prefer. When several exercises '
-            'fit a slot, the one on top is favoured.',
+            'Tap the exercise TYPE you prefer. When several exercises fit a '
+            'slot, the one you pick is favoured.',
             style: GoogleFonts.inter(color: c.muted, fontSize: 12),
           ),
           const SizedBox(height: 8),
@@ -905,17 +905,13 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           const SizedBox(height: 24),
           _buildLabelWithHelp('Experience Level', const {
             'How it works':
-                'Exercises matched to your level score higher; moves above your '
-                    'level are filtered out entirely (not just down-ranked).',
-            'Beginner':
-                'Only beginner-level exercises are used, and they score +8. '
-                    'Intermediate and advanced moves are removed.',
+                'We match exercises to your level. Anything too advanced is left '
+                    'out, and moves that suit you come first.',
+            'Beginner': 'Simple, beginner-friendly moves only.',
             'Intermediate':
-                'Intermediate moves score +8, beginner moves +4. Advanced moves '
-                    'are removed.',
-            'Advanced':
-                'Advanced moves score +10, intermediate +6, beginner +2 — the '
-                    'full catalogue is available.',
+                'Beginner and intermediate moves; the tough advanced ones sit '
+                    'out.',
+            'Advanced': 'The full library, with advanced moves up front.',
           }),
           const SizedBox(height: 8),
           _buildChipGroup(
@@ -1069,8 +1065,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           const SizedBox(height: 24),
           _buildLabelWithHelp('Workout Days / Week', {
             'Workout Days':
-                'How many days each week you can train. Your plan places exactly '
-                'this many training days and spreads rest days evenly.',
+                'How many days a week you can train. We\'ll place exactly that '
+                'many training days and spread your rest days evenly.',
           }),
           const SizedBox(height: 8),
           Wrap(
@@ -1103,9 +1099,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           const SizedBox(height: 24),
           _buildLabelWithHelp('Time per Session', const {
             'How it works':
-                'Session length sets how many exercises you get per day — it '
-                    'does not change which exercises are picked. That is decided '
-                    'by your Exercise Priority and Experience Level.',
+                'This sets how many exercises you get each day — not which ones. '
+                    'Those come from your preference and experience level.',
             '30 min': 'Short — fewest exercises per day.',
             '45 min': 'Standard — a few more exercises.',
             '60 min': 'Longer — more exercises per day.',
@@ -1410,72 +1405,86 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   /// Help content for the Exercise Preference list. Keyed for [_showHelpSheet].
   Map<String, String> _exercisePreferenceHelp() => {
     'How it works':
-        'This ranks the TYPE of exercise you prefer. When several eligible '
-            'exercises fit a slot, the type on top is favoured as a tie-breaker. '
-            'It only affects WHICH exercises are chosen — how they are dosed is '
-            'set by Training Focus. Matching your goal and the day-focus + '
-            'repeat-muscle balancing still carry the most weight.',
-    'Compound': 'Multi-joint moves that work several muscles (e.g. squat, row).',
-    'Isolation': 'Single-muscle moves (e.g. biceps curl, lateral raise).',
+        'Pick the kind of training you enjoy most. When two moves could fill '
+            'the same spot, we\'ll lean toward your pick — it only changes which '
+            'exercises you get, not how hard they are. Your goal and keeping '
+            'muscles balanced still matter most.',
+    'Compound': 'Big moves that work several muscles at once — like squats and '
+        'rows.',
+    'Isolation':
+        'Focused moves that target one muscle — like biceps curls or lateral '
+        'raises.',
   };
 
   /// Help content for the Training Focus selector. Keyed for [_showHelpSheet].
   Map<String, String> _trainingFocusHelp() => {
     'How it works':
-        'Training Focus decides how your SELECTED exercises are prescribed '
-            '(rep ranges and rest) — it never changes which exercises are '
-            'picked. Your fitness goal seeds a sensible default, but you can '
-            'override it (e.g. Weight Loss with Heavy Lift is valid).',
-    'Heavy Lift': 'Lower reps, heavier loading (roughly 4–8 reps), longer rests.',
+        'This sets how your exercises are done — the reps and rest — not which '
+            'ones you get. We start you with a default that fits your goal, and '
+            'you can change it anytime.',
+    'Heavy Lift': 'Fewer reps with heavier weight and longer rests '
+        '(around 4–8 reps).',
     'Balanced':
-        'A goal-based mix: the main compound trains heavier, isolation work '
-            'goes higher-rep.',
-    'High Rep': 'Higher reps (roughly 10–15+), shorter rests.',
+        'A mix — heavier on the big lifts, lighter and higher-rep on the small '
+            'ones.',
+    'High Rep': 'More reps with lighter weight and shorter rests '
+        '(around 10–15+).',
   };
 
-  /// Drag-to-rank list of the two exercise TYPES (Compound / Isolation). The
-  /// order (top = preferred) feeds the Compound/Isolation ranking stored in
-  /// [UserProfile.goalPriorities], which the greedy scorer reads as a small
-  /// selection tie-breaker. No point badges — the order alone is the signal.
+  /// Tap-to-select of the two exercise TYPES (Compound / Isolation). The tapped
+  /// type becomes the priority (index 0 of [_exerciseTypeOrder]) — the order
+  /// feeds the Compound/Isolation ranking stored in [UserProfile.goalPriorities],
+  /// which the greedy scorer reads as a small selection tie-breaker.
   Widget _buildExerciseTypeList() {
     final c = context.colors;
-    return ReorderableListView(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      buildDefaultDragHandles: false,
-      onReorder: (oldIndex, newIndex) {
-        setState(() {
-          if (newIndex > oldIndex) newIndex -= 1;
-          final key = _exerciseTypeOrder.removeAt(oldIndex);
-          _exerciseTypeOrder.insert(newIndex, key);
-        });
-      },
+    const types = ['compound', 'isolation'];
+    final selected =
+        _exerciseTypeOrder.isNotEmpty ? _exerciseTypeOrder.first : 'compound';
+    return Column(
       children: [
-        for (int i = 0; i < _exerciseTypeOrder.length; i++)
-          ReorderableDragStartListener(
-            key: ValueKey(_exerciseTypeOrder[i]),
-            index: i,
+        for (final key in types)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(
+              () => _exerciseTypeOrder = [
+                key,
+                types.firstWhere((k) => k != key),
+              ],
+            ),
             child: Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: c.inputFill,
+                color: selected == key
+                    ? AppColors.primary.withValues(alpha: 0.15)
+                    : c.inputFill,
                 borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: selected == key
+                      ? AppColors.primary
+                      : Colors.transparent,
+                ),
               ),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
-                      GreedyAlgorithm.goalFeatureLabels[_exerciseTypeOrder[i]] ??
-                          _exerciseTypeOrder[i],
+                      GreedyAlgorithm.goalFeatureLabels[key] ?? key,
                       style: GoogleFonts.inter(
-                        color: c.onBackground,
+                        color: selected == key
+                            ? AppColors.primary
+                            : c.onBackground,
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
                       ),
                     ),
                   ),
-                  Icon(Icons.drag_handle, color: c.muted, size: 20),
+                  if (selected == key)
+                    const Icon(
+                      Icons.check_circle,
+                      color: AppColors.primary,
+                      size: 20,
+                    ),
                 ],
               ),
             ),
