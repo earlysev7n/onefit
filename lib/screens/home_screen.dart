@@ -686,8 +686,6 @@ class _HomeDashboard extends StatelessWidget {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          _streakChip(context, streak),
-                          const SizedBox(height: 6),
                           Text(
                             _getDate(),
                             style: GoogleFonts.inter(
@@ -695,6 +693,8 @@ class _HomeDashboard extends StatelessWidget {
                               fontSize: 12,
                             ),
                           ),
+                          const SizedBox(height: 6),
+                          _streakChip(context, streak),
                         ],
                       ),
                     ],
