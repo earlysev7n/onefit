@@ -6,7 +6,9 @@ import '../algorithms/greedy_algorithm.dart';
 import '../app_clock.dart';
 import '../data/physical_limitations.dart';
 import '../models/user_profile.dart';
+import '../providers/plan_provider.dart';
 import '../providers/profile_provider.dart';
+import '../services/firestore_service.dart';
 import '../theme/app_colors.dart';
 import 'home_screen.dart';
 import '../main.dart';
@@ -427,6 +429,7 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   Future<void> _saveProfile() async {
     setState(() => _isLoading = true);
     final profileProvider = context.read<ProfileProvider>();
+    final planProvider = context.read<PlanProvider>();
     final existing = widget.existing;
     try {
       // Home always carries 'Bodyweight' (the guaranteed baseline) on top of
@@ -485,6 +488,19 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
               createdAt: appNow(),
             );
       await profileProvider.save(profile);
+      // If a WORKOUT-relevant field changed on an edit, invalidate this week's
+      // plan (same as the manual ↺ refresh) so the next Plans open regenerates
+      // from the new profile. Onboarding needs nothing — a new account has no
+      // persisted plan and its in-memory state was reset on the prior sign-out.
+      if (existing != null &&
+          existing.workoutGenerationSignature !=
+              profile.workoutGenerationSignature) {
+        final weekId = FirestoreService.weekIdFor(
+          appNow(),
+          anchorWeekday: profile.createdAt?.weekday ?? 1,
+        );
+        await planProvider.clearAndDeleteWorkoutPlan(profile.uid, weekId);
+      }
       if (mounted) {
         if (existing != null) {
           // Edit — just return to the Profile screen (which watches the provider).

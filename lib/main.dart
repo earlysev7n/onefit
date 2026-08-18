@@ -318,7 +318,13 @@ class _AuthGateState extends State<AuthGate> {
     // Resolve where this auth state should land.
     Widget destination;
     if (user == null) {
-      // Signed out → Login.
+      // Signed out → reset app-scoped in-memory state so the next account can't
+      // inherit this one's cached plan/profile, then go to Login. clear() is
+      // in-memory only — the signed-out user's persisted data is untouched.
+      if (mounted) {
+        context.read<PlanProvider>().clear();
+        context.read<ProfileProvider>().clear();
+      }
       destination = const LoginScreen();
     } else {
       // Signed in → Home if a profile exists, else onboarding.

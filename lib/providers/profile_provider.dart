@@ -85,6 +85,23 @@ class ProfileProvider extends ChangeNotifier {
     await refresh(uid);
   }
 
+  /// Reset cached profile + transient goal state on sign-out, so the next
+  /// account's [load] actually re-fetches (recall [load] is a no-op while
+  /// `_profile != null`).
+  void clear() {
+    _profile = null;
+    _uid = null;
+    _isLoading = false;
+    _dailyEffectiveGoal = null;
+    _weeklyEffectiveProtein = null;
+    _weeklyEffectiveCarbs = null;
+    _weeklyEffectiveFat = null;
+    _daysInToleranceThisWeek = 0;
+    _daysLoggedThisWeek = 0;
+    _lastBreachKcal = null;
+    notifyListeners();
+  }
+
   /// Force-fetches the profile from Firestore, replacing the cache.
   Future<void> refresh(String uid) async {
     _uid = uid;

@@ -142,6 +142,24 @@ class UserProfile {
     }
   }
 
+  /// Stable fingerprint of the profile fields that drive WORKOUT generation.
+  /// Compared before/after a profile edit to decide whether the persisted plan
+  /// must be regenerated (see ProfileInputScreen._saveProfile). Set-like fields
+  /// are sorted so reordering isn't a false change; [goalPriorities] order is
+  /// significant (selection tie-break) so it is kept as-is.
+  String get workoutGenerationSignature => [
+    fitnessGoal,
+    experienceLevel,
+    workoutLocation,
+    workoutDaysPerWeek,
+    sessionMinutes,
+    workoutSplit,
+    trainingFocus,
+    ([...equipment]..sort()).join(','),
+    ([...physicalLimitations]..sort()).join(','),
+    goalPriorities.join(','),
+  ].join('|');
+
   // Mifflin-St Jeor Formula
   int get bmr {
     if (gender == 'Male') {

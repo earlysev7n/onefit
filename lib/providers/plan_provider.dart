@@ -87,6 +87,17 @@ class PlanProvider extends ChangeNotifier {
     return true;
   }
 
+  /// Reset in-memory state on sign-out so the next account starts clean.
+  /// In-memory only — never deletes persisted data.
+  void clear() {
+    _workoutPlan = [];
+    _breakfast = null;
+    _lunch = null;
+    _dinner = null;
+    _snack = null;
+    notifyListeners();
+  }
+
   /// Clear the in-memory plan and delete its Firestore document.
   /// Called by the force-regenerate flow so _generate() finds no plan and
   /// builds a fresh one.
