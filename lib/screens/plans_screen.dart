@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // FilteringTextInputFormatter
 import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -3552,9 +3553,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
 
   void _showParamsEditor(int dayIdx, int exIdx, WorkoutExercise we) {
     int sets = we.sets;
-    String reps = we.reps;
+    int repsVal = _repsToInt(we.reps);
     int rest = we.restSeconds;
-    final repsCtrl = TextEditingController(text: reps);
+    final repsCtrl = TextEditingController(text: '$repsVal');
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     final c = context.colors;
@@ -3625,23 +3626,58 @@ class _WorkoutTabState extends State<_WorkoutTab>
                     'Reps / Duration',
                     style: GoogleFonts.inter(color: c.muted),
                   ),
-                  SizedBox(
-                    width: 110,
-                    child: TextField(
-                      controller: repsCtrl,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(color: c.onBackground),
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: c.inputFill,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide.none,
+                  Row(
+                    children: [
+                      _paramBtn(Icons.remove, () {
+                        setSt(() {
+                          repsVal = (repsVal - 1).clamp(1, 999);
+                          repsCtrl.text = '$repsVal';
+                          repsCtrl.selection = TextSelection.collapsed(
+                            offset: repsCtrl.text.length,
+                          );
+                        });
+                      }),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: SizedBox(
+                          width: 56,
+                          child: TextField(
+                            controller: repsCtrl,
+                            textAlign: TextAlign.center,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            style: GoogleFonts.spaceGrotesk(
+                              color: c.onBackground,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 18,
+                            ),
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: c.inputFill,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 8,
+                              ),
+                            ),
+                            onChanged: (v) => repsVal = int.tryParse(v) ?? repsVal,
+                          ),
                         ),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 8),
                       ),
-                      onChanged: (v) => reps = v,
-                    ),
+                      _paramBtn(Icons.add, () {
+                        setSt(() {
+                          repsVal = (repsVal + 1).clamp(1, 999);
+                          repsCtrl.text = '$repsVal';
+                          repsCtrl.selection = TextSelection.collapsed(
+                            offset: repsCtrl.text.length,
+                          );
+                        });
+                      }),
+                    ],
                   ),
                 ],
               ),
@@ -3692,7 +3728,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
                       dayIdx,
                       exIdx,
                       sets: sets,
-                      reps: reps.isEmpty ? we.reps : reps,
+                      reps: '$repsVal',
                       restSeconds: rest,
                     );
                     setState(
@@ -3723,6 +3759,13 @@ class _WorkoutTabState extends State<_WorkoutTab>
       // reps controller is disposed (same crash class as the exercise picker).
       WidgetsBinding.instance.addPostFrameCallback((_) => repsCtrl.dispose());
     });
+  }
+
+  // Seed the reps stepper from an existing reps string (e.g. "10-12", "15 min",
+  // "12") by taking the first integer group; defaults to 10 when none.
+  int _repsToInt(String reps) {
+    final m = RegExp(r'\d+').firstMatch(reps);
+    return m == null ? 10 : (int.tryParse(m.group(0)!) ?? 10);
   }
 
   Widget _paramBtn(IconData icon, VoidCallback onTap) => GestureDetector(
