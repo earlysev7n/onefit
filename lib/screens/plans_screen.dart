@@ -389,7 +389,20 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final d = DateTime(date.year, date.month, date.day);
     setState(() {
       _selectedDate = d;
+      _editMode = false; // never carry edit mode across days
       _resetWorkoutState();
+      // Keep _selectedDay aligned with the browsed day when it's in the current
+      // week, so the interactive builder + all edit methods (which target
+      // _plan[_selectedDay] in _currentWeekId) act on the viewed day.
+      final anchor = _profile?.createdAt?.weekday ?? 1;
+      final wkStart = FirestoreService.weekStartFor(d, anchorWeekday: anchor);
+      final todayWkStart = FirestoreService.weekStartFor(
+        _todayDate(),
+        anchorWeekday: anchor,
+      );
+      if (wkStart == todayWkStart) {
+        _selectedDay = d.difference(wkStart).inDays.clamp(0, 6);
+      }
     });
     if (!_isToday(d)) _loadWorkoutDay(d);
   }
@@ -2302,6 +2315,23 @@ class _WorkoutTabState extends State<_WorkoutTab>
                           ? c.subtle
                           : (isCompleted ? AppColors.primary : c.subtle),
                     ),
+                    // What the day trains (working days only) so the target is
+                    // visible at a glance across the week.
+                    if (!isRest && dayPlan != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        dayPlan.focus,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 9,
+                          height: 1.1,
+                          fontWeight: FontWeight.w500,
+                          color: isSelected ? AppColors.primary : c.muted,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -2355,6 +2385,14 @@ class _WorkoutTabState extends State<_WorkoutTab>
   Widget _buildPlan() {
     final today = _todayDate();
     final isToday = _isToday(_selectedDate);
+    final anchor = _profile?.createdAt?.weekday ?? 1;
+    final isCurrentWeek =
+        FirestoreService.weekStartFor(_selectedDate, anchorWeekday: anchor) ==
+        FirestoreService.weekStartFor(today, anchorWeekday: anchor);
+    // Upcoming days in the current week are editable (but not startable); past
+    // days and other weeks stay read-only.
+    final isUpcomingEditable =
+        !isToday && isCurrentWeek && _selectedDate.isAfter(today);
     final headerProfile = _profile ?? context.watch<ProfileProvider>().profile;
 
     final children = <Widget>[
@@ -2374,32 +2412,37 @@ class _WorkoutTabState extends State<_WorkoutTab>
       const SizedBox(height: 4),
     ];
 
-    // ── Today → the live, interactive plan (unchanged behavior) ───────────────
-    if (isToday) {
-      children.add(
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              if (headerProfile != null) ...[
-                _chip(headerProfile.fitnessGoal, AppColors.primary),
-                const SizedBox(width: 6),
-                _chip(headerProfile.experienceLevel, AppColors.purple),
-                const SizedBox(width: 6),
-                _chip(headerProfile.workoutLocation, AppColors.orange),
+    // ── Today or an upcoming current-week day → the live, interactive plan ─────
+    // Today keeps full behavior (edit + Start). Upcoming days are editable but
+    // not startable (Start is gated on _buildWorkoutDay's internal isToday).
+    if (isToday || isUpcomingEditable) {
+      // The profile chips + force-regenerate (↺) stay today-only.
+      if (isToday) {
+        children.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                if (headerProfile != null) ...[
+                  _chip(headerProfile.fitnessGoal, AppColors.primary),
+                  const SizedBox(width: 6),
+                  _chip(headerProfile.experienceLevel, AppColors.purple),
+                  const SizedBox(width: 6),
+                  _chip(headerProfile.workoutLocation, AppColors.orange),
+                ],
+                const Spacer(),
+                IconButton(
+                  icon: Icon(Icons.refresh_rounded, color: AppColors.primary),
+                  onPressed: _forceRegenerate,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
               ],
-              const Spacer(),
-              IconButton(
-                icon: Icon(Icons.refresh_rounded, color: AppColors.primary),
-                onPressed: _forceRegenerate,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ],
+            ),
           ),
-        ),
-      );
-      children.add(const SizedBox(height: 8));
+        );
+        children.add(const SizedBox(height: 8));
+      }
       final day = (_plan.isNotEmpty && _selectedDay < _plan.length)
           ? _plan[_selectedDay]
           : null;
