@@ -315,16 +315,26 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _routeForAuthState(User? user) async {
+    // Reset app-scoped in-memory state whenever the signed-in identity changes
+    // (sign-out OR a different uid) so one account never inherits another's
+    // cached profile/plan. Read via navigatorKey.currentContext (a descendant
+    // of the providers, valid for the app's lifetime) rather than this State's
+    // `context`: AuthGate's own route is removed by the first pushAndRemoveUntil,
+    // so `mounted` is false on every later auth event. clear() is in-memory only
+    // — the signed-out account's persisted data is untouched. Same-user re-fires
+    // (token refresh, cold boot) match the cached uid and skip the reset.
+    final navCtx = navigatorKey.currentContext;
+    if (navCtx != null) {
+      final pp = navCtx.read<ProfileProvider>();
+      if (user == null || pp.uid != user.uid) {
+        navCtx.read<PlanProvider>().clear();
+        pp.clear();
+      }
+    }
+
     // Resolve where this auth state should land.
     Widget destination;
     if (user == null) {
-      // Signed out → reset app-scoped in-memory state so the next account can't
-      // inherit this one's cached plan/profile, then go to Login. clear() is
-      // in-memory only — the signed-out user's persisted data is untouched.
-      if (mounted) {
-        context.read<PlanProvider>().clear();
-        context.read<ProfileProvider>().clear();
-      }
       destination = const LoginScreen();
     } else {
       // Signed in → Home if a profile exists, else onboarding.

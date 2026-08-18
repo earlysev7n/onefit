@@ -36,6 +36,10 @@ class ProfileProvider extends ChangeNotifier {
   UserProfile? get profile => _profile;
   bool get isLoading => _isLoading;
 
+  /// The uid this cache belongs to (null when never loaded / after [clear]).
+  /// Used by AuthGate to detect an account switch and reset stale state.
+  String? get uid => _uid;
+
   /// Days so far this week whose logged calories landed inside the ±5%
   /// [CalorieTolerance] band around the base goal (excludes today, which is
   /// still in progress). Paired with [daysLoggedThisWeek] for display.
