@@ -14,8 +14,10 @@ import '../models/workout_log.dart';
 /// * It spans weeks; it does not reset every week or every rest day.
 ///
 /// Weeks are Monday-anchored (Mon–Sun), consistent with the weekly stats
-/// elsewhere in [ProgressProvider]. Returns 0 when there is no plan
-/// ([plannedPerWeek] <= 0) or the user has no on-plan activity yet.
+/// elsewhere in [ProgressProvider]. The current week is only counted from
+/// [startDate] (the account/plan `createdAt`) onward, so a user's first day never
+/// counts the part of the week before they signed up. Returns 0 when there is no
+/// plan ([plannedPerWeek] <= 0) or the user has no on-plan activity yet.
 class WorkoutStreak {
   const WorkoutStreak._();
 
@@ -37,6 +39,7 @@ class WorkoutStreak {
     List<WorkoutLog> logs, {
     required int plannedPerWeek,
     required DateTime now,
+    DateTime? startDate,
   }) {
     if (plannedPerWeek <= 0) return 0;
 
@@ -44,6 +47,8 @@ class WorkoutStreak {
     final currentStart = _mondayOf(today);
 
     // Consecutive fully-on-plan weeks immediately preceding the current one.
+    // (Weeks before [startDate] have no logs, so the scan naturally stops there —
+    // no extra clamp needed.)
     int weeksBack = 0;
     var wk = currentStart.subtract(const Duration(days: 7));
     while (_completedIn(logs, wk) >= plannedPerWeek) {
@@ -55,8 +60,18 @@ class WorkoutStreak {
     // No prior on-plan run and nothing done this week yet → no streak.
     if (weeksBack == 0 && currentCompleted == 0) return 0;
 
-    // Days elapsed in the current week (Mon = 1 … today).
-    final currentElapsed = today.difference(currentStart).inDays + 1;
+    // Earliest day the current week may count from — never before the account /
+    // plan existed ([startDate]). Without this, day 1 on a Tuesday would read 2
+    // by counting the pre-signup Monday.
+    var effectiveStart = currentStart;
+    if (startDate != null) {
+      final s = DateTime(startDate.year, startDate.month, startDate.day);
+      if (s.isAfter(effectiveStart)) effectiveStart = s;
+    }
+    if (effectiveStart.isAfter(today)) effectiveStart = today; // safety
+
+    // Days elapsed in the current week from effectiveStart … today (inclusive).
+    final currentElapsed = today.difference(effectiveStart).inDays + 1;
     return weeksBack * 7 + currentElapsed;
   }
 }

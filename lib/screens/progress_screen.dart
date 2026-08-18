@@ -395,7 +395,7 @@ class _WeeklyAchievementsState extends State<_WeeklyAchievements> {
               _StatTile(
                 label: 'Workout Streak',
                 value: '${prov.workoutStreak} days',
-                color: prov.workoutStreak > 0
+                color: prov.todayWorkoutLog != null
                     ? AppColors.orange
                     : context.colors.muted,
                 icon: Icons.bolt_rounded,

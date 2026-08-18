@@ -108,4 +108,46 @@ void main() {
       );
     });
   });
+
+  group('WorkoutStreak.days — start-date clamp', () {
+    // Monday/Wednesday derived from a base date so the assertions don't depend on
+    // the base date's weekday.
+    final base = DateTime(2026, 8, 26, 12);
+    final monday = DateTime(base.year, base.month, base.day)
+        .subtract(Duration(days: base.weekday - 1));
+    final wednesday = monday.add(const Duration(days: 2));
+
+    test('first day (startDate == today) with a workout logged → 1', () {
+      expect(
+        WorkoutStreak.days([_log(wednesday)],
+            plannedPerWeek: 3, now: wednesday, startDate: wednesday),
+        1,
+      );
+    });
+
+    test('startDate mid-week counts only from the start date', () {
+      // Created Monday, today Wednesday, workout done → Mon, Tue, Wed = 3.
+      expect(
+        WorkoutStreak.days([_log(wednesday)],
+            plannedPerWeek: 3, now: wednesday, startDate: monday),
+        3,
+      );
+    });
+
+    test('startDate in a prior week does not clamp the current week', () {
+      final logs = <WorkoutLog>[
+        _log(wednesday), // this week
+        for (int i = 0; i < 3; i++)
+          _log(monday.subtract(Duration(days: 7 - i))), // last week: Mon/Tue/Wed
+        for (int i = 0; i < 3; i++)
+          _log(monday.subtract(Duration(days: 14 - i))), // two weeks ago
+      ];
+      final created = monday.subtract(const Duration(days: 21));
+      expect(
+        WorkoutStreak.days(logs,
+            plannedPerWeek: 3, now: wednesday, startDate: created),
+        2 * 7 + 3, // two prior on-plan weeks + Mon..Wed
+      );
+    });
+  });
 }

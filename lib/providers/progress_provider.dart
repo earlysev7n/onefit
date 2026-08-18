@@ -140,10 +140,16 @@ class ProgressProvider extends ChangeNotifier {
   /// "Days on plan" streak — rest-day agnostic, week-based, spans weeks.
   /// Only resets when a finished week fell short of [plannedWorkoutDays].
   /// See [WorkoutStreak.days].
-  int get workoutStreak => WorkoutStreak.days(
+  int get workoutStreak => streakDaysFor(_profile);
+
+  /// Streak computed from an explicit [profile] — for callers (Home) whose
+  /// ProgressProvider profile may not be loaded yet. Uses the profile's planned
+  /// days + `createdAt` so the count is correct (and never predates signup).
+  int streakDaysFor(UserProfile? profile) => WorkoutStreak.days(
         _yearWorkoutLogs,
-        plannedPerWeek: plannedWorkoutDays,
+        plannedPerWeek: profile?.workoutDaysPerWeek ?? 3,
         now: appNow(),
+        startDate: profile?.createdAt,
       );
 
   double get proteinConsistency => proteinConsistencyFor(TrendRange.week);

@@ -68,9 +68,10 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   // Common physical limitations that hard-exclude contraindicated exercises.
   List<String> _physicalLimitations = [];
 
-  // Step 3 — Diet. Defaults to the Balanced style (no macro override).
-  List<String> _dietaryRestrictions = ['Balanced'];
-  List<String> _foodAllergies = [];
+  // Step 3 — Diet. Defaults to "None" restriction + the Balanced style (no macro
+  // override); allergies default to "None". None is the explicit empty state.
+  List<String> _dietaryRestrictions = ['None', 'Balanced'];
+  List<String> _foodAllergies = ['None'];
 
   // Keyboard flow for the Step-1 text fields (Name → Weight → Height).
   final _weightFocus = FocusNode();
@@ -228,7 +229,12 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
       if (!_dietaryRestrictions.any(_dietStyleOptions.contains)) {
         _dietaryRestrictions.add('Balanced');
       }
+      // Show "None" when no actual restriction is selected (explicit empty state).
+      if (!_dietaryRestrictions.any(_restrictionOptions.contains)) {
+        _dietaryRestrictions.add('None');
+      }
       _foodAllergies = p.foodAllergies.where(_allergyOptions.contains).toList();
+      if (_foodAllergies.isEmpty) _foodAllergies.add('None');
       _physicalLimitations = p.physicalLimitations
           .where(_limitationOptions.contains)
           .toList();
@@ -1390,17 +1396,12 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     ).where((k) => k == 'compound' || k == 'isolation').toList();
   }
 
-  /// Rebuilds the full 5-item [UserProfile.goalPriorities] for storage: the
-  /// user's chosen Compound/Isolation order first, then the remaining keys in the
-  /// goal's default order. The greedy scorer now only reads the Compound vs
-  /// Isolation order, so the trailing keys are cosmetic — this keeps the stored
-  /// shape backward-compatible (and passes the load-time completeness guard).
-  List<String> _reconstructGoalPriorities() {
-    final others = GreedyAlgorithm.defaultGoalPriorities(
-      _fitnessGoal,
-    ).where((k) => k != 'compound' && k != 'isolation').toList();
-    return [..._exerciseTypeOrder, ...others];
-  }
+  /// The [UserProfile.goalPriorities] to store: the user's chosen
+  /// Compound/Isolation order. The greedy scorer reads only this order (preferred
+  /// type +2, other +1), so no other keys are needed. Legacy profiles may still
+  /// carry extra keys from older versions; those are simply ignored on read.
+  List<String> _reconstructGoalPriorities() =>
+      List<String>.from(_exerciseTypeOrder);
 
   /// Help content for the Exercise Preference list. Keyed for [_showHelpSheet].
   Map<String, String> _exercisePreferenceHelp() => {

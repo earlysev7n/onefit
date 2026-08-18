@@ -73,16 +73,15 @@ class UserProfile {
   final List<String> blockedExercises;
 
   /// Stored ranking of the greedy scorer's exercise "features" (`compound`,
-  /// `isolation`, `heavyLift`, `fullBody`, `highRep`). After the three-axis
-  /// refactor the scorer reads **only the Compound-vs-Isolation order** from this
-  /// list (preferred type → +2, other → +1, a small tie-breaker via
-  /// [GreedyAlgorithm]._exerciseTypePoints); the remaining keys are retained for
-  /// backward-compatible storage but no longer affect selection (Heavy Lift /
-  /// High Rep moved to [trainingFocus] as prescription; Full Body is workout
-  /// coverage, enforced structurally, not scored). Empty (the default) → the
-  /// goal's built-in order via [GreedyAlgorithm.defaultGoalPriorities], so legacy
-  /// profiles are unchanged. Edited in the profile screen as a 2-item Compound /
-  /// Isolation drag list (reconstructed to the full 5-item shape on save).
+  /// The scorer reads **only the Compound-vs-Isolation order** from this list
+  /// (preferred type → +2, other → +1, a small tie-breaker via
+  /// [GreedyAlgorithm]._exerciseTypePoints). Newer profiles store just those two
+  /// keys; legacy profiles may carry extra keys (`heavyLift`/`fullBody`/`highRep`)
+  /// from older versions, which are ignored (Heavy Lift / High Rep moved to
+  /// [trainingFocus] as prescription; Full Body is workout coverage, enforced
+  /// structurally, not scored). Empty (the default) → the built-in compound-first
+  /// order via [GreedyAlgorithm.defaultGoalPriorities]. Edited in the profile
+  /// screen as a Compound / Isolation choice.
   final List<String> goalPriorities;
 
   /// When the account was created. Anchors the adaptive "week" so days **before**

@@ -237,8 +237,20 @@ class GreedyAlgorithm {
   /// Staple compound (multi-joint) lifts — squat/bench/deadlift/row/press etc.,
   /// or anything hitting ≥2 secondary muscles. Used to prioritise compounds in
   /// generation (ACSM progression guidance; Simão 2012 on exercise order).
+  // Single-joint movement names — never a compound even if they list ≥2
+  // secondary muscles (ExerciseDB often does). Checked before the secondary-count
+  // heuristic so isolations (front raise, fly, curl, …) classify correctly.
+  // Bare 'lateral' is excluded so "lateral lunge" stays compound; 'raise' covers
+  // lateral/front/calf raise.
+  static final _isolationKeywords = RegExp(
+    r'\b(raise|fly|flye|curl|extension|kickback|pullover|'
+    r'pushdown|shrug|pec deck|rear delt|wrist)\b',
+  );
+
   static bool isStapleCompound(Exercise e) {
-    if (_compoundKeywords.hasMatch(e.name.toLowerCase())) return true;
+    final name = e.name.toLowerCase();
+    if (_isolationKeywords.hasMatch(name)) return false;
+    if (_compoundKeywords.hasMatch(name)) return true;
     return e.secondaryMuscles.length >= 2;
   }
 
@@ -281,74 +293,25 @@ class GreedyAlgorithm {
   //  it only sizes the exercise COUNT via _fitExerciseCount. Reuses
   //  isStapleCompound / isHeavyCompound / difficultyAllowed / _goalKey.
 
-  // Goal weight columns — used only by [defaultGoalPriorities] to order the
-  // reorderable features (see [goalFeatureKeys]) high→low for a goal. `goalMatch`
-  // is intentionally absent: it is not a reorderable feature (fixed +15 bonus in
-  // _scoreExercise) and was never read here.
-  static const Map<String, Map<String, int>> _goalWeights = {
-    // feature: compound isolation heavyLift fullBody highRep
-    'weight_loss': {
-      'compound': 12,
-      'isolation': 2,
-      'heavyLift': 4,
-      'fullBody': 10,
-      'highRep': 6,
-    },
-    'muscle_gain': {
-      'compound': 10,
-      'isolation': 6,
-      'heavyLift': 8,
-      'fullBody': 4,
-      'highRep': 2,
-    },
-    'endurance': {
-      'compound': 6,
-      'isolation': 4,
-      'heavyLift': 0,
-      'fullBody': 6,
-      'highRep': 12,
-    },
-    'general': {
-      'compound': 10,
-      'isolation': 4,
-      'heavyLift': 6,
-      'fullBody': 6,
-      'highRep': 4,
-    },
-  };
-
-  // The five reorderable exercise "features" the user can rank per goal, and
-  // their display names. `goalMatch` is intentionally NOT here — it stays a
-  // fixed +15 bonus in _scoreExercise (awarded when an exercise is tagged for
-  // the user's goal), independent of feature ranking.
-  static const List<String> goalFeatureKeys = [
-    'compound',
-    'isolation',
-    'heavyLift',
-    'fullBody',
-    'highRep',
-  ];
-
+  // Display names for the two selectable exercise TYPES. These are the only
+  // selection-relevant preference the user ranks (Compound vs Isolation); the
+  // profile UI reads these labels.
   static const Map<String, String> goalFeatureLabels = {
     'compound': 'Compound',
     'isolation': 'Isolation',
-    'heavyLift': 'Heavy Lift',
-    'fullBody': 'Full Body',
-    'highRep': 'High Rep',
   };
 
-  /// Default feature ranking for a goal, derived from [_goalWeights] so an
-  /// untouched profile reproduces today's *ordering* of importance. Sorts the
-  /// goal's feature weights (excluding `goalMatch`) high→low and returns the
-  /// feature keys. Shared by the profile UI (to seed the reorderable list) and
-  /// [_scoreExercise] (fallback when the user hasn't customised the order).
-  static List<String> defaultGoalPriorities(String fitnessGoal) {
-    final goalKey = _goalKey(fitnessGoal);
-    final weights = _goalWeights[goalKey] ?? _goalWeights['general']!;
-    final keys = List<String>.from(goalFeatureKeys);
-    keys.sort((a, b) => (weights[b] ?? 0).compareTo(weights[a] ?? 0));
-    return keys;
-  }
+  /// The default Compound-vs-Isolation order for an untouched profile. Compound
+  /// is favoured first for every goal (matching the historical weighting), and
+  /// the scorer only consumes this relative order (see [_exerciseTypePoints]),
+  /// so it is a fixed, goal-independent default. The [fitnessGoal] parameter is
+  /// retained for call-site/back-compat stability. Used as the fallback when the
+  /// user hasn't customised the order (empty [UserProfile.goalPriorities]) and to
+  /// seed the profile UI.
+  static List<String> defaultGoalPriorities(String fitnessGoal) => const [
+    'compound',
+    'isolation',
+  ];
 
   /// Selection points for an exercise's TYPE (Compound vs Isolation), from the
   /// user's [priorities] ranking. With only two mutually-exclusive types the
@@ -366,6 +329,13 @@ class GreedyAlgorithm {
     final isPreferred = isCompound ? compoundPreferred : !compoundPreferred;
     return isPreferred ? 2 : 1;
   }
+
+  // Selection bonus for a foundational heavy barbell/dumbbell compound (bench,
+  // squat, OHP, row, deadlift) when the user prefers Compound — so the big lifts
+  // are picked ahead of lighter/bodyweight compound variants of the same muscle.
+  // Applied inside the clamped profile block, so it never overpowers the +50
+  // focus anchor or the −25/−15 balance penalties.
+  static const int _kHeavyCompoundBonus = 6;
 
   // Graduated experience score
   static const Map<String, Map<String, int>> _experienceWeights = {
@@ -392,20 +362,27 @@ class GreedyAlgorithm {
     if (exercise.primaryMuscles.any(targetMuscles.contains)) score += 50;
 
     // ── Selection block: goal match + Exercise-TYPE preference + Experience ──
-    // Only the exercise TYPE (Compound vs Isolation) is a user-ranked selection
-    // signal now. heavy/high (prescription) and full-body (coverage) contribute
-    // NOTHING to the score, so an exercise can't collect points for several
-    // overlapping traits. goalMatch stays a fixed +15. Empty goalPriorities
-    // falls back to the goal's built-in order so legacy profiles are unchanged.
+    // The exercise TYPE (Compound vs Isolation) is the user-ranked selection
+    // signal. goalMatch stays a fixed +15. Empty goalPriorities falls back to the
+    // goal's built-in order so legacy profiles are unchanged. When the user
+    // prefers Compound, foundational heavy barbell/dumbbell lifts additionally
+    // get [_kHeavyCompoundBonus] so the big lifts (bench/squat/OHP/row) are
+    // picked ahead of lighter/bodyweight compound variants of the same muscle.
+    // (Training Focus heavy/high is prescription; Full Body is coverage — neither
+    // scored here.)
     final compound = isStapleCompound(exercise) || isHeavyCompound(exercise);
     final goalKey = _goalKey(profile.fitnessGoal);
     final priorities = profile.goalPriorities.isNotEmpty
         ? profile.goalPriorities
         : defaultGoalPriorities(profile.fitnessGoal);
+    final compoundPreferred = _exerciseTypePoints(priorities, true) == 2;
 
     int goalScore = 0;
     if (exercise.goals.contains(goalKey)) goalScore += 15; // goalMatch — fixed
     goalScore += _exerciseTypePoints(priorities, compound); // +2 or +1
+    if (compoundPreferred && isHeavyCompound(exercise)) {
+      goalScore += _kHeavyCompoundBonus; // surface the big lifts
+    }
 
     int expScore = 0;
     if (difficultyAllowed(exercise.difficulty, profile.experienceLevel)) {
@@ -500,6 +477,13 @@ class GreedyAlgorithm {
       );
     } else {
       reasons.add("It's a $typeLabel move (+$typePoints).");
+    }
+
+    // Foundational-lift bonus — surfaced when it actually applied to selection.
+    if (_exerciseTypePoints(priorities, true) == 2 && isHeavyCompound(exercise)) {
+      reasons.add(
+        'Foundational barbell/dumbbell lift — prioritised (+$_kHeavyCompoundBonus).',
+      );
     }
 
     // Training Focus — decides the REPS, not the selection. Surfaced so the
@@ -1162,6 +1146,9 @@ class GreedyAlgorithm {
   // focus bonus in _selectExercisesForDay actually fires:
   // abductors, abs, biceps, calves, cardiovascular system, delts, forearms,
   // glutes, hamstrings, lats, pectorals, quads, spine, triceps, upper back.
+  // NOTE: these lists are MEMBERSHIP-only — the on-card display order is derived
+  // by musclesForFocus sorting them big→small via [_muscleSizeOrder], so the
+  // order they're written here does not matter.
   static Map<String, List<String>> get _focusMuscleMap => {
     'Full Body': ['pectorals', 'lats', 'quads', 'glutes', 'abs', 'delts'],
     'Full Body Cardio': ['cardiovascular system', 'quads', 'glutes', 'abs'],
@@ -1184,13 +1171,41 @@ class GreedyAlgorithm {
     'Arms': ['biceps', 'triceps', 'forearms'],
   };
 
+  // Canonical big→small muscle ordering — the single source of on-card grouping
+  // for every multi-muscle day (large groups first, small/accessory last).
+  // 'cardiovascular system' leads so cardio-focus days open with conditioning.
+  // Drives display order (via musclesForFocus → _muscleFocusIndex); the
+  // _focusMuscleMap lists themselves are membership-only.
+  static const List<String> _muscleSizeOrder = [
+    'cardiovascular system',
+    'quads', 'glutes', 'hamstrings', 'abductors', // legs / hips (largest)
+    'pectorals', // chest
+    'lats', 'upper back', // back
+    'delts', // shoulders
+    'biceps', 'triceps', 'forearms', // arms
+    'calves',
+    'abs', 'spine', // core (smallest / accessory)
+  ];
+
   /// Public, reusable focus→muscle resolver (ExerciseDB `targetMuscles`
   /// vocabulary). PlansScreen's picker/gap-fill/volume-debt paths call this so
   /// they resolve muscles in the same vocabulary the generator scores against —
-  /// preventing the two from drifting (e.g. 'chest' vs 'pectorals').
-  static List<String> musclesForFocus(String focus) =>
+  /// preventing the two from drifting (e.g. 'chest' vs 'pectorals'). Returns the
+  /// focus's muscles sorted big→small ([_muscleSizeOrder]) so every multi-muscle
+  /// day displays large groups first (display-only; membership is unchanged).
+  static List<String> musclesForFocus(String focus) {
+    final muscles = List<String>.from(
       _focusMuscleMap[focus] ??
-      const ['pectorals', 'lats', 'quads', 'glutes', 'abs', 'delts'];
+          const ['pectorals', 'lats', 'quads', 'glutes', 'abs', 'delts'],
+    );
+    int rank(String m) {
+      final i = _muscleSizeOrder.indexOf(m);
+      return i >= 0 ? i : _muscleSizeOrder.length; // unknown → last
+    }
+
+    muscles.sort((a, b) => rank(a).compareTo(rank(b)));
+    return muscles;
+  }
 
   /// Human-facing label for a stored [focus] key. DISPLAY ONLY — the raw focus
   /// string stays the [_focusMuscleMap] key and the persisted value, so this must

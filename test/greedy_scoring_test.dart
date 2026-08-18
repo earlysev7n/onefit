@@ -548,12 +548,12 @@ void main() {
           dayHits: const {},
         );
 
-    test('a Compound+HeavyLift move is not double-scored (heavy adds nothing)',
-        () {
-      // Both are compound + goal-matched + beginner; one is ALSO a heavy barbell
-      // compound. Under the old 5-feature scoring the heavy one stacked extra
-      // heavyLift points; now both score identically because only the TYPE
-      // (compound) counts.
+    test('a foundational heavy compound outscores a plain compound when '
+        'Compound is preferred (foundational-lift bonus)', () {
+      // Both are compound + goal-matched + beginner; one is a heavy barbell
+      // compound (bench/squat/OHP/row), the other a bodyweight compound. With
+      // Compound preferred, the heavy lift gets the foundational-lift bonus so it
+      // is chosen ahead of the lighter variant.
       final p = _profile(goal: 'Muscle Gain', level: 'Beginner');
       final heavyCompound = _ex(
         id: 'h', name: 'Barbell Squat', primaryMuscles: ['quads'],
@@ -564,8 +564,57 @@ void main() {
         secondaryMuscles: ['triceps'], goals: ['muscle_gain'],
         equipment: ['bodyweight'],
       );
-      expect(s(heavyCompound, p), s(plainCompound, p),
-          reason: 'Heavy Lift is prescription, not a selection score');
+      expect(s(heavyCompound, p), greaterThan(s(plainCompound, p)),
+          reason: 'a foundational barbell lift should lead over a plain compound');
+    });
+
+    test('barbell back squat beats a bodyweight split squat (same muscle)', () {
+      // The reported bug: a heavy barbell lift must be picked over a lighter
+      // bodyweight compound of the same muscle when Compound is preferred.
+      final p = _profile(goal: 'Muscle Gain', level: 'Intermediate');
+      final backSquat = _ex(
+        id: 'bs', name: 'Barbell Back Squat', primaryMuscles: ['quads'],
+        secondaryMuscles: ['glutes', 'hamstrings'], goals: ['muscle_gain'],
+        difficulty: 'intermediate',
+      );
+      final splitSquat = _ex(
+        id: 'ss', name: 'Split Squat', primaryMuscles: ['quads'],
+        secondaryMuscles: ['glutes'], goals: ['muscle_gain'],
+        equipment: ['bodyweight'], difficulty: 'intermediate',
+      );
+      expect(s(backSquat, p), greaterThan(s(splitSquat, p)));
+    });
+
+    test('foundational-lift bonus does NOT apply when Isolation is preferred',
+        () {
+      final backSquat = _ex(
+        id: 'bs', name: 'Barbell Back Squat', primaryMuscles: ['quads'],
+        secondaryMuscles: ['glutes', 'hamstrings'], goals: ['muscle_gain'],
+      );
+      final plain = _ex(
+        id: 'p', name: 'Push-up', primaryMuscles: ['pectorals'],
+        secondaryMuscles: ['triceps'], goals: ['muscle_gain'],
+        equipment: ['bodyweight'],
+      );
+      // Isolation preferred → both are non-preferred compounds (+1), and the
+      // heavy bonus is gated off, so they score identically.
+      final isoPref = _profile(goal: 'Muscle Gain', level: 'Beginner')
+          .copyWith(goalPriorities: const ['isolation', 'compound']);
+      expect(s(backSquat, isoPref), s(plain, isoPref),
+          reason: 'the foundational-lift bonus only applies when Compound is '
+              'the preferred type');
+    });
+
+    test('isStapleCompound treats an isolation with ≥2 secondaries as isolation',
+        () {
+      // Front raise lists 2+ secondary muscles in the catalog; it must still
+      // classify as an isolation (the old ≥2-secondaries heuristic misfired).
+      final frontRaise = _ex(
+        id: 'fr', name: 'Barbell Front Raise', primaryMuscles: ['delts'],
+        secondaryMuscles: ['pectorals', 'serratus anterior'],
+      );
+      expect(GreedyAlgorithm.isStapleCompound(frontRaise), isFalse);
+      expect(GreedyAlgorithm.isHeavyCompound(frontRaise), isFalse);
     });
 
     test('full-body coverage adds no selection score', () {

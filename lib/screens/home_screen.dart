@@ -523,9 +523,9 @@ class _HomeDashboard extends StatelessWidget {
   }
 
   /// Streak "thunder" chip: bolt + day count. Lights up in the streak colour
-  /// once a streak is running, muted at zero.
-  Widget _streakChip(BuildContext context, int streak) {
-    final active = streak > 0;
+  /// only when [active] (today's workout is done); muted otherwise — the number
+  /// still shows.
+  Widget _streakChip(BuildContext context, int streak, {required bool active}) {
     final color = active ? AppColors.orange : context.colors.muted;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -597,7 +597,11 @@ class _HomeDashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final streak = context.watch<ProgressProvider>().workoutStreak;
+    final streak = context.watch<ProgressProvider>().streakDaysFor(profile);
+    // The streak "fire" lights only once today's workout is completed — not at
+    // the start of the day just because the running count is positive.
+    final todayWorkoutDone =
+        context.watch<ProgressProvider>().todayWorkoutLog != null;
     if (isLoading) {
       return Center(child: CircularProgressIndicator(color: AppColors.primary));
     }
@@ -694,7 +698,7 @@ class _HomeDashboard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 6),
-                          _streakChip(context, streak),
+                          _streakChip(context, streak, active: todayWorkoutDone),
                         ],
                       ),
                     ],
