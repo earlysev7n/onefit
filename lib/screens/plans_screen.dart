@@ -5536,14 +5536,6 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
 
   // ── Generation (budget-aware meal completion over USDA ingredients) ─────────
 
-  /// Daily calorie share for [mealType] (GA's fixed meal ratios).
-  double _ratioFor(String mealType) => switch (mealType) {
-    'breakfast' => GeneticAlgorithm.breakfastRatio,
-    'lunch' => GeneticAlgorithm.lunchRatio,
-    'dinner' => GeneticAlgorithm.dinnerRatio,
-    _ => GeneticAlgorithm.snackRatio,
-  };
-
   /// Calories already logged into [mealType] today.
   double _loggedCals(String mealType) =>
       (_loggedFoods[mealType] ?? []).fold(0.0, (s, f) => s + f.totalCalories);
@@ -5619,10 +5611,18 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
       return;
     }
     final goal = context.read<ProfileProvider>().dailyEffectiveGoal.toDouble();
-    final budget = (_ratioFor(mealType) * goal - _loggedCals(mealType)).clamp(
-      0.0,
-      double.infinity,
-    );
+    // Compensating budget: this meal gets its share of the day's *remaining*
+    // calories among the meals still to be filled, so generating the empty
+    // meals one-by-one converges on the goal (matching the "All" button) and
+    // leaves a manually-logged meal untouched.
+    final budget = GeneticAlgorithm.singleMealBudget(
+      goal: goal,
+      mealType: mealType,
+      loggedCalsByMeal: {
+        for (final m in const ['breakfast', 'lunch', 'dinner', 'snack'])
+          m: _loggedCals(m),
+      },
+    ).clamp(0.0, double.infinity);
     final hasLogged = (_loggedFoods[mealType] ?? []).isNotEmpty;
     if (budget <= 30) {
       _showInfo(

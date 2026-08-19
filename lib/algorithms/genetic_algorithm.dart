@@ -650,6 +650,45 @@ class GeneticAlgorithm {
     return {for (final m in ratios.keys) m: deficits[m]! * factor};
   }
 
+  /// Budget for generating ONE meal so that, as the day's still-empty meals are
+  /// each generated one-by-one, `logged + generated ≈ goal`.
+  ///
+  /// The day's remaining budget (`goal − Σ logged`) is split across the meals
+  /// still to be filled — every meal whose logged calories are `≤ emptyThreshold`
+  /// (empty), plus [mealType] itself so re-generating a partially-logged meal
+  /// still earns a share — in proportion to their ratios. [mealType] then gets
+  /// its slice. Because a manually-logged meal is NOT topped up (only empty
+  /// meals share the budget), generating the empty meals in turn converges on the
+  /// goal while leaving logged meals untouched. Returns 0 when nothing is left to
+  /// distribute. Pure & static for testing.
+  static double singleMealBudget({
+    required double goal,
+    required String mealType,
+    required Map<String, double> loggedCalsByMeal,
+    double emptyThreshold = 30,
+  }) {
+    const ratios = {
+      'breakfast': breakfastRatio,
+      'lunch': lunchRatio,
+      'dinner': dinnerRatio,
+      'snack': snackRatio,
+    };
+    double logged(String m) => loggedCalsByMeal[m] ?? 0;
+    final loggedDay = ratios.keys.fold(0.0, (s, m) => s + logged(m));
+    final remainingDay = (goal - loggedDay).clamp(0.0, double.infinity);
+    if (remainingDay <= 0) return 0;
+
+    // Meals still to be filled (empty), plus the requested meal itself.
+    final fillSet = <String>{
+      for (final m in ratios.keys)
+        if (logged(m) <= emptyThreshold) m,
+      mealType,
+    };
+    final denom = fillSet.fold(0.0, (s, m) => s + (ratios[m] ?? 0));
+    if (denom <= 0) return 0;
+    return remainingDay * (ratios[mealType] ?? 0) / denom;
+  }
+
   /// Generates the complementary *additions* (NOT including any already-logged
   /// food) to fill [calorieBudget] for [mealType], honouring dietary
   /// restrictions and cuisine. Slots whose food group is in [presentCategories]
