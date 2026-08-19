@@ -734,7 +734,7 @@ class _HomeDashboard extends StatelessWidget {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
-                                      '$caloriesRemaining',
+                                      '${caloriesEaten.round()}',
                                       style: GoogleFonts.spaceGrotesk(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w700,
@@ -742,7 +742,7 @@ class _HomeDashboard extends StatelessWidget {
                                       ),
                                     ),
                                     Text(
-                                      'left',
+                                      'kcal',
                                       style: GoogleFonts.inter(
                                         fontSize: 12,
                                         color: c.muted,
