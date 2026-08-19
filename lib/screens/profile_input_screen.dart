@@ -1008,9 +1008,33 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           _buildLimitationChips(),
           const SizedBox(height: 8),
           Text(
-            'We avoid recommending higher-risk exercises for what you select. '
-            'This is not medical advice, consult a healthcare professional.',
+            'Safety notice',
+            style: GoogleFonts.inter(
+              color: c.onBackground,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'We only screen the areas you select and exclude higher-risk exercises '
+            'based on those selections. This does not cover complex disabilities or '
+            'medical conditions.',
             style: GoogleFonts.inter(color: c.muted, fontSize: 12, height: 1.5),
+          ),
+          const SizedBox(height: 4),
+          GestureDetector(
+            onTap: _showSafetySheet,
+            child: Text(
+              'Read safety information',
+              style: GoogleFonts.inter(
+                color: AppColors.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                decoration: TextDecoration.underline,
+                decorationColor: AppColors.primary,
+              ),
+            ),
           ),
         ],
       ),
@@ -1604,6 +1628,55 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
                     ],
                   ),
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Bottom sheet with the full Physical Limitations safety disclaimer,
+  /// opened from the "Read safety information" link.
+  void _showSafetySheet() {
+    final c = context.colors;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Safety information',
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: c.onBackground,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'We only screen the areas you select above and avoid recommending '
+                'their higher-risk exercises. This does not account for disabilities '
+                'or more complex conditions — such as limb loss or amputation, '
+                'paralysis, or other significant physical or mobility impairments — so '
+                'the generated plans may not be suitable or safe for them.',
+                style: GoogleFonts.inter(color: c.muted, fontSize: 14, height: 1.6),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'This is not medical advice. If you have a disability or any health '
+                'condition, please consult a healthcare professional or qualified '
+                'trainer before starting.',
+                style: GoogleFonts.inter(color: c.muted, fontSize: 14, height: 1.6),
               ),
             ],
           ),
