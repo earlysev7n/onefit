@@ -1006,34 +1006,54 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
           ),
           const SizedBox(height: 8),
           _buildLimitationChips(),
-          const SizedBox(height: 8),
-          Text(
-            'Safety notice',
-            style: GoogleFonts.inter(
-              color: c.onBackground,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: c.surface,
+              borderRadius: BorderRadius.circular(14),
             ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'We only screen the areas you select and exclude higher-risk exercises '
-            'based on those selections. This does not cover complex disabilities or '
-            'medical conditions.',
-            style: GoogleFonts.inter(color: c.muted, fontSize: 12, height: 1.5),
-          ),
-          const SizedBox(height: 4),
-          GestureDetector(
-            onTap: _showSafetySheet,
-            child: Text(
-              'Read safety information',
-              style: GoogleFonts.inter(
-                color: AppColors.primary,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                decoration: TextDecoration.underline,
-                decorationColor: AppColors.primary,
-              ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.health_and_safety_outlined,
+                  size: 18,
+                  color: c.muted,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'We only screen the areas you select and exclude higher-risk '
+                        'exercises based on those selections. This does not cover '
+                        'complex disabilities or medical conditions.',
+                        style: GoogleFonts.inter(
+                          color: c.muted,
+                          fontSize: 12,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      GestureDetector(
+                        onTap: _showSafetySheet,
+                        child: Text(
+                          'Read safety information',
+                          style: GoogleFonts.inter(
+                            color: AppColors.primary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                            decorationColor: AppColors.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ],
