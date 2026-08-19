@@ -108,47 +108,59 @@ class PlansScreenState extends State<PlansScreen>
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Text(
-                'My Plans',
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: c.onBackground,
-                ),
-              ),
+            // Title + Workout/Meal tabs — hidden while a workout session runs
+            // so the exercise flow is full-screen.
+            ValueListenableBuilder<bool>(
+              valueListenable: workoutSessionActive,
+              builder: (context, active, _) {
+                if (active) return const SizedBox.shrink();
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                      child: Text(
+                        'My Plans',
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          color: c.onBackground,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 20),
+                      decoration: BoxDecoration(
+                        color: c.surface,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: TabBar(
+                        controller: _tabController,
+                        indicator: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        indicatorSize: TabBarIndicatorSize.tab,
+                        labelColor: c.onPrimary,
+                        unselectedLabelColor: c.muted,
+                        labelStyle: GoogleFonts.spaceGrotesk(
+                          fontWeight: FontWeight.w700,
+                        ),
+                        unselectedLabelStyle: GoogleFonts.spaceGrotesk(
+                          fontWeight: FontWeight.w500,
+                        ),
+                        dividerColor: Colors.transparent,
+                        tabs: const [
+                          Tab(text: 'Workout'),
+                          Tab(text: 'Meal'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                );
+              },
             ),
-            const SizedBox(height: 12),
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
-              decoration: BoxDecoration(
-                color: c.surface,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: TabBar(
-                controller: _tabController,
-                indicator: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                indicatorSize: TabBarIndicatorSize.tab,
-                labelColor: c.onPrimary,
-                unselectedLabelColor: c.muted,
-                labelStyle: GoogleFonts.spaceGrotesk(
-                  fontWeight: FontWeight.w700,
-                ),
-                unselectedLabelStyle: GoogleFonts.spaceGrotesk(
-                  fontWeight: FontWeight.w500,
-                ),
-                dividerColor: Colors.transparent,
-                tabs: const [
-                  Tab(text: 'Workout'),
-                  Tab(text: 'Meal'),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
             Expanded(
               child: TabBarView(
                 controller: _tabController,
@@ -326,6 +338,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
     _warmupTimer?.cancel();
     _weightController.dispose();
     _repsController.dispose();
+    workoutSessionActive.value = false; // safety net — never leave chrome hidden
     super.dispose();
   }
 
@@ -1932,6 +1945,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
     _loggedSets.clear();
     _skippedExercises.clear();
     _sessionStarted = false;
+    workoutSessionActive.value = false;
     _warmupComplete = false;
     _warmupRunning = false;
     _activeWarmupIndex = -1;
@@ -1941,6 +1955,58 @@ class _WorkoutTabState extends State<_WorkoutTab>
     _expandedSteps.clear();
     _weightController.clear();
     _repsController.clear();
+  }
+
+  /// Abandons an in-progress session (the tabs/nav are hidden while immersive,
+  /// so this is the on-screen escape hatch). Confirms first, then resets — which
+  /// flips [workoutSessionActive] off and restores all the app chrome.
+  Future<void> _confirmExitWorkout() async {
+    final c = context.colors;
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: c.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Text(
+          'End workout?',
+          style: GoogleFonts.spaceGrotesk(
+            fontWeight: FontWeight.w700,
+            color: c.onBackground,
+          ),
+        ),
+        content: Text(
+          "Your logged sets for this session won't be saved.",
+          style: GoogleFonts.inter(color: c.muted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Keep going',
+              style: GoogleFonts.inter(
+                color: c.muted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'End workout',
+              style: GoogleFonts.inter(
+                color: Colors.redAccent,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (leave == true && mounted) {
+      setState(_resetWorkoutState);
+    }
   }
 
   Future<void> _startWorkout() async {
@@ -1968,6 +2034,7 @@ class _WorkoutTabState extends State<_WorkoutTab>
     final warmups = _resolveWarmupMoves();
     setState(() {
       _sessionStarted = true;
+      workoutSessionActive.value = true;
       _workoutStartedAt = DateTime.now();
       _elapsedSeconds = 0;
       _loggedSets.clear();
@@ -2174,6 +2241,9 @@ class _WorkoutTabState extends State<_WorkoutTab>
         _weekDone[day.dayName] = true;
         _inRest = false;
         _waitingForReady = false;
+        // Workout finished → restore the app chrome (tabs, date strip, nav) so
+        // the "Completed" view is navigable again.
+        workoutSessionActive.value = false;
       });
     final rating = mounted ? await _askWorkoutRating() : null;
     await _saveWorkoutLog(day, mins, rating: rating);
@@ -2397,6 +2467,11 @@ class _WorkoutTabState extends State<_WorkoutTab>
     );
   }
 
+  /// True while a workout session is running — used to strip the surrounding
+  /// chrome (date navigator, week strip, profile chips) so the session is
+  /// full-screen. Kept in lock-step with the app-wide [workoutSessionActive].
+  bool get _immersive => _sessionStarted && workoutSessionActive.value;
+
   Widget _buildPlan() {
     final today = _todayDate();
     final isToday = _isToday(_selectedDate);
@@ -2410,29 +2485,34 @@ class _WorkoutTabState extends State<_WorkoutTab>
         !isToday && isCurrentWeek && _selectedDate.isAfter(today);
     final headerProfile = _profile ?? context.watch<ProfileProvider>().profile;
 
+    // While a workout is running the date navigator + week strip are hidden so
+    // the session is full-screen (the chips/↺ row below is gated the same way).
     final children = <Widget>[
-      _buildDateNavigator(
-        context,
-        date: _selectedDate,
-        today: today,
-        onOlder: () => _onWorkoutDateChanged(
-          _selectedDate.subtract(const Duration(days: 1)),
+      if (!_immersive) ...[
+        _buildDateNavigator(
+          context,
+          date: _selectedDate,
+          today: today,
+          onOlder: () => _onWorkoutDateChanged(
+            _selectedDate.subtract(const Duration(days: 1)),
+          ),
+          onNewer: () =>
+              _onWorkoutDateChanged(_selectedDate.add(const Duration(days: 1))),
+          onTapDate: _pickWorkoutDate,
         ),
-        onNewer: () =>
-            _onWorkoutDateChanged(_selectedDate.add(const Duration(days: 1))),
-        onTapDate: _pickWorkoutDate,
-      ),
-      const SizedBox(height: 4),
-      _buildWeekDayStrip(),
-      const SizedBox(height: 4),
+        const SizedBox(height: 4),
+        _buildWeekDayStrip(),
+        const SizedBox(height: 4),
+      ],
     ];
 
     // ── Today or an upcoming current-week day → the live, interactive plan ─────
     // Today keeps full behavior (edit + Start). Upcoming days are editable but
     // not startable (Start is gated on _buildWorkoutDay's internal isToday).
     if (isToday || isUpcomingEditable) {
-      // The profile chips + force-regenerate (↺) stay today-only.
-      if (isToday) {
+      // The profile chips + force-regenerate (↺) stay today-only, and are
+      // hidden during an active session for the full-screen workout view.
+      if (isToday && !_immersive) {
         children.add(
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -4288,6 +4368,38 @@ class _WorkoutTabState extends State<_WorkoutTab>
                         ),
                       ),
                     ],
+                  ),
+                )
+              else if (workoutStarted)
+                // Immersive session: the tabs/nav are hidden, so offer an
+                // explicit Exit to leave the workout.
+                GestureDetector(
+                  onTap: _confirmExitWorkout,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: c.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: c.borderLight),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.close_rounded, size: 14, color: c.muted),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Exit',
+                          style: GoogleFonts.inter(
+                            color: c.muted,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 )
               else

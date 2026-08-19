@@ -424,37 +424,53 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Scaffold(
         backgroundColor: c.background,
         body: screens[_currentIndex],
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            color: c.surfaceElevated,
-            border: Border(top: BorderSide(color: c.inputFill)),
-          ),
-          child: SafeArea(
-            child: SizedBox(
-              height: 60,
-              child: Row(
-                children: [
-                  _buildNavItem(0, Icons.home_rounded, 'Home'),
-                  _buildNavItem(1, Icons.calendar_month_rounded, 'Plans'),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: _showAddSheet,
-                      child: Center(
-                        child: Container(
-                          width: 52,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(16),
+        // Bottom nav is hidden only while a workout session runs AND the Plans
+        // tab is showing, so the exercise flow is full-screen. Gating on the tab
+        // means a back-press to Home always restores the nav (never trapped).
+        bottomNavigationBar: ValueListenableBuilder<bool>(
+          valueListenable: workoutSessionActive,
+          builder: (context, sessionActive, child) {
+            if (sessionActive && _currentIndex == 1) {
+              return const SizedBox.shrink();
+            }
+            return child!;
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              color: c.surfaceElevated,
+              border: Border(top: BorderSide(color: c.inputFill)),
+            ),
+            child: SafeArea(
+              child: SizedBox(
+                height: 60,
+                child: Row(
+                  children: [
+                    _buildNavItem(0, Icons.home_rounded, 'Home'),
+                    _buildNavItem(1, Icons.calendar_month_rounded, 'Plans'),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: _showAddSheet,
+                        child: Center(
+                          child: Container(
+                            width: 52,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Icon(
+                              Icons.add,
+                              color: c.onPrimary,
+                              size: 28,
+                            ),
                           ),
-                          child: Icon(Icons.add, color: c.onPrimary, size: 28),
                         ),
                       ),
                     ),
-                  ),
-                  _buildNavItem(3, Icons.bar_chart_rounded, 'Progress'),
-                  _buildNavItem(4, Icons.person_rounded, 'Profile'),
-                ],
+                    _buildNavItem(3, Icons.bar_chart_rounded, 'Progress'),
+                    _buildNavItem(4, Icons.person_rounded, 'Profile'),
+                  ],
+                ),
               ),
             ),
           ),

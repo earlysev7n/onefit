@@ -29,6 +29,14 @@ final ValueNotifier<DevScenario> devScenario =
 /// MUST default `false` — real users never reach it.
 final ValueNotifier<bool> forceOfflineEnabled = ValueNotifier<bool>(false);
 
+/// True only while a workout session is in progress (Start Workout pressed,
+/// not yet finished/abandoned). Drives the immersive session UI: the Plans
+/// title + tabs, the date strip/chips, and the bottom nav are hidden while a
+/// workout is running so the exercise flow is full-screen (like the food-add
+/// flow). Set in `_startWorkout`/`_resetWorkoutState`/`_autoComplete` and
+/// consumed via `ValueListenableBuilder` in HomeScreen + PlansScreen.
+final ValueNotifier<bool> workoutSessionActive = ValueNotifier<bool>(false);
+
 /// When true, shows an amber ⚡ "Auto-Complete" button on each training day
 /// card in the Workout tab so workouts can be logged without doing the full
 /// exercise flow. Use this to rapidly populate workout_logs for adaptation
