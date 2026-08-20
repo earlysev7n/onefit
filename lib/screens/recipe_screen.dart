@@ -10,6 +10,16 @@ import '../app_clock.dart';
 import '../theme/app_colors.dart';
 import '../widgets/offline.dart';
 
+/// Result popped by the accept-mode [RecipeScreen] back to `_reviewAndAccept`.
+/// [action] is `'accept'` or `'regenerate'`; [recipeTitle] carries the OpenAI
+/// recipe name on accept (empty when accepted without a recipe) so it can be
+/// stamped onto the logged FoodItems.
+class RecipeReviewResult {
+  final String action;
+  final String recipeTitle;
+  const RecipeReviewResult(this.action, [this.recipeTitle = '']);
+}
+
 class RecipeScreen extends StatefulWidget {
   final Meal meal;
   final String mealLabel;
@@ -412,7 +422,8 @@ class _RecipeScreenState extends State<RecipeScreen> {
               // user behind an OpenAI failure.
               const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () => Navigator.pop(context, 'regenerate'),
+                onPressed: () =>
+                    Navigator.pop(context, const RecipeReviewResult('regenerate')),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.primary,
                   side: const BorderSide(color: AppColors.primary),
@@ -423,7 +434,8 @@ class _RecipeScreenState extends State<RecipeScreen> {
                 ),
               ),
               TextButton(
-                onPressed: () => Navigator.pop(context, 'accept'),
+                onPressed: () =>
+                    Navigator.pop(context, const RecipeReviewResult('accept')),
                 child: Text(
                   'Accept Without Recipe',
                   style: GoogleFonts.inter(color: c.muted),
@@ -928,7 +940,8 @@ class _RecipeScreenState extends State<RecipeScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => Navigator.pop(context, 'regenerate'),
+                    onPressed: () =>
+                        Navigator.pop(context, const RecipeReviewResult('regenerate')),
                     icon: const Icon(Icons.refresh_rounded, size: 16),
                     label: Text(
                       'Regenerate',
@@ -956,7 +969,10 @@ class _RecipeScreenState extends State<RecipeScreen> {
                         await _saveRecipeDoc();
                       } catch (_) {}
                       if (!mounted) return;
-                      Navigator.pop(context, 'accept');
+                      Navigator.pop(
+                        context,
+                        RecipeReviewResult('accept', _recipe?.title ?? ''),
+                      );
                     },
                     icon: const Icon(Icons.check_rounded, size: 18),
                     label: Text(

@@ -35,6 +35,11 @@ class FoodItem {
   final String mealType;
   final double quantity;
 
+  /// Human recipe name for AI-generated meals (e.g. "Chicken Rice Flour
+  /// Cakes"). Stamped onto every `ai_generated` ingredient FoodItem so the Meal
+  /// tab can title the card per-day. Empty for normally-logged food.
+  final String recipeName;
+
   FoodItem({
     required this.id,
     required this.userId,
@@ -66,6 +71,7 @@ class FoodItem {
     required this.loggedAt,
     required this.mealType,
     this.quantity = 1.0,
+    this.recipeName = '',
   });
 
   // ── Macros ─────────────────────────────────────────────────────────────────
@@ -127,6 +133,7 @@ class FoodItem {
       loggedAt: (map['loggedAt'] as Timestamp).toDate(),
       mealType: map['mealType'] ?? 'snack',
       quantity: (map['quantity'] ?? 1.0).toDouble(),
+      recipeName: map['recipeName'] ?? '',
     );
   }
 
@@ -161,6 +168,7 @@ class FoodItem {
       'loggedAt': Timestamp.fromDate(loggedAt),
       'mealType': mealType,
       'quantity': quantity,
+      'recipeName': recipeName,
     };
   }
 
@@ -195,6 +203,7 @@ class FoodItem {
     DateTime? loggedAt,
     String? mealType,
     double? quantity,
+    String? recipeName,
   }) {
     return FoodItem(
       id: id ?? this.id,
@@ -227,6 +236,7 @@ class FoodItem {
       loggedAt: loggedAt ?? this.loggedAt,
       mealType: mealType ?? this.mealType,
       quantity: quantity ?? this.quantity,
+      recipeName: recipeName ?? this.recipeName,
     );
   }
 }

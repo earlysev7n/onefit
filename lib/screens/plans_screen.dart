@@ -5328,6 +5328,10 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
   // Meal types whose nutrition summary is expanded to show full macros + micros.
   final Set<String> _expandedMacros = {};
 
+  // AI-meal cards (keyed by mealType) whose ingredient list is expanded under
+  // the recipe-name sub-header. Empty ⇒ collapsed by default.
+  final Set<String> _expandedIngredients = {};
+
   // USDA ingredient pool the Genetic Algorithm draws on (loaded once).
   List<MealIngredient> _allIngredients = [];
 
@@ -5785,7 +5789,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
   ) async {
     var current = meal;
     while (mounted) {
-      final result = await Navigator.push<String>(
+      final result = await Navigator.push<RecipeReviewResult>(
         context,
         MaterialPageRoute(
           builder: (_) =>
@@ -5793,14 +5797,16 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
         ),
       );
       if (!mounted) return;
-      if (result == 'accept') {
+      if (result?.action == 'accept') {
         try {
           // Same persistence path as staged meals: one 'ai_generated'
-          // FoodItem per ingredient — accepted food IS logged food.
+          // FoodItem per ingredient — accepted food IS logged food. The recipe
+          // title is stamped on each so the Meal-tab card can title the meal.
           await context.read<PlanProvider>().setMeal(
             mealType,
             current,
             saveToFirestore: true,
+            recipeName: result?.recipeTitle ?? '',
           );
           await _loadTodayLogs();
           final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -5828,7 +5834,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
         }
         return;
       }
-      if (result == 'regenerate') {
+      if (result?.action == 'regenerate') {
         final avoid = current.items.map((i) => i.ingredient.id).toSet();
         setState(() => _loadingMeals.add(mealType));
         Meal? next;
@@ -6456,6 +6462,56 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     );
   }
 
+  /// Tappable recipe-name sub-header for an AI-generated meal. Sits below the
+  /// meal-type title and toggles the ingredient list (collapsed by default).
+  Widget _recipeSubHeader(String mealType, String recipeName) {
+    final c = context.colors;
+    final expanded = _expandedIngredients.contains(mealType);
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => setState(() {
+        expanded
+            ? _expandedIngredients.remove(mealType)
+            : _expandedIngredients.add(mealType);
+      }),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          children: [
+            Icon(
+              Icons.auto_awesome_rounded,
+              color: AppColors.primary,
+              size: 14,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                recipeName,
+                style: GoogleFonts.spaceGrotesk(
+                  color: c.onBackground,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              expanded ? 'Hide' : 'Ingredients',
+              style: GoogleFonts.inter(color: c.muted, fontSize: 12),
+            ),
+            Icon(
+              expanded
+                  ? Icons.expand_less_rounded
+                  : Icons.expand_more_rounded,
+              color: c.muted,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildFilledCard(
     String mealType,
     String label,
@@ -6478,13 +6534,23 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
           pendingMeal ?? _mealFromLoggedFoods(mealType, loggedFoods);
     }
 
+    // AI meals stamp a human recipe name on each logged ingredient; surface it
+    // as a collapsible sub-header. Empty for manually-logged meals.
+    final recipeName = loggedFoods
+        .map((f) => f.recipeName)
+        .firstWhere((n) => n.isNotEmpty, orElse: () => '');
+    final ingredientsExpanded =
+        recipeName.isEmpty || _expandedIngredients.contains(mealType);
+
     final c = context.colors;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ...loggedFoods.map(
-          (food) => Dismissible(
-            key: ValueKey(food.id),
+        if (recipeName.isNotEmpty) _recipeSubHeader(mealType, recipeName),
+        if (ingredientsExpanded)
+          ...loggedFoods.map(
+            (food) => Dismissible(
+              key: ValueKey(food.id),
             direction: DismissDirection.endToStart,
             background: _deleteBg(),
             onDismissed: (_) async {

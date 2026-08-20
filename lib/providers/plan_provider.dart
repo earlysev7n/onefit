@@ -245,6 +245,7 @@ class PlanProvider extends ChangeNotifier {
     String mealType,
     Meal? meal, {
     bool saveToFirestore = false,
+    String recipeName = '',
   }) async {
     switch (mealType) {
       case 'breakfast':
@@ -262,7 +263,7 @@ class PlanProvider extends ChangeNotifier {
     }
 
     if (saveToFirestore && meal != null) {
-      await _saveMealToFirestore(mealType, meal);
+      await _saveMealToFirestore(mealType, meal, recipeName: recipeName);
     }
 
     notifyListeners();
@@ -306,7 +307,11 @@ class PlanProvider extends ChangeNotifier {
 
   /// Save each ingredient in the meal as its own FoodItem so they
   /// reload correctly from Firestore with all ingredients intact.
-  Future<void> _saveMealToFirestore(String mealType, Meal meal) async {
+  Future<void> _saveMealToFirestore(
+    String mealType,
+    Meal meal, {
+    String recipeName = '',
+  }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -351,6 +356,7 @@ class PlanProvider extends ChangeNotifier {
         loggedAt: now,
         mealType: mealType,
         quantity: 1.0,
+        recipeName: recipeName,
       );
 
       await _firestoreService.logFoodItem(foodItem);
