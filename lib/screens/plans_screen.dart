@@ -16,6 +16,7 @@ import '../services/firestore_service.dart';
 import '../services/exercise_db_service.dart';
 import '../services/dietary_filter.dart';
 import '../services/ingredient_converter.dart';
+import '../services/openai_service.dart';
 import '../models/workout_log.dart';
 import '../models/exercise_stat.dart';
 import '../models/weight_log.dart';
@@ -5323,6 +5324,11 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
   Meal? _pendingDinner;
   Meal? _pendingSnack;
 
+  // OpenAI recipe name for a pending (Generate-All staged) meal, keyed by
+  // mealType. Shown on the staged card and stamped onto the FoodItems when the
+  // meal is logged — so bulk-generated meals title the card like accepted ones.
+  final Map<String, String> _pendingRecipeName = {};
+
   final Set<String> _loadingMeals = {};
 
   // Meal types whose nutrition summary is expanded to show full macros + micros.
@@ -5535,6 +5541,8 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
       if (mealType == 'lunch') _pendingLunch = meal;
       if (mealType == 'dinner') _pendingDinner = meal;
       if (mealType == 'snack') _pendingSnack = meal;
+      // A cleared/replaced pending meal drops any stale generated recipe name.
+      if (meal == null) _pendingRecipeName.remove(mealType);
     });
   }
 
@@ -5855,6 +5863,25 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     }
   }
 
+  /// Best-effort OpenAI recipe title for a generated [meal] (names + GA grams
+  /// only — same input the accept-mode RecipeScreen uses). Returns '' on any
+  /// failure so meal generation is never blocked by the recipe writer.
+  Future<String> _recipeTitleFor(Meal meal, String mealType) async {
+    try {
+      final ingredients = meal.items
+          .map((i) => '${i.portionGrams.round()}g ${i.ingredient.name}')
+          .toList();
+      if (ingredients.isEmpty) return '';
+      final recipe = await OpenAIService().generateRecipe(
+        ingredients: ingredients,
+        mealType: mealType,
+      );
+      return recipe.title;
+    } catch (_) {
+      return '';
+    }
+  }
+
   Future<void> _generateAll() async {
     if (_profile == null || !_guardIngredients()) return;
     if (isOffline(context)) {
@@ -5885,6 +5912,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
       // Ingredients already used by earlier meals today — evolveMeal penalises
       // (not excludes) repeats so the generated day stays varied.
       final usedIds = <String>{};
+      final generated = <String, Meal>{};
       for (final mealType in allMeals) {
         final budget = budgets[mealType] ?? 0;
         if (budget <= 30) continue; // meal already at/over its share
@@ -5904,6 +5932,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
           continue;
         }
         usedIds.addAll(meal.items.map((i) => i.ingredient.id));
+        generated[mealType] = meal;
         _setPending(mealType, meal);
         context.read<PlanProvider>().setMeal(
           mealType,
@@ -5912,6 +5941,18 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
         );
       }
       if (anyMatchFailure) _showNoMatchMessage();
+
+      // Name each staged meal with an OpenAI recipe title (in parallel), so the
+      // bulk-generated cards title the meal just like the single-meal Accept
+      // flow. Best-effort — a failure just leaves that meal nameless.
+      await Future.wait(
+        generated.entries.map((e) async {
+          final title = await _recipeTitleFor(e.value, e.key);
+          if (title.isNotEmpty && mounted) {
+            setState(() => _pendingRecipeName[e.key] = title);
+          }
+        }),
+      );
     } finally {
       if (mounted) setState(() => _loadingMeals.clear());
     }
@@ -5922,11 +5963,13 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     if (meal == null) return;
     try {
       // GA meals are ingredient lists — each ingredient is saved as its own
-      // FoodItem (scaled to grams) via _saveMealToFirestore.
+      // FoodItem (scaled to grams) via _saveMealToFirestore. Carry the staged
+      // recipe name so the logged card titles the meal like an accepted one.
       await context.read<PlanProvider>().setMeal(
         mealType,
         meal,
         saveToFirestore: true,
+        recipeName: _pendingRecipeName[mealType] ?? '',
       );
       _setPending(mealType, null);
       await _loadTodayLogs();
@@ -6534,11 +6577,13 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
           pendingMeal ?? _mealFromLoggedFoods(mealType, loggedFoods);
     }
 
-    // AI meals stamp a human recipe name on each logged ingredient; surface it
-    // as a collapsible sub-header. Empty for manually-logged meals.
+    // AI meals carry a human recipe name — on each logged ingredient (accepted
+    // meals) or on the staged pending meal (Generate-All). Surface it as a
+    // collapsible sub-header. Empty for manually-logged meals.
     final recipeName = loggedFoods
         .map((f) => f.recipeName)
-        .firstWhere((n) => n.isNotEmpty, orElse: () => '');
+        .firstWhere((n) => n.isNotEmpty,
+            orElse: () => _pendingRecipeName[mealType] ?? '');
     final ingredientsExpanded =
         recipeName.isEmpty || _expandedIngredients.contains(mealType);
 
@@ -6600,9 +6645,10 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
             ),
           ),
         ),
-        if (pendingMeal != null) ...[
+        if (pendingMeal != null && ingredientsExpanded) ...[
           // Generated additions (green) — shown alongside any logged items
-          // (orange) above when completing a partially-logged meal.
+          // (orange) above when completing a partially-logged meal. Collapsed
+          // with the rest of the ingredients under a recipe-name sub-header.
           ...pendingMeal.items.map(
             (item) => Dismissible(
               key: ValueKey(item.ingredient.id),
