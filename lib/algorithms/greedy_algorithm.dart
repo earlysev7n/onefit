@@ -1,3 +1,4 @@
+import '../data/age_prescription.dart';
 import '../data/physical_limitations.dart';
 import '../models/exercise.dart';
 import '../models/user_profile.dart';
@@ -1259,6 +1260,15 @@ class GreedyAlgorithm {
   static const int _kLimitationRestBonus = 45; // +45 s rest
   static const int _kLimitationRestCeiling = 210; // extended rest clamp (s)
 
+  // Age prescription modifier (older adults, age >= kOlderAdultAge). A
+  // conservative dosing layer on top of the goal — informed by ACSM older-adult
+  // resistance-training guidance (see age_prescription.dart), not a verbatim
+  // protocol. Stacks additively with the limitation modifier above; both share
+  // the same 2-set floor and the extended _kLimitationRestCeiling (210 s). Reps
+  // are untouched (older-adult guidance favours higher reps at moderate load).
+  static const int _kAgeSetReduction = 1; // −1 set
+  static const int _kAgeRestBonus = 30; // +30 s rest (gentler than the medical +45)
+
   /// Public view of the per-set rest this profile trains at (real prescription,
   /// focus + limitation applied). Mirrors [setsForDifficulty]; used by tests.
   int restSecondsForProfile(UserProfile profile) => _getRestSeconds(profile);
@@ -1306,6 +1316,14 @@ class GreedyAlgorithm {
     if (applyLimitation &&
         limitationsReduceIntensity(profile.physicalLimitations)) {
       sets = (sets - _kLimitationSetReduction).clamp(_kLimitationSetFloor, hi);
+    }
+    // Age modifier (older adults): a further conservative set reduction on top of
+    // the goal, floored at 2 working sets. Stacks with the limitation modifier
+    // above (both re-clamp to the floor, so combined they never drop below a real
+    // stimulus). Skipped for the session-fit COUNT budget (applyLimitation:false)
+    // so exercise count is unchanged — only the real prescription is dosed down.
+    if (applyLimitation && ageReducesIntensity(profile.age)) {
+      sets = (sets - _kAgeSetReduction).clamp(_kLimitationSetFloor, hi);
     }
     return sets;
   }
@@ -1414,16 +1432,25 @@ class GreedyAlgorithm {
           base -= 15;
           break;
       }
-      // Physical-limitation modifier (Asthma / High Blood Pressure): longer rest
-      // between sets for fuller recovery, layered on top of the goal/focus rest.
-      // Supports longer recovery intervals per ACSM hypertension guidance + the
-      // rest-interval literature (see physical_limitations.dart). Only applied
-      // with the focus (real prescription) — the count budget uses
-      // applyFocus:false, so exercise count is unchanged.
+      // Conservative rest extensions layered on top of the goal/focus rest, for
+      // fuller recovery. Both the physical-limitation modifier (Asthma / High
+      // Blood Pressure) and the age modifier (older adults) apply here and STACK;
+      // either one widens the ceiling to _kLimitationRestCeiling (210 s). Supports
+      // longer recovery intervals per ACSM hypertension guidance + the
+      // rest-interval literature (see physical_limitations.dart) and ACSM
+      // older-adult guidance (see age_prescription.dart). Only applied with the
+      // focus (real prescription) — the count budget uses applyFocus:false, so
+      // exercise count is unchanged.
+      var extended = false;
       if (limitationsReduceIntensity(profile.physicalLimitations)) {
         base += _kLimitationRestBonus;
-        return base.clamp(30, _kLimitationRestCeiling);
+        extended = true;
       }
+      if (ageReducesIntensity(profile.age)) {
+        base += _kAgeRestBonus;
+        extended = true;
+      }
+      if (extended) return base.clamp(30, _kLimitationRestCeiling);
     }
     return base.clamp(30, 180);
   }

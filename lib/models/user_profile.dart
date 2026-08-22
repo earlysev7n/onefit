@@ -1,3 +1,5 @@
+import '../data/age_prescription.dart';
+
 class UserProfile {
   final String uid;
   final String name;
@@ -157,6 +159,9 @@ class UserProfile {
     ([...equipment]..sort()).join(','),
     ([...physicalLimitations]..sort()).join(','),
     goalPriorities.join(','),
+    // Bucketed, not raw age: the workout dose only changes when the user crosses
+    // the older-adult threshold, so regenerate then — not on every birthday edit.
+    ageReducesIntensity(age),
   ].join('|');
 
   // Mifflin-St Jeor Formula
