@@ -122,6 +122,8 @@ Navigation uses `navigatorKey` (a global `GlobalKey<NavigatorState>`) with `push
 
 **Step 1 required-field validation:** `_validateStep1()` blocks **Next** until name (non-empty), DOB (selected), weight (valid, ~30–300 kg) and height (valid, ~100–250 cm) are all provided. Errors render inline (red `errorText` under each field / red border + helper text under the DOB tile) and clear live on edit. This guards the nutrition engine — without it `_dob == null` yields `age == 0`, corrupting BMR/TDEE/`calorieGoal`.
 
+**Age-safety acknowledgement (`_confirmAgeSafety`):** immediately after Step-1 validation passes, `_nextPage` (now `async`) awaits a **required disclaimer** when the entered age is at an extreme — `ageSafetyBracket(_age)`: `'senior'` (≥ 65) or `'youth'` (< 18). Non-dismissible barrier + a single **Got it** button, so it must be acknowledged before continuing — covering both onboarding and edit. Shown once per bracket per screen session (in-memory `_ageSafetyAcked`, reset on each screen instance so an edit re-shows it). **Senior** copy matches the real generator change (slightly fewer sets + a little more rest, reps unchanged — see `age_prescription.dart`). **Youth** copy is guidance only (adult/qualified supervision, technique first, no maximal lifting) — the generator is deliberately **not** adjusted for under-18s. Not medical advice.
+
 ---
 
 #### Step 2 — Your Fitness

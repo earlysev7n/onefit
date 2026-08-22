@@ -29,3 +29,10 @@ const int kOlderAdultAge = 65;
 /// should apply the conservative age dosing (fewer sets + longer rest). Mirrors
 /// `limitationsReduceIntensity` in `physical_limitations.dart`; the two stack.
 bool ageReducesIntensity(int age) => age >= kOlderAdultAge;
+
+/// The minimum age treated as an adult. Below this a user is a minor (youth). NB:
+/// this is used ONLY by the Home-screen age-safety disclaimer — the generator is
+/// deliberately NOT adjusted for under-18s (youth guidance is supervision +
+/// technique + no maximal lifting, which an app can't enforce). See
+/// `showAgeSafetyDialog` in `home_screen.dart`.
+const int kMinAdultAge = 18;

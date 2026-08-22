@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import '../algorithms/greedy_algorithm.dart';
 import '../app_clock.dart';
+import '../data/age_prescription.dart';
 import '../data/physical_limitations.dart';
 import '../models/user_profile.dart';
 import '../providers/plan_provider.dart';
@@ -12,6 +13,16 @@ import '../services/firestore_service.dart';
 import '../theme/app_colors.dart';
 import 'home_screen.dart';
 import '../main.dart';
+
+/// The age "safety bracket" an entered age falls into, or null if none:
+/// `'senior'` (≥ [kOlderAdultAge]) or `'youth'` (< [kMinAdultAge]). Age 0 means
+/// "not entered yet" and never triggers. Drives the Step-1 safety acknowledgement
+/// (see `_confirmAgeSafety`).
+String? ageSafetyBracket(int age) {
+  if (age >= kOlderAdultAge) return 'senior';
+  if (age > 0 && age < kMinAdultAge) return 'youth';
+  return null;
+}
 
 class ProfileInputScreen extends StatefulWidget {
   /// When non-null, the screen runs in *edit* mode: every field is prefilled
@@ -33,6 +44,10 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   // Step 1 — Biometrics
   final _nameController = TextEditingController();
   DateTime? _dob; // date of birth — age auto-calculated
+  // The age safety bracket already acknowledged this screen session, so the
+  // Step-1 disclaimer isn't re-shown if the user steps back and forward again.
+  // Reset per screen instance, so an *edit* session re-shows it once.
+  String? _ageSafetyAcked;
   final _weightController = TextEditingController();
   final _heightController = TextEditingController();
   String _gender = 'Male';
@@ -349,7 +364,77 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
         _heightError == null;
   }
 
-  void _nextPage() {
+  /// Safety acknowledgement shown at the point the age is entered — when the user
+  /// tries to continue past Step 1 (biometrics) with an age at either extreme.
+  /// Non-dismissible with a single **Got it** button, so it must be acknowledged
+  /// before continuing (covers both account creation and profile edits). Shown
+  /// once per bracket per screen session (`_ageSafetyAcked`).
+  ///
+  /// **Senior** copy matches the real generator change (fewer sets + longer rest,
+  /// reps unchanged — see age_prescription.dart). **Youth** copy is guidance only
+  /// (supervision, technique, no maximal lifting); the generator is deliberately
+  /// NOT adjusted for under-18s. Not medical advice.
+  Future<void> _confirmAgeSafety() async {
+    final bracket = ageSafetyBracket(_age);
+    if (bracket == null || _ageSafetyAcked == bracket) return;
+
+    final c = context.colors;
+    final isYouth = bracket == 'youth';
+    final title = isYouth ? 'Train safely' : 'Adjusted for your safety';
+    final body = isYouth
+        ? "Because you're under 18, train with adult or qualified supervision, "
+              "get your technique right before adding weight, and avoid maximal "
+              "(very heavy, low-rep) lifting. Your plan is a guide, not a "
+              "substitute for coaching.\n\n"
+              "This isn't medical advice — check with a doctor or coach before "
+              "starting a new program."
+        : "Because you're 65 or older, your plan is set up for safer training "
+              "and recovery: slightly fewer sets and a little more rest between "
+              "them. Your rep ranges are unchanged. Train at a controlled effort "
+              "and stop if anything hurts.\n\n"
+              "This isn't medical advice — check with your doctor before starting "
+              "a new program.";
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false, // must acknowledge — the only way out is "Got it"
+      builder: (ctx) => AlertDialog(
+        backgroundColor: c.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        icon: const Icon(
+          Icons.health_and_safety_outlined,
+          color: AppColors.primary,
+        ),
+        title: Text(
+          title,
+          style: GoogleFonts.spaceGrotesk(
+            color: c.onBackground,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
+          body,
+          style: GoogleFonts.inter(color: c.muted, fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            child: Text(
+              'Got it',
+              style: GoogleFonts.inter(
+                color: c.onPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    _ageSafetyAcked = bracket; // acknowledged (barrier is non-dismissible)
+  }
+
+  Future<void> _nextPage() async {
     // Dismiss the soft keyboard so it never lingers onto a later, field-less
     // step (e.g. the chip-only Fitness/Schedule pages).
     FocusScope.of(context).unfocus();
@@ -358,6 +443,10 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
       bool ok = false;
       setState(() => ok = _validateStep1());
       if (!ok) return; // block progression; inline errors now visible
+      // Age was just entered — require the safety acknowledgement before
+      // continuing (older-adult ≥65 or under-18).
+      await _confirmAgeSafety();
+      if (!mounted) return;
     }
     // Validate the Schedule step (days vs split) before advancing
     if (_currentPage == 2) {
