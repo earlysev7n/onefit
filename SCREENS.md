@@ -101,11 +101,17 @@ Navigation uses `navigatorKey` (a global `GlobalKey<NavigatorState>`) with `push
 ### ProfileInputScreen
 **File:** `lib/screens/profile_input_screen.dart`
 
-**Purpose:** Dual-mode 3-step wizard that collects all user body stats and fitness preferences.
-- **Onboarding mode** (`ProfileInputScreen()`, `existing == null`) — first-run flow; writes a fresh `UserProfile` and lands the user on `HomeScreen`.
-- **Edit mode** (`ProfileInputScreen(existing: profile)`) — launched from the Profile tab's "Edit Profile" button. `initState` prefills every field from `existing` (weight/height converted back to the user's unit system; DOB reconstructed from the stored age). Saving uses `existing.copyWith(...)` so `uid` and the accumulated `calorieAdjustment` survive, and pops back to the Profile screen instead of replacing the stack. The CTA reads "Save Changes" instead of "Get Started".
+**Purpose:** Collects all user body stats and fitness preferences, in three forms: a first-run onboarding **wizard**, an **inline section list** embedded in the Settings screen, and a **single-section full-screen editor** opened from that list.
+- **Onboarding** (`ProfileInputScreen()`, `embedded == false`, `sectionIndex == null`) — first-run wizard; writes a fresh `UserProfile` and lands the user on `HomeScreen`.
+- **Embedded section list** (`ProfileInputScreen(existing: profile, embedded: true)`) — rendered **inline under the Settings "Edit Profile" row**: four tappable nav rows (About You / Your Fitness / Your Schedule / Your Diet), each **pushing** its own single-section screen. Has no form state of its own.
+- **Single-section screen** (`ProfileInputScreen(existing: profile, sectionIndex: i)`) — a full-screen editor for one section only (titled header + that step's fields + Save). `initState` prefills every field from `existing` (weight/height back to the user's unit system; DOB from stored age); on save, `existing.copyWith(...)` persists the **whole** profile (untouched sections keep their prefilled values, so `uid` + `calorieAdjustment` survive) and pops back to the list with a "Profile updated" snackbar.
 
-**Structure:** `PageView` with 3 pages navigated by Next/Back buttons; a progress bar of 3 segments at the top fills as the user advances.
+**Structure:** `build` chooses by `widget.sectionIndex` / `widget.embedded`:
+- `sectionIndex != null` → `_buildSectionScreen(i)` — Scaffold with a titled header (back + section name), that step's fields (`_buildStepX(asSection: true)`, scrollable) and a Save button → `_saveSection(i)`. `_saveSection` runs only the checks relevant to the section (biometrics + `_confirmAgeSafety` for About You; `_splitDaysError` → `_showScheduleError` for Your Schedule) before the shared `_saveProfile`.
+- `embedded` → `_buildEmbeddedSectionList` — four `_sectionNavRow`s (`c.inputFill` cards, chevron_right) that push the section screens.
+- else → `_buildWizardLayout` — onboarding `PageView` of 4 pages, 4-segment progress bar, Next/Back, final CTA "Get Started".
+
+Each `_buildStepX` gained `asSection` (drops its `SingleChildScrollView` wrapper + big title so it can be reused as a section body); the wizard uses the default (title shown). The "Incompatible schedule" dialog is the shared `_showScheduleError`, called by both `_nextPage` and `_saveSection`.
 
 ---
 
@@ -122,7 +128,7 @@ Navigation uses `navigatorKey` (a global `GlobalKey<NavigatorState>`) with `push
 
 **Step 1 required-field validation:** `_validateStep1()` blocks **Next** until name (non-empty), DOB (selected), weight (valid, ~30–300 kg) and height (valid, ~100–250 cm) are all provided. Errors render inline (red `errorText` under each field / red border + helper text under the DOB tile) and clear live on edit. This guards the nutrition engine — without it `_dob == null` yields `age == 0`, corrupting BMR/TDEE/`calorieGoal`.
 
-**Age-safety acknowledgement (`_confirmAgeSafety`):** immediately after Step-1 validation passes, `_nextPage` (now `async`) awaits a **required disclaimer** when the entered age is at an extreme — `ageSafetyBracket(_age)`: `'senior'` (≥ 65) or `'youth'` (< 18). Non-dismissible barrier + a single **Got it** button, so it must be acknowledged before continuing — covering both onboarding and edit. Shown once per bracket per screen session (in-memory `_ageSafetyAcked`, reset on each screen instance so an edit re-shows it). **Senior** copy matches the real generator change (slightly fewer sets + a little more rest, reps unchanged — see `age_prescription.dart`). **Youth** copy is guidance only (adult/qualified supervision, technique first, no maximal lifting) — the generator is deliberately **not** adjusted for under-18s. Not medical advice.
+**Age-safety acknowledgement (`_confirmAgeSafety`):** after Step-1 validation passes — from `_nextPage` (wizard, now `async`) or `_saveEdit` (edit accordion) — a **required disclaimer** is awaited when the entered age is at an extreme — `ageSafetyBracket(_age)`: `'senior'` (≥ 65) or `'youth'` (< 18). Non-dismissible barrier + a single **Got it** button, so it must be acknowledged before continuing — covering both onboarding and edit. Shown once per bracket per screen session (in-memory `_ageSafetyAcked`, reset on each screen instance so an edit re-shows it). **Senior** copy matches the real generator change (slightly fewer sets + a little more rest, reps unchanged — see `age_prescription.dart`). **Youth** copy is guidance only (adult/qualified supervision, technique first, no maximal lifting) — the generator is deliberately **not** adjusted for under-18s. Not medical advice.
 
 ---
 
@@ -493,6 +499,8 @@ Two modes:
 **File:** `lib/screens/settings_screen.dart`
 
 **Purpose:** Preferences (dark mode, units, goal-adjustment notification) and Account actions (edit profile, change password, log out). Reached from the Profile tab.
+
+**Edit Profile is an inline section list** (not one big edit screen): the Account "Edit Profile" tile toggles `_editProfileExpanded` (chevron up/down) and, when open, renders `ProfileInputScreen(existing: profile, embedded: true)` below the tile — four tappable rows (About You / Your Fitness / Your Schedule / Your Diet). Tapping a row **pushes a full-screen editor for just that section** (`ProfileInputScreen(sectionIndex: i)`); saving persists the whole profile and pops back to the still-open list with a "Profile updated" snackbar.
 
 **Developer section (demo tooling):** a **Developer Mode** `Switch` (persisted to `SharedPreferences` `developerMode`, toggling `developerModeEnabled`) reveals, when on, a set of adaptive-system demo controls — see the CLAUDE.md "Debug flags" section for the full behaviour:
 - **Change Day** switch → `devDayChangerEnabled` (shows the floating date pill).

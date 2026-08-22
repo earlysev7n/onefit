@@ -24,6 +24,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _showGoalPopup = true;
   bool _seeding = false;
   bool _resetting = false;
+  bool _editProfileExpanded = false; // inline "Edit Profile" dropdown
 
   @override
   void initState() {
@@ -57,7 +58,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
-                    child: Icon(Icons.chevron_left, color: AppColors.primary, size: 28),
+                    child: Icon(
+                      Icons.chevron_left,
+                      color: AppColors.primary,
+                      size: 28,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Text(
@@ -121,7 +126,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       icon: Icons.notifications_outlined,
                       iconColor: AppColors.amber,
                       title: 'Goal Adjustment Notification',
-                      subtitle: 'Remind me when today\'s calorie goal is adjusted',
+                      subtitle:
+                          'Remind me when today\'s calorie goal is adjusted',
                       trailing: Switch(
                         value: _showGoalPopup,
                         onChanged: (val) async {
@@ -157,17 +163,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       iconColor: AppColors.primary,
                       title: 'Edit Profile',
                       subtitle: 'Update your personal information',
-                      trailing: Icon(Icons.chevron_right, color: c.subtle),
+                      trailing: Icon(
+                        _editProfileExpanded
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        color: c.subtle,
+                      ),
                       onTap: profile == null
                           ? null
-                          : () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      ProfileInputScreen(existing: profile),
-                                ),
-                              ),
+                          : () => setState(
+                              () =>
+                                  _editProfileExpanded = !_editProfileExpanded,
+                            ),
                     ),
+                    // Inline editor drops down right here instead of a new screen.
+                    if (_editProfileExpanded && profile != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: ProfileInputScreen(
+                          key: ValueKey(profile.uid),
+                          existing: profile,
+                          embedded: true,
+                        ),
+                      ),
                     Divider(height: 1, color: c.border, indent: 64),
                     _settingsTile(
                       context,
@@ -376,35 +394,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           c,
                           'Level Up',
                           'Simulates a week where you ate under your calorie goal (80%) and found all workouts too easy (rating 1). '
-                          'Result: +100 kcal next week, difficulty stepped up.',
+                              'Result: +100 kcal next week, difficulty stepped up.',
                         ),
                         const SizedBox(height: 16),
                         _scenarioInfo(
                           c,
                           'Ease Off',
                           'Simulates a week where workouts felt too hard (rating 5) and you only completed ~40% of them. '
-                          'Result: no calorie change, difficulty stepped down.',
+                              'Result: no calorie change, difficulty stepped down.',
                         ),
                         const SizedBox(height: 16),
                         _scenarioInfo(
                           c,
                           'Realistic',
                           'Simulates a typical week — mildly under calories (83%), neutral effort (rating 3), ~70% workout completion. '
-                          'Result: +100 kcal, difficulty held steady.',
+                              'Result: +100 kcal, difficulty held steady.',
                         ),
                       ],
                     ),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(context),
-                        child: Text('Got it',
-                            style: TextStyle(color: AppColors.primary)),
+                        child: Text(
+                          'Got it',
+                          style: TextStyle(color: AppColors.primary),
+                        ),
                       ),
                     ],
                   ),
                 ),
-                child: Icon(Icons.info_outline,
-                    size: 18, color: c.muted),
+                child: Icon(Icons.info_outline, size: 18, color: c.muted),
               ),
             ],
           ),
@@ -428,9 +447,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
-                  side: BorderSide(
-                    color: isSel ? AppColors.primary : c.border,
-                  ),
+                  side: BorderSide(color: isSel ? AppColors.primary : c.border),
                 );
               }).toList(),
             ),
@@ -484,9 +501,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _runSkipToNextWeek() async {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _seeding = true);
-    messenger.showSnackBar(
-      const SnackBar(content: Text('Seeding last week…')),
-    );
+    messenger.showSnackBar(const SnackBar(content: Text('Seeding last week…')));
     try {
       final msg = await DevTools.simulateWeekAndAdvance(
         context,
@@ -620,10 +635,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: GoogleFonts.inter(
-                      color: c.muted,
-                      fontSize: 12,
-                    ),
+                    style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                   ),
                 ],
               ),
@@ -684,7 +696,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       obscureCurrent ? Icons.visibility_off : Icons.visibility,
                       color: c.muted,
                     ),
-                    onPressed: () => setDialogState(() => obscureCurrent = !obscureCurrent),
+                    onPressed: () =>
+                        setDialogState(() => obscureCurrent = !obscureCurrent),
                   ),
                 ),
               ),
@@ -710,7 +723,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       obscureNew ? Icons.visibility_off : Icons.visibility,
                       color: c.muted,
                     ),
-                    onPressed: () => setDialogState(() => obscureNew = !obscureNew),
+                    onPressed: () =>
+                        setDialogState(() => obscureNew = !obscureNew),
                   ),
                 ),
               ),
@@ -736,7 +750,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       obscureConfirm ? Icons.visibility_off : Icons.visibility,
                       color: c.muted,
                     ),
-                    onPressed: () => setDialogState(() => obscureConfirm = !obscureConfirm),
+                    onPressed: () =>
+                        setDialogState(() => obscureConfirm = !obscureConfirm),
                   ),
                 ),
               ),
@@ -745,10 +760,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: loading ? null : () => Navigator.pop(ctx),
-              child: Text(
-                'Cancel',
-                style: GoogleFonts.inter(color: c.muted),
-              ),
+              child: Text('Cancel', style: GoogleFonts.inter(color: c.muted)),
             ),
             ElevatedButton(
               onPressed: loading
