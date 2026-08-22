@@ -552,68 +552,109 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   // (see `_buildSectionScreen`) — no inline expansion. `mainAxisSize.min` so it
   // takes only the height it needs inside the Settings column.
   Widget _buildEmbeddedSectionList() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _sectionNavRow(0, 'About You', 'Name, age, weight, height'),
-        _sectionNavRow(1, 'Your Fitness', 'Goal, experience, equipment'),
-        _sectionNavRow(2, 'Your Schedule', 'Days, split, session length'),
-        _sectionNavRow(3, 'Your Diet', 'Restrictions, allergies'),
-      ],
-    );
-  }
-
-  // One tappable row in the embedded section list → pushes that section's own
-  // edit screen (this same widget in `sectionIndex` mode).
-  Widget _sectionNavRow(int index, String title, String subtitle) {
     final c = context.colors;
+    Widget divider() => Divider(height: 1, color: c.border, indent: 60);
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        // inputFill (not surface) so the rows stand out against the Settings
-        // account card, which is itself surface-coloured.
-        color: c.inputFill,
+        // Near-white in light (surfaceVariant #F7F7F2 ≈ the #FFFFFF account card),
+        // a touch lighter than the card in dark (#1E1E1E vs #1A1A1A). The subtle
+        // border keeps the low-contrast panel delineated against the card.
+        color: c.surfaceVariant,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: c.border),
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ProfileInputScreen(
-              existing: widget.existing,
-              sectionIndex: index,
-            ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _sectionNavRow(
+            0,
+            Icons.person_outline,
+            'About You',
+            'Name, age, weight, height',
+          ),
+          divider(),
+          _sectionNavRow(
+            1,
+            Icons.fitness_center,
+            'Your Fitness',
+            'Goal, experience, equipment',
+          ),
+          divider(),
+          _sectionNavRow(
+            2,
+            Icons.calendar_today_outlined,
+            'Your Schedule',
+            'Days, split, session length',
+          ),
+          divider(),
+          _sectionNavRow(
+            3,
+            Icons.restaurant_outlined,
+            'Your Diet',
+            'Restrictions, allergies',
+          ),
+        ],
+      ),
+    );
+  }
+
+  // One compact row in the embedded section list → pushes that section's own edit
+  // screen. Mirrors the Settings tile (leading icon square + title + subtitle +
+  // chevron) but with smaller, minimal type.
+  Widget _sectionNavRow(
+    int index,
+    IconData icon,
+    String title,
+    String subtitle,
+  ) {
+    final c = context.colors;
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProfileInputScreen(
+            existing: widget.existing,
+            sectionIndex: index,
           ),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: GoogleFonts.spaceGrotesk(
-                        color: c.onBackground,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: GoogleFonts.inter(color: c.muted, fontSize: 12),
-                    ),
-                  ],
-                ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: c.muted.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(9),
               ),
-              Icon(Icons.chevron_right, color: c.muted),
-            ],
-          ),
+              child: Icon(icon, color: c.muted, size: 17),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.spaceGrotesk(
+                      color: c.onBackground,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.inter(color: c.muted, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: c.subtle, size: 18),
+          ],
         ),
       ),
     );
