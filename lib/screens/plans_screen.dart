@@ -70,6 +70,10 @@ class PlansScreen extends StatefulWidget {
 class PlansScreenState extends State<PlansScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  // Key to the workout sub-tab's state, so the Home "Start Workout" quick action
+  // can start today's session through this screen (see [startWorkout]).
+  final GlobalKey<_WorkoutTabState> _workoutTabKey =
+      GlobalKey<_WorkoutTabState>();
 
   @override
   void initState() {
@@ -95,6 +99,13 @@ class PlansScreenState extends State<PlansScreen>
   }
 
   void switchToMealTab() => _tabController.animateTo(1);
+
+  /// Switch to the Workout sub-tab and start today's session — the Home
+  /// "Start Workout" quick action calls this via [plansScreenKey].
+  void startWorkout() {
+    _tabController.animateTo(0);
+    _workoutTabKey.currentState?.startWorkoutFromHome();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -166,7 +177,7 @@ class PlansScreenState extends State<PlansScreen>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  const ResponsiveBody(child: _WorkoutTab()),
+                  ResponsiveBody(child: _WorkoutTab(key: _workoutTabKey)),
                   ResponsiveBody(child: _MealTab(focusMealType: focusMealType)),
                 ],
               ),
@@ -180,7 +191,7 @@ class PlansScreenState extends State<PlansScreen>
 
 // ─── WORKOUT TAB ──────────────────────────────────────────────────────────────
 class _WorkoutTab extends StatefulWidget {
-  const _WorkoutTab();
+  const _WorkoutTab({super.key});
   @override
   State<_WorkoutTab> createState() => _WorkoutTabState();
 }
@@ -2008,6 +2019,30 @@ class _WorkoutTabState extends State<_WorkoutTab>
     if (leave == true && mounted) {
       setState(_resetWorkoutState);
     }
+  }
+
+  /// Entry point for the Home "Start Workout" quick action. The workout tab may
+  /// have just mounted, so wait until the plan is loaded before starting; no-op
+  /// if a session is already running.
+  void startWorkoutFromHome() => _awaitPlanThenStart(0);
+
+  void _awaitPlanThenStart(int attempts) {
+    if (!mounted || _sessionStarted) return;
+    if (!_isLoading && _plan.isNotEmpty) {
+      // Don't restart a day already logged as done (the on-screen Start button
+      // hides when complete); the Plans screen shows its completed state instead.
+      if (_selectedDay < _plan.length &&
+          _weekDone[_plan[_selectedDay].dayName] == true) {
+        return;
+      }
+      _startWorkout();
+      return;
+    }
+    if (attempts >= 40) return; // give up after ~2s if the plan never loads
+    Future.delayed(
+      const Duration(milliseconds: 50),
+      () => _awaitPlanThenStart(attempts + 1),
+    );
   }
 
   Future<void> _startWorkout() async {

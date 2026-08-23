@@ -304,12 +304,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
                   _buildAddOption(
-                    Icons.fitness_center_rounded,
-                    'Log\nWorkout',
+                    Icons.play_circle_fill_rounded,
+                    'Start\nWorkout',
                     AppColors.primary,
                     onTap: () {
                       Navigator.pop(context);
                       setState(() => _currentIndex = 1);
+                      // Plans mounts fresh on tab switch — start today's session
+                      // once it's built.
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        plansScreenKey.currentState?.startWorkout();
+                      });
                     },
                   ),
                   _buildAddOption(

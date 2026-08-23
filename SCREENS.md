@@ -197,11 +197,11 @@ All selected values are stored together in `UserProfile.dietaryRestrictions`. Th
 | 4 | `ProfileScreen` | — |
 
 **Centre FAB (index 2):** opens `_showAddSheet()` — a bottom sheet with three options:
-- **Log Workout** → switches to Plans tab (`_currentIndex = 1`).
+- **Start Workout** → switches to the Plans tab (`_currentIndex = 1`) and, in a post-frame callback (Plans mounts fresh on switch), calls `plansScreenKey.currentState?.startWorkout()` to begin today's session immediately (no-op if today is already logged done or a session is running).
 - **Log Meal** → `_showMealTypeSelector()` → `FoodLogScreen`.
 - **Scan Barcode** → `_showMealTypeSelector(autoScan: true)` → `FoodLogScreen` with camera auto-launched.
 
-**`plansScreenKey`:** A `GlobalKey<PlansScreenState>` defined at the top of this file. Other code can call `plansScreenKey.currentState?.switchToMealTab()` to programmatically switch the Plans screen to the Meal tab.
+**`plansScreenKey`:** A `GlobalKey<PlansScreenState>` defined at the top of this file. Other code can call `plansScreenKey.currentState?.switchToMealTab()` (→ Meal tab) or `startWorkout()` (→ Workout tab + start today's session) to drive the Plans screen programmatically.
 
 **Back-press behaviour:** First press on the home tab shows a "Press back again to exit" snackbar. Second press within 2 seconds exits the app.
 

@@ -164,6 +164,7 @@ Edit mode enforces a 50% minimum exercise cap (cannot remove more than half the 
 `PlansScreen` has two tabs — Workout (index 0) and Meal (index 1). To switch programmatically:
 - Pass route arguments `{'mealType': '<type>'}` when pushing `PlansScreen` — `didChangeDependencies` picks this up and animates to the meal tab.
 - Call `plansScreenKey.currentState?.switchToMealTab()` directly — `plansScreenKey` is a `GlobalKey<PlansScreenState>` defined in `home_screen.dart`.
+- Call `plansScreenKey.currentState?.startWorkout()` (the Home "Add → Start Workout" quick action) — animates to the Workout tab, then forwards to the workout sub-tab's state via a private `GlobalKey<_WorkoutTabState>` (`_startWorkout` lives on `_WorkoutTabState`, not `PlansScreenState`). Because `body: screens[_currentIndex]` mounts `PlansScreen` fresh on switch, `startWorkoutFromHome` polls (`_awaitPlanThenStart`, ~50 ms × 40) until the plan finishes loading before calling `_startWorkout`; it no-ops if the day is already in `_weekDone` (completed) or a session is running.
 
 ### UI design tokens
 
