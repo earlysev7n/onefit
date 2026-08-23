@@ -121,6 +121,8 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     _heightController.dispose();
     _weightFocus.dispose();
     _heightFocus.dispose();
+    _restrictionSearchCtrl.dispose();
+    _allergySearchCtrl.dispose();
     super.dispose();
   }
 
@@ -191,7 +193,10 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
     'Low Carb',
     'Keto',
     'Paleo',
+    'Low-FODMAP',
   ];
+  // Shown as chips before "+ Other"; the rest live in the Other search sheet.
+  final List<String> _commonRestrictions = ['Vegetarian', 'Vegan', 'Halal'];
   final List<String> _dietStyleOptions = [
     'High-protein',
     'Low-carb',
@@ -199,14 +204,32 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
   ];
   final List<String> _allergyOptions = [
     'None',
+    'Milk',
     'Peanuts',
     'Tree Nuts',
     'Eggs',
     'Soy',
+    'Wheat',
+    'Gluten',
     'Fish',
     'Shellfish',
+    'Crab',
+    'Shrimp',
+    'Lobster',
+    'Molluscs',
     'Sesame',
+    'Mustard',
+    'Celery',
+    'Lupin',
+    'Sulphites',
+    'Coconut',
   ];
+  final List<String> _commonAllergies = ['Milk', 'Peanuts', 'Tree Nuts'];
+  // "+ Other" search state for the two multi-select diet groups.
+  bool _restrictionSearchOpen = false;
+  bool _allergySearchOpen = false;
+  final _restrictionSearchCtrl = TextEditingController();
+  final _allergySearchCtrl = TextEditingController();
   // Physical-limitation options come from the single source of truth so the
   // chips and the generator's exclusion rules can never drift.
   final List<String> _limitationOptions = kPhysicalLimitations
@@ -1629,10 +1652,18 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
         ],
         _buildLabel('Dietary Restrictions'),
         const SizedBox(height: 8),
-        _buildMultiChipGroup(
-          _restrictionOptions,
-          _dietaryRestrictions,
-          (v) => setState(() {
+        _buildChipsWithOther(
+          common: _commonRestrictions,
+          allOptions: _restrictionOptions,
+          selected: _dietaryRestrictions,
+          searchOpen: _restrictionSearchOpen,
+          searchCtrl: _restrictionSearchCtrl,
+          hint: 'Search restrictions…',
+          onToggleSearch: () => setState(() {
+            _restrictionSearchOpen = !_restrictionSearchOpen;
+            if (!_restrictionSearchOpen) _restrictionSearchCtrl.clear();
+          }),
+          onToggle: (v) => setState(() {
             if (v == 'None') {
               _dietaryRestrictions.removeWhere(_restrictionOptions.contains);
               _dietaryRestrictions.add('None');
@@ -1647,10 +1678,18 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
         const SizedBox(height: 20),
         _buildLabel('Food Allergies'),
         const SizedBox(height: 8),
-        _buildMultiChipGroup(
-          _allergyOptions,
-          _foodAllergies,
-          (v) => setState(() {
+        _buildChipsWithOther(
+          common: _commonAllergies,
+          allOptions: _allergyOptions,
+          selected: _foodAllergies,
+          searchOpen: _allergySearchOpen,
+          searchCtrl: _allergySearchCtrl,
+          hint: 'Search allergens…',
+          onToggleSearch: () => setState(() {
+            _allergySearchOpen = !_allergySearchOpen;
+            if (!_allergySearchOpen) _allergySearchCtrl.clear();
+          }),
+          onToggle: (v) => setState(() {
             if (v == 'None') {
               _foodAllergies.removeWhere(_allergyOptions.contains);
               _foodAllergies.add('None');
@@ -2194,6 +2233,184 @@ class _ProfileInputScreenState extends State<ProfileInputScreen> {
             ),
           )
           .toList(),
+    );
+  }
+
+  // Multi-select group that shows only the common options as chips, plus a
+  // "+ Other" pill that reveals a search over the full [allOptions] list — so a
+  // long option list (allergens/restrictions) stays uncluttered. Any selected
+  // non-common item is also shown as a chip so the current picks stay visible.
+  Widget _buildChipsWithOther({
+    required List<String> common,
+    required List<String> allOptions,
+    required List<String> selected,
+    required bool searchOpen,
+    required TextEditingController searchCtrl,
+    required String hint,
+    required VoidCallback onToggleSearch,
+    required void Function(String) onToggle,
+  }) {
+    final c = context.colors;
+    final query = searchCtrl.text.trim().toLowerCase();
+    final chips = <String>[
+      'None',
+      ...common,
+      ...selected.where((s) => s != 'None' && !common.contains(s)),
+    ];
+    final matches = allOptions
+        .where((o) => o != 'None' && o.toLowerCase().contains(query))
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ...chips.map(
+              (o) =>
+                  _selectableChip(o, selected.contains(o), () => onToggle(o)),
+            ),
+            GestureDetector(
+              onTap: onToggleSearch,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: c.inputFill,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: searchOpen ? AppColors.primary : Colors.transparent,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      searchOpen ? Icons.close : Icons.add,
+                      size: 16,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      searchOpen ? 'Close' : 'Other',
+                      style: GoogleFonts.inter(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (searchOpen) ...[
+          const SizedBox(height: 12),
+          TextField(
+            controller: searchCtrl,
+            onChanged: (_) => setState(() {}),
+            style: TextStyle(color: c.onBackground, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: GoogleFonts.inter(color: c.muted, fontSize: 14),
+              prefixIcon: Icon(Icons.search, color: c.muted, size: 20),
+              isDense: true,
+              filled: true,
+              fillColor: c.inputFill,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: c.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: c.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppColors.primary),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              border: Border.all(color: c.border),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: matches.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      'No matches',
+                      style: GoogleFonts.inter(color: c.muted, fontSize: 13),
+                    ),
+                  )
+                : Column(
+                    children: [
+                      for (int i = 0; i < matches.length; i++) ...[
+                        if (i > 0) Divider(height: 1, color: c.border),
+                        _searchRow(
+                          matches[i],
+                          selected.contains(matches[i]),
+                          () => onToggle(matches[i]),
+                        ),
+                      ],
+                    ],
+                  ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _selectableChip(String label, bool selected, VoidCallback onTap) {
+    final c = context.colors;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : c.inputFill,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.inter(
+            color: selected ? c.onPrimary : c.onBackground,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _searchRow(String label, bool selected, VoidCallback onTap) {
+    final c = context.colors;
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        color: selected ? AppColors.primary.withValues(alpha: 0.10) : null,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: GoogleFonts.inter(color: c.onBackground, fontSize: 14),
+              ),
+            ),
+            Icon(
+              selected ? Icons.check_rounded : Icons.add_rounded,
+              size: 20,
+              color: AppColors.primary,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

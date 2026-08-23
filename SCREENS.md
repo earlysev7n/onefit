@@ -158,12 +158,15 @@ Two feedback layers: a **live red banner** inside Step 2 that appears as soon as
 ---
 
 #### Step 3 — Your Diet
-| Field | Widget |
+| Group | Widget |
 |---|---|
-| Common restrictions | Multi-chip (Halal, Gluten-free, Vegan, Vegetarian, Dairy-free, Nut-free, Egg-free, Soy-free, Lactose-intolerant) |
-| Diet styles | Multi-chip (Keto, Paleo, Low-carb, High-protein, Mediterranean, Diabetic-friendly, Pescatarian) |
+| Dietary restrictions | `_buildChipsWithOther` — common chips (None, Vegetarian, Vegan, Halal) + a **"+ Other"** pill that opens a search over the full list (Pescatarian, Kosher, Gluten-Free, Dairy-Free, Low Carb, Keto, Paleo, Low-FODMAP). Multi-select. |
+| Food allergies | `_buildChipsWithOther` — common chips (None, Milk, Peanuts, Tree Nuts) + "+ Other" search over the full allergen list (Eggs, Soy, Wheat, Gluten, Fish, Shellfish, Crab, Shrimp, Lobster, Molluscs, Sesame, Mustard, Celery, Lupin, Sulphites, Coconut). Multi-select. |
+| Diet style | `_buildMultiChipGroup` — single-select (High-protein, Low-carb, Balanced). |
 
-All selected values are stored together in `UserProfile.dietaryRestrictions`. The meal service reads this list to **hard-constrain which recipe categories are fetched** (e.g. High-protein → only chicken/beef/seafood, never pasta).
+**`_buildChipsWithOther` pattern** (declutters long option lists): shows only the *common* options as chips — plus any *selected* non-common item so current picks stay visible — and a **"+ Other"** pill. Tapping it reveals a search `TextField` (`_restrictionSearchOpen` / `_allergySearchOpen` + a `TextEditingController`) and a filtered pick-list of the full `allOptions` (tap a row to toggle; selected rows show a check). `None` clears the group; picking any option removes `None`.
+
+Restrictions + diet style are stored together in `UserProfile.dietaryRestrictions`; allergies in `UserProfile.foodAllergies`. The meal generator enforces both via `DietaryFilter` — restrictions through inclusion tags / exclusion allergens, food allergies through `DietaryFilter.violatesAllergies` name matching (extended to cover the expanded set: dairy/wheat/gluten/crustaceans/molluscs/etc.).
 
 ---
 

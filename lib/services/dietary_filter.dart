@@ -103,6 +103,18 @@ class DietaryFilter {
     'mackerel', 'cod', 'anchovy', 'herring', 'trout', 'fish', 'seafood',
   ];
 
+  // Wheat-specific (narrower than gluten — no barley/rye/oat). Hidden for Wheat
+  // allergy. Conservative: excludes common wheat carriers.
+  static const List<String> _wheat = [
+    'wheat', 'bread', 'pasta', 'noodle', 'couscous', 'semolina', 'spelt',
+    'bulgur', 'bagel', 'pita',
+  ];
+
+  // Molluscs (shellfish subset). Hidden for Molluscs allergy.
+  static const List<String> _molluscs = [
+    'clam', 'mussel', 'oyster', 'squid', 'octopus', 'scallop', 'snail',
+  ];
+
   static bool _matchesAny(String name, List<String> keywords) =>
       keywords.any(name.contains);
 
@@ -198,6 +210,42 @@ class DietaryFilter {
           break;
         case 'sesame':
           if (_matchesAny(name, _sesame)) return true;
+          break;
+        case 'milk':
+          if (matchesDairy(name)) return true;
+          break;
+        case 'wheat':
+          if (_matchesAny(name, _wheat)) return true;
+          break;
+        case 'gluten':
+          if (_matchesAny(name, _gluten)) return true;
+          break;
+        case 'crab':
+          if (name.contains('crab')) return true;
+          break;
+        case 'shrimp':
+          if (name.contains('shrimp') || name.contains('prawn')) return true;
+          break;
+        case 'lobster':
+          if (name.contains('lobster')) return true;
+          break;
+        case 'molluscs':
+          if (_matchesAny(name, _molluscs)) return true;
+          break;
+        case 'mustard':
+          if (name.contains('mustard')) return true;
+          break;
+        case 'celery':
+          if (name.contains('celery')) return true;
+          break;
+        case 'lupin':
+          if (name.contains('lupin')) return true;
+          break;
+        case 'sulphites':
+          if (name.contains('sulphite') || name.contains('sulfite')) return true;
+          break;
+        case 'coconut':
+          if (name.contains('coconut')) return true;
           break;
       }
     }
