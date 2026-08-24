@@ -562,7 +562,7 @@ class _HomeDashboard extends StatelessWidget {
           Icon(Icons.bolt_rounded, size: 16, color: color),
           const SizedBox(width: 3),
           Text(
-            '$streak',
+            '$streak ${streak == 1 ? 'day' : 'days'}',
             style: GoogleFonts.spaceGrotesk(
               color: color,
               fontWeight: FontWeight.w700,
