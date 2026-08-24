@@ -56,6 +56,9 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
 
   final Set<String> _loggingIds = {};
 
+  /// Seeded ingredients for offline search + browsable staples section.
+  List<MealIngredient> _staples = [];
+
   /// Picker-mode basket of available ingredients (per-100g, GA-ready).
   final List<MealIngredient> _picked = [];
 
@@ -98,6 +101,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
   void initState() {
     super.initState();
     _loadHistory();
+    _loadStaples();
     _scrollController.addListener(_onScroll);
     if (widget.autoScan) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _scanBarcode());
@@ -149,6 +153,61 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
       if (mounted) setState(() => _isLoadingHistory = false);
     }
   }
+
+  // ── Offline staples ─────────────────────────────────────────────────────────
+
+  Future<void> _loadStaples() async {
+    final ingredients = await _firestore.getIngredients();
+    if (mounted) setState(() => _staples = ingredients);
+  }
+
+  _USDAFoodItem _ingredientToUSDA(MealIngredient ing) {
+    return _USDAFoodItem(
+      fdcId: ing.id,
+      name: ing.name,
+      brandOwner: '',
+      servingSize: 100,
+      servingUnit: 'g',
+      calories: ing.calories,
+      protein: ing.protein,
+      carbs: ing.carbs,
+      fat: ing.fat,
+      fiber: ing.fiber,
+      sugar: ing.sugar,
+      sodium: ing.sodium,
+      vitaminA: ing.vitaminA,
+      vitaminC: ing.vitaminC,
+      vitaminD: ing.vitaminD,
+      vitaminE: ing.vitaminE,
+      vitaminK: ing.vitaminK,
+      vitaminB6: ing.vitaminB6,
+      vitaminB12: ing.vitaminB12,
+      folate: ing.folate,
+      iron: ing.iron,
+      calcium: ing.calcium,
+      magnesium: ing.magnesium,
+      potassium: ing.potassium,
+      zinc: ing.zinc,
+      phosphorus: ing.phosphorus,
+    );
+  }
+
+  static const _categoryOrder = [
+    'protein', 'grain', 'vegetable', 'fruit',
+    'legume', 'dairy', 'fat', 'condiment', 'other',
+  ];
+
+  static const _categoryLabels = {
+    'protein': 'Protein',
+    'grain': 'Grains & Starches',
+    'vegetable': 'Vegetables',
+    'fruit': 'Fruits',
+    'legume': 'Legumes',
+    'dairy': 'Dairy',
+    'fat': 'Fats & Nuts',
+    'condiment': 'Condiments',
+    'other': 'Other',
+  };
 
   // ── Picker mode ──────────────────────────────────────────────────────────────
 
@@ -457,15 +516,25 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
     _searchPage = 1;
     _totalPages = 0;
     if (_scrollController.hasClients) _scrollController.jumpTo(0);
-    // Offline: serve a previously-cached query, otherwise show the offline
-    // notice rather than firing a doomed request that just times out.
+    // Offline: serve a previously-cached query, or search local staples.
     if (isOffline(context) && !_searchCache.containsKey(cacheKey)) {
+      final q = query.trim().toLowerCase();
+      final matches = _staples
+          .where((ing) => ing.name.toLowerCase().contains(q))
+          .map((ing) => _ingredientToUSDA(ing))
+          .toList();
+      final compliant = DietaryFilter.filter(
+        matches,
+        restrictions,
+        (f) => f.name,
+        allergies: allergies,
+      );
       setState(() {
         _isLoading = false;
         _hasSearched = true;
-        _hiddenCount = 0;
-        _results = [];
-        _error = 'Food search needs an internet connection.';
+        _hiddenCount = matches.length - compliant.length;
+        _results = compliant;
+        _error = null;
       });
       return;
     }
@@ -1116,8 +1185,76 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
           )
         else
           ...visibleHistory.map((food) => _buildHistoryCard(food)),
+
+        // Offline staples — browsable ingredient library grouped by category.
+        if (isOffline(context) && _staples.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Staples',
+                style: GoogleFonts.spaceGrotesk(
+                  color: c.onBackground,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 18,
+                ),
+              ),
+              Text(
+                'Available offline',
+                style: GoogleFonts.inter(color: c.muted, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Common foods from your ingredient library',
+            style: GoogleFonts.inter(color: c.muted, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          ..._buildStaplesByCategory(c),
+        ],
       ],
     );
+  }
+
+  List<Widget> _buildStaplesByCategory(dynamic c) {
+    final profile = context.read<ProfileProvider>().profile;
+    final restrictions = profile?.dietaryRestrictions ?? const <String>[];
+    final allergies = profile?.foodAllergies ?? const <String>[];
+    final filtered = DietaryFilter.filter(
+      _staples,
+      restrictions,
+      (ing) => ing.name,
+      allergies: allergies,
+    );
+    final grouped = <String, List<MealIngredient>>{};
+    for (final ing in filtered) {
+      grouped.putIfAbsent(ing.category, () => []).add(ing);
+    }
+    final widgets = <Widget>[];
+    for (final cat in _categoryOrder) {
+      final items = grouped[cat];
+      if (items == null || items.isEmpty) continue;
+      items.sort((a, b) => a.name.compareTo(b.name));
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 6),
+          child: Text(
+            _categoryLabels[cat] ?? cat,
+            style: GoogleFonts.spaceGrotesk(
+              color: c.muted,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      );
+      for (final ing in items) {
+        widgets.add(_buildSearchCard(_ingredientToUSDA(ing)));
+      }
+    }
+    return widgets;
   }
 
   Widget _buildHistoryCard(FoodItem food) {
