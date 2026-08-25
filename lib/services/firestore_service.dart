@@ -780,6 +780,18 @@ class FirestoreService {
     );
   }
 
+  void deleteCachedRecipe(String uid, String mealType) {
+    _fireWrite(
+      _db
+          .collection('users')
+          .doc(uid)
+          .collection('saved_recipes')
+          .doc(mealType)
+          .delete(),
+      'deleteCachedRecipe',
+    );
+  }
+
   Future<SavedMealDoc?> findSavedMealByRecipeName(
       String uid, String recipeName) async {
     final snap = await _db

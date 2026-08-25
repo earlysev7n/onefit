@@ -6235,6 +6235,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
       await _loadTodayLogs();
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null && mounted) {
+        FirestoreService().deleteCachedRecipe(uid, mealType);
         context.read<ProfileProvider>().recomputeGoal(uid).ignore();
       }
       if (mounted)
@@ -6258,12 +6259,14 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
 
   Future<void> _clearAll(String mealType) async {
     _setPending(mealType, null);
+    _pendingRecipeName.remove(mealType);
     context.read<PlanProvider>().setMeal(mealType, null);
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       for (final log in (_loggedFoods[mealType] ?? [])) {
         await FirestoreService().deleteFoodLog(user.uid, log.id);
       }
+      FirestoreService().deleteCachedRecipe(user.uid, mealType);
       await _loadTodayLogs();
     }
   }

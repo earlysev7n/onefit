@@ -196,6 +196,11 @@ class _SavedMealsScreenState extends State<SavedMealsScreen> {
           recipeName: doc.recipeName,
         );
 
+    final uid = _uid;
+    if (uid != null) {
+      FirestoreService().deleteCachedRecipe(uid, slot);
+    }
+
     if (!mounted) return;
     final label =
         '${slot[0].toUpperCase()}${slot.substring(1)}';
