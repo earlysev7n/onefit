@@ -1,77 +1,71 @@
 import '../models/workout_log.dart';
 
-/// Pure "days on plan" workout-streak calculator.
+/// Consecutive-day workout streak calculator.
 ///
-/// The streak is the number of consecutive calendar days — counting back from
-/// today — that belong to an unbroken run of on-plan weeks. It is deliberately
-/// **rest-day agnostic and week-based**, matching the product rule:
-///
-/// * Rest days never break the streak (they're just days on the plan).
-/// * A *finished* (past) week is "on plan" when its completed workouts reach the
-///   user's [plannedPerWeek]. The first past week that fell short breaks the run.
-/// * The current, in-progress week can never count as a miss — its elapsed days
-///   always extend the streak while it's still running.
-/// * It spans weeks; it does not reset every week or every rest day.
-///
-/// Weeks are Monday-anchored (Mon–Sun), consistent with the weekly stats
-/// elsewhere in [ProgressProvider]. The current week is only counted from
-/// [startDate] (the account/plan `createdAt`) onward, so a user's first day never
-/// counts the part of the week before they signed up. Returns 0 when there is no
-/// plan ([plannedPerWeek] <= 0) or the user has no on-plan activity yet.
+/// Walks backwards from today counting consecutive days. A rest day (not
+/// scheduled for a workout) never breaks the streak. A workout day without
+/// a completed [WorkoutLog] breaks it. Today is given grace: if it is a
+/// workout day the user hasn't completed yet, it is skipped (the day isn't
+/// over). The streak is 0 when no completed workout day exists in the run
+/// (leading rest days alone don't start a streak).
 class WorkoutStreak {
   const WorkoutStreak._();
 
-  static DateTime _mondayOf(DateTime d) {
-    final day = DateTime(d.year, d.month, d.day);
-    return day.subtract(Duration(days: day.weekday - 1));
-  }
-
-  /// Completed workouts logged within the 7-day window `[start, start + 7)`.
-  static int _completedIn(List<WorkoutLog> logs, DateTime start) {
-    final end = start.add(const Duration(days: 7));
-    return logs.where((l) {
-      final d = DateTime(l.date.year, l.date.month, l.date.day);
-      return !d.isBefore(start) && d.isBefore(end);
-    }).length;
-  }
-
   static int days(
     List<WorkoutLog> logs, {
-    required int plannedPerWeek,
+    required List<bool> workoutDays,
     required DateTime now,
     DateTime? startDate,
   }) {
-    if (plannedPerWeek <= 0) return 0;
+    if (workoutDays.length != 7 || !workoutDays.contains(true)) return 0;
 
     final today = DateTime(now.year, now.month, now.day);
-    final currentStart = _mondayOf(today);
-
-    // Consecutive fully-on-plan weeks immediately preceding the current one.
-    // (Weeks before [startDate] have no logs, so the scan naturally stops there —
-    // no extra clamp needed.)
-    int weeksBack = 0;
-    var wk = currentStart.subtract(const Duration(days: 7));
-    while (_completedIn(logs, wk) >= plannedPerWeek) {
-      weeksBack++;
-      wk = wk.subtract(const Duration(days: 7));
+    final logDates = <DateTime>{};
+    for (final l in logs) {
+      logDates.add(DateTime(l.date.year, l.date.month, l.date.day));
     }
 
-    final currentCompleted = _completedIn(logs, currentStart);
-    // No prior on-plan run and nothing done this week yet → no streak.
-    if (weeksBack == 0 && currentCompleted == 0) return 0;
-
-    // Earliest day the current week may count from — never before the account /
-    // plan existed ([startDate]). Without this, day 1 on a Tuesday would read 2
-    // by counting the pre-signup Monday.
-    var effectiveStart = currentStart;
+    final DateTime earliest;
     if (startDate != null) {
-      final s = DateTime(startDate.year, startDate.month, startDate.day);
-      if (s.isAfter(effectiveStart)) effectiveStart = s;
+      earliest = DateTime(startDate.year, startDate.month, startDate.day);
+    } else if (logs.isNotEmpty) {
+      earliest = logs
+          .map((l) => DateTime(l.date.year, l.date.month, l.date.day))
+          .reduce((a, b) => a.isBefore(b) ? a : b);
+    } else {
+      return 0;
     }
-    if (effectiveStart.isAfter(today)) effectiveStart = today; // safety
 
-    // Days elapsed in the current week from effectiveStart … today (inclusive).
-    final currentElapsed = today.difference(effectiveStart).inDays + 1;
-    return weeksBack * 7 + currentElapsed;
+    int streak = 0;
+    bool hasWorkout = false;
+    var day = today;
+
+    while (true) {
+      if (day.isBefore(earliest)) break;
+
+      final isWorkoutDay = workoutDays[day.weekday - 1]; // weekday 1=Mon → index 0
+
+      if (day == today && isWorkoutDay && !logDates.contains(day)) {
+        // Today is a workout day the user hasn't completed yet — skip it
+        // (the day isn't over, so it can't break the streak).
+        day = day.subtract(const Duration(days: 1));
+        continue;
+      }
+
+      if (isWorkoutDay) {
+        if (logDates.contains(day)) {
+          streak++;
+          hasWorkout = true;
+        } else {
+          break; // missed workout day → streak breaks
+        }
+      } else {
+        streak++; // rest day — never breaks
+      }
+
+      day = day.subtract(const Duration(days: 1));
+    }
+
+    return hasWorkout ? streak : 0;
   }
 }

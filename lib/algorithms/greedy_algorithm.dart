@@ -75,6 +75,14 @@ class WorkoutExercise {
 }
 
 class GreedyAlgorithm {
+  /// Which days of the week are workout days (index 0 = Mon, 6 = Sun).
+  /// Derived from the profile's split and days-per-week — deterministic for a
+  /// given profile, no plan doc needed.
+  static List<bool> workoutDayPattern(UserProfile profile) {
+    final schedule = GreedyAlgorithm()._getSchedule(profile);
+    return [for (final s in schedule) s != 'Rest'];
+  }
+
   // ── ELIGIBILITY — hard constraints, shared with PlansScreen edit paths ─────
   static final _maleTag = RegExp(r'\bmale\b'); // does NOT match "female"
   static final _femaleTag = RegExp(r'\bfemale\b');

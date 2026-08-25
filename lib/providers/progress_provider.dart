@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../algorithms/greedy_algorithm.dart';
 import '../algorithms/workout_streak.dart';
 import '../services/firestore_service.dart';
 import '../models/user_profile.dart';
@@ -137,17 +138,17 @@ class ProgressProvider extends ChangeNotifier {
   /// same metric, so it must use the same denominator.
   double get calorieAdherence => calorieAdherenceFor(TrendRange.week);
 
-  /// "Days on plan" streak — rest-day agnostic, week-based, spans weeks.
-  /// Only resets when a finished week fell short of [plannedWorkoutDays].
+  /// Consecutive-day streak. Resets when a scheduled workout day is missed.
   /// See [WorkoutStreak.days].
   int get workoutStreak => streakDaysFor(_profile);
 
   /// Streak computed from an explicit [profile] — for callers (Home) whose
-  /// ProgressProvider profile may not be loaded yet. Uses the profile's planned
-  /// days + `createdAt` so the count is correct (and never predates signup).
+  /// ProgressProvider profile may not be loaded yet.
   int streakDaysFor(UserProfile? profile) => WorkoutStreak.days(
         _yearWorkoutLogs,
-        plannedPerWeek: profile?.workoutDaysPerWeek ?? 3,
+        workoutDays: profile != null
+            ? GreedyAlgorithm.workoutDayPattern(profile)
+            : List.filled(7, true),
         now: appNow(),
         startDate: profile?.createdAt,
       );
