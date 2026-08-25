@@ -188,6 +188,11 @@ class _RecipeScreenState extends State<RecipeScreen> {
 
       if (_isSaved) {
         await ref.delete();
+        final saved = await FirestoreService()
+            .findSavedMealByRecipeName(_uid!, _recipe!.title);
+        if (saved != null) {
+          FirestoreService().deleteSavedMeal(_uid!, saved.id);
+        }
         if (!mounted) return;
         setState(() {
           _isSaved = false;
@@ -196,11 +201,16 @@ class _RecipeScreenState extends State<RecipeScreen> {
         _showSnack('Recipe removed', context.colors.muted);
       } else {
         await _saveRecipeDoc();
+        FirestoreService().saveMeal(
+          _uid!,
+          widget.meal,
+          _recipe!.title,
+        );
         setState(() {
           _isSaved = true;
           _isSaving = false;
         });
-        _showSnack('Recipe saved!', AppColors.primary);
+        _showSnack('Meal saved!', AppColors.primary);
       }
     } catch (e) {
       setState(() => _isSaving = false);

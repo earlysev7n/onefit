@@ -26,6 +26,7 @@ import '../algorithms/calorie_tolerance.dart';
 import '../algorithms/progression.dart';
 import 'recipe_screen.dart';
 import 'food_log_screen.dart';
+import 'saved_meals_screen.dart';
 import 'weekly_review_screen.dart';
 import 'package:provider/provider.dart';
 import '../providers/plan_provider.dart';
@@ -5680,8 +5681,25 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
       return;
     }
 
-    final option = await _chooseGenerateOption();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final hasSaved = uid != null &&
+        (await FirestoreService().getSavedMeals(uid)).isNotEmpty;
+
+    if (!mounted) return;
+    final option = await _chooseGenerateOption(hasSavedMeals: hasSaved);
     if (option == null || !mounted) return;
+
+    if (option == 'saved') {
+      if (uid == null) return;
+      final picked = await _pickSavedMeal(uid, mealType, budget);
+      if (picked == null || !mounted) return;
+      final scaled = picked.copyWith(mealType: mealType)
+          .scaleToCalories(budget)
+          .closeResidual(budget);
+      Meal? rerun({Set<String> avoidIds = const {}}) => scaled;
+      await _reviewAndAccept(mealType, label, scaled, rerun);
+      return;
+    }
 
     List<MealIngredient>? pickedPool;
     if (option == 'available') {
@@ -5750,8 +5768,8 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
     await _reviewAndAccept(mealType, label, meal, run);
   }
 
-  /// Option chooser: 'available' (Option A) | 'auto' (Option B) | null.
-  Future<String?> _chooseGenerateOption() {
+  /// Option chooser: 'available' | 'auto' | 'saved' | null.
+  Future<String?> _chooseGenerateOption({bool hasSavedMeals = false}) {
     final c = context.colors;
     return showModalBottomSheet<String>(
       context: context,
@@ -5777,6 +5795,25 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                   ),
                 ),
               ),
+              if (hasSavedMeals)
+                ListTile(
+                  leading: const Icon(
+                    Icons.bookmark_rounded,
+                    color: AppColors.orange,
+                  ),
+                  title: Text(
+                    'Use Saved Meal',
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600,
+                      color: c.onBackground,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Pick from your bookmarked meals',
+                    style: GoogleFonts.inter(fontSize: 12, color: c.muted),
+                  ),
+                  onTap: () => Navigator.pop(sheetCtx, 'saved'),
+                ),
               ListTile(
                 leading: const Icon(
                   Icons.kitchen_rounded,
@@ -5814,6 +5851,194 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                 onTap: () => Navigator.pop(sheetCtx, 'auto'),
               ),
               const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<Meal?> _pickSavedMeal(
+      String uid, String mealType, double budget) async {
+    final allSaved = await FirestoreService().getSavedMeals(uid);
+    if (allSaved.isEmpty || !mounted) return null;
+
+    final c = context.colors;
+    return showModalBottomSheet<Meal>(
+      context: context,
+      backgroundColor: c.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetCtx) {
+        String filter = mealType;
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final filtered = filter == 'all'
+                ? allSaved
+                : allSaved.where((s) => s.mealType == filter).toList();
+            return DraggableScrollableSheet(
+              initialChildSize: 0.6,
+              maxChildSize: 0.85,
+              minChildSize: 0.3,
+              expand: false,
+              builder: (_, scrollCtrl) => Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Saved Meals',
+                          style: GoogleFonts.spaceGrotesk(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: c.onBackground,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${filtered.length} meal${filtered.length == 1 ? '' : 's'}',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: c.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        for (final t in [mealType, 'all'])
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(
+                                t == 'all'
+                                    ? 'All'
+                                    : '${t[0].toUpperCase()}${t.substring(1)}',
+                              ),
+                              selected: filter == t,
+                              selectedColor: AppColors.primary,
+                              backgroundColor: c.surface,
+                              labelStyle: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: filter == t
+                                    ? Colors.black
+                                    : c.onBackground,
+                              ),
+                              onSelected: (_) =>
+                                  setSheetState(() => filter = t),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? Center(
+                            child: Text(
+                              'No saved meals',
+                              style: GoogleFonts.inter(
+                                  color: c.muted, fontSize: 14),
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: scrollCtrl,
+                            itemCount: filtered.length,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            itemBuilder: (_, i) {
+                              final s = filtered[i];
+                              return _savedMealTile(
+                                sheetCtx, s, c, budget);
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _savedMealTile(BuildContext sheetCtx, SavedMealDoc s,
+      dynamic c, double budget) {
+    final name = s.recipeName.isNotEmpty
+        ? s.recipeName
+        : s.meal.items.map((i) => i.ingredient.name).take(3).join(', ');
+    final dateStr = s.savedAt != null
+        ? '${s.savedAt!.day}/${s.savedAt!.month}/${s.savedAt!.year}'
+        : '';
+    return Card(
+      color: const Color(0xFF1A1A1A),
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.pop(sheetCtx, s.meal),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      name,
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (s.mealType.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${s.mealType[0].toUpperCase()}${s.mealType.substring(1)}',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${s.totalCalories.round()} kcal  ·  '
+                'P ${s.totalProtein.round()}g  '
+                'C ${s.totalCarbs.round()}g  '
+                'F ${s.totalFat.round()}g',
+                style: GoogleFonts.inter(
+                    fontSize: 12, color: const Color(0xFF888888)),
+              ),
+              if (dateStr.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    dateStr,
+                    style: GoogleFonts.inter(
+                        fontSize: 11, color: const Color(0xFF666666)),
+                  ),
+                ),
             ],
           ),
         ),
@@ -6147,6 +6372,21 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                 ),
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+              ),
+              IconButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const SavedMealsScreen(),
+                  ),
+                ),
+                icon: const Icon(Icons.bookmark_rounded, size: 20),
+                color: AppColors.orange,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 36,
+                  minHeight: 36,
                 ),
               ),
             ],

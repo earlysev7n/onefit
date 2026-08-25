@@ -416,6 +416,7 @@ class FirestoreService {
       'workout_plans',
       'weekly_summaries',
       'saved_recipes',
+      'saved_meals',
     ];
     final user = _db.collection('users').doc(uid);
     for (final col in subcollections) {
@@ -710,4 +711,116 @@ class FirestoreService {
     }
     return totals;
   }
+
+  // ========================================
+  // SAVED MEALS
+  // ========================================
+
+  String saveMeal(String uid, Meal meal, String recipeName) {
+    final ref = _db
+        .collection('users')
+        .doc(uid)
+        .collection('saved_meals')
+        .doc();
+    _fireWrite(
+      ref.set({
+        ...meal.toMap(),
+        'recipeName': recipeName,
+        'totalCalories': meal.totalCalories,
+        'totalProtein': meal.totalProtein,
+        'totalCarbs': meal.totalCarbs,
+        'totalFat': meal.totalFat,
+        'savedAt': FieldValue.serverTimestamp(),
+      }),
+      'saveMeal',
+    );
+    return ref.id;
+  }
+
+  Future<List<SavedMealDoc>> getSavedMeals(String uid, {String? mealType}) async {
+    Query<Map<String, dynamic>> q = _db
+        .collection('users')
+        .doc(uid)
+        .collection('saved_meals')
+        .orderBy('savedAt', descending: true);
+    if (mealType != null) {
+      q = q.where('mealType', isEqualTo: mealType);
+    }
+    final snap = await q.get();
+    return snap.docs.map((doc) {
+      final data = doc.data();
+      return SavedMealDoc(
+        id: doc.id,
+        mealType: data['mealType'] as String? ?? '',
+        recipeName: data['recipeName'] as String? ?? '',
+        meal: Meal.fromMap(data),
+        totalCalories: (data['totalCalories'] as num?)?.toDouble() ?? 0,
+        totalProtein: (data['totalProtein'] as num?)?.toDouble() ?? 0,
+        totalCarbs: (data['totalCarbs'] as num?)?.toDouble() ?? 0,
+        totalFat: (data['totalFat'] as num?)?.toDouble() ?? 0,
+        savedAt: (data['savedAt'] as Timestamp?)?.toDate(),
+      );
+    }).toList();
+  }
+
+  void deleteSavedMeal(String uid, String docId) {
+    _fireWrite(
+      _db
+          .collection('users')
+          .doc(uid)
+          .collection('saved_meals')
+          .doc(docId)
+          .delete(),
+      'deleteSavedMeal',
+    );
+  }
+
+  Future<SavedMealDoc?> findSavedMealByRecipeName(
+      String uid, String recipeName) async {
+    final snap = await _db
+        .collection('users')
+        .doc(uid)
+        .collection('saved_meals')
+        .where('recipeName', isEqualTo: recipeName)
+        .limit(1)
+        .get();
+    if (snap.docs.isEmpty) return null;
+    final doc = snap.docs.first;
+    final data = doc.data();
+    return SavedMealDoc(
+      id: doc.id,
+      mealType: data['mealType'] as String? ?? '',
+      recipeName: data['recipeName'] as String? ?? '',
+      meal: Meal.fromMap(data),
+      totalCalories: (data['totalCalories'] as num?)?.toDouble() ?? 0,
+      totalProtein: (data['totalProtein'] as num?)?.toDouble() ?? 0,
+      totalCarbs: (data['totalCarbs'] as num?)?.toDouble() ?? 0,
+      totalFat: (data['totalFat'] as num?)?.toDouble() ?? 0,
+      savedAt: (data['savedAt'] as Timestamp?)?.toDate(),
+    );
+  }
+}
+
+class SavedMealDoc {
+  final String id;
+  final String mealType;
+  final String recipeName;
+  final Meal meal;
+  final double totalCalories;
+  final double totalProtein;
+  final double totalCarbs;
+  final double totalFat;
+  final DateTime? savedAt;
+
+  const SavedMealDoc({
+    required this.id,
+    required this.mealType,
+    required this.recipeName,
+    required this.meal,
+    required this.totalCalories,
+    required this.totalProtein,
+    required this.totalCarbs,
+    required this.totalFat,
+    this.savedAt,
+  });
 }

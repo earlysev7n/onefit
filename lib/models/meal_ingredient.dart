@@ -185,6 +185,16 @@ class MealItem {
     ingredient: ingredient,
     portionGrams: portionGrams ?? this.portionGrams,
   );
+
+  Map<String, dynamic> toMap() => {
+    'ingredient': ingredient.toMap(),
+    'portionGrams': portionGrams,
+  };
+
+  factory MealItem.fromMap(Map<String, dynamic> map) => MealItem(
+    ingredient: MealIngredient.fromMap(map['ingredient'] as Map<String, dynamic>),
+    portionGrams: (map['portionGrams'] as num?)?.toDouble() ?? 100.0,
+  );
 }
 
 class Meal {
@@ -276,8 +286,20 @@ class Meal {
     return current;
   }
 
-  Meal copyWith({List<MealItem>? items}) =>
-      Meal(mealType: mealType, items: items ?? this.items);
+  Meal copyWith({String? mealType, List<MealItem>? items}) =>
+      Meal(mealType: mealType ?? this.mealType, items: items ?? this.items);
+
+  Map<String, dynamic> toMap() => {
+    'mealType': mealType,
+    'items': items.map((i) => i.toMap()).toList(),
+  };
+
+  factory Meal.fromMap(Map<String, dynamic> map) => Meal(
+    mealType: map['mealType'] as String? ?? '',
+    items: (map['items'] as List<dynamic>? ?? [])
+        .map((i) => MealItem.fromMap(i as Map<String, dynamic>))
+        .toList(),
+  );
 }
 
 class DayMealPlan {

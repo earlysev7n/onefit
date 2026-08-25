@@ -67,6 +67,7 @@ users/{uid}                         ← UserProfile doc
   exercise_stats/{exerciseId}       ← ExerciseStat (per-exercise last/PR top set; doc ID = exerciseId)
   workout_plans/{weekId}            ← persisted WorkoutDay list for that ISO week
   weekly_summaries/{weekId}         ← WeeklySummary (weekly adaptive report snapshot; doc ID = weekId)
+  saved_meals/{docId}               ← SavedMealDoc (full Meal + recipe name, auto-ID)
 exercises/{exerciseId}              ← ExerciseDB API cache (30-day TTL)
 ```
 

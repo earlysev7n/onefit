@@ -20,6 +20,7 @@
    - [FoodLogScreen](#foodlogscreen)
    - [BarcodeScanScreen](#barcodescanscreen)
    - [RecipeScreen](#recipescreen)
+   - [SavedMealsScreen](#savedmealsscreen)
    - [SettingsScreen](#settingsscreen)
    - [WeeklyReviewScreen](#weeklyreviewscreen--weekly-adaptive-report)
 10. [Providers](#10-providers)
@@ -314,8 +315,8 @@ Toggle the "Edit session" button (visible before a workout starts). While editin
 Shows meal cards for Breakfast, Lunch, Dinner, Snack. The tab is split into two modules (thesis architecture):
 
 **Module 1 — Meal Planning (Generate Meal, before eating):**
-1. A card's **Generate** button → `_startGenerateFlow(mealType, label)` → option bottom sheet (`_chooseGenerateOption`): **Use Available Ingredients** (Option A) or **Generate Automatically** (Option B).
-2. **Option A** pushes `FoodLogScreen(pickerMode: true)` — the user multi-selects available foods (USDA search / barcode / history, *no grams asked*); picks come back as per-100g `MealIngredient`s (`IngredientConverter`). After a `DietaryFilter.violates` pre-screen, `GeneticAlgorithm.optimizeMealPortions` evolves the **gram vector** over the fixed picked set. **Option B** runs `evolveMeal` over the seeded `ingredients` pool (loaded once via `FirestoreService.getIngredients()`; empty pool surfaces a "not seeded" SnackBar) with `presentCategories` + cuisine + `avoidIds`.
+1. A card's **Generate** button → `_startGenerateFlow(mealType, label)` → option bottom sheet (`_chooseGenerateOption`): **Use Available Ingredients** (Option A), **Generate Automatically** (Option B), or **Use Saved Meal** (Option C, shown only when saved meals exist).
+2. **Option A** pushes `FoodLogScreen(pickerMode: true)` — the user multi-selects available foods (USDA search / barcode / history, *no grams asked*); picks come back as per-100g `MealIngredient`s (`IngredientConverter`). After a `DietaryFilter.violates` pre-screen, `GeneticAlgorithm.optimizeMealPortions` evolves the **gram vector** over the fixed picked set. **Option B** runs `evolveMeal` over the seeded `ingredients` pool (loaded once via `FirestoreService.getIngredients()`; empty pool surfaces a "not seeded" SnackBar) with `presentCategories` + cuisine + `avoidIds`. **Option C** opens `_pickSavedMeal` — a bottom sheet listing saved meals with filter chips (meal type + All); selecting one scales it to the current budget via `scaleToCalories(budget).closeResidual(budget)`, overrides `mealType` if cross-type, and routes through `_reviewAndAccept` (regenerate re-scales, no GA needed).
 3. Both options size to the meal's *remaining* budget: `ratio·dailyEffectiveGoal − loggedCals(meal)` (≤ 30 kcal → info SnackBar, no generation).
 4. The result opens the **accept-mode `RecipeScreen`** (`_reviewAndAccept` loop): fresh OpenAI recipe + ingredients with GA grams + expandable macro/micro nutrition summary + **Accept / Regenerate**. Accept-mode pops a `RecipeReviewResult(action, recipeTitle)`; on `'accept'` → `PlanProvider.setMeal(saveToFirestore: true, recipeName: title)` → `_saveMealToFirestore` writes each ingredient as its own `FoodItem` (`barcode: 'ai_generated'`), **stamping the OpenAI recipe title onto every one via `FoodItem.recipeName`** → `_loadTodayLogs()` + `recomputeGoal`. Regenerate re-runs the same option (A keeps the picked pool; B avoids the shown ingredient ids). Back = discard. ("Accept Without Recipe" on OpenAI failure → empty title → no sub-header.)
 
@@ -481,7 +482,7 @@ Calorie split: Breakfast 25%, Lunch 35%, Dinner 30%, Snack 10% of the daily effe
 **Purpose:** Shows step-by-step cooking instructions for a generated meal, plus the meal's ingredient list and expandable macro/micro nutritional summary. The GA meal's ingredients (with gram portions) are sent to **OpenAI** (`OpenAIService.generateRecipe`) which writes the recipe — OpenAI never changes quantities; the GA is the nutrition source of truth.
 
 Two modes:
-- **View mode** (default) — the Recipe button on a meal card. Loads the cached `saved_recipes/{mealType}` doc first; bookmark toggles save/unsave; refresh regenerates wording.
+- **View mode** (default) — the Recipe button on a meal card. Loads the cached `saved_recipes/{mealType}` doc first; bookmark toggles save/unsave (also saves/deletes the full `Meal` in `saved_meals` via `FirestoreService.saveMeal`/`deleteSavedMeal`); refresh regenerates wording.
 - **Accept mode** (`acceptMode: true`) — the Module-1 review step pushed by `_reviewAndAccept`. Always fetches a fresh recipe (a cached one wouldn't match the just-optimized grams), hides bookmark/refresh, and shows **Regenerate** / **Accept Meal** buttons (plus a "Rewrite recipe" text button — same grams, new wording). Pops a `RecipeReviewResult(action, recipeTitle)` — `action` is `'accept'` (after best-effort `_saveRecipeDoc()`, carrying the OpenAI title so `_reviewAndAccept` can stamp it onto the logged `FoodItem`s) or `'regenerate'`; null = back (discard). An OpenAI failure still offers **Accept Without Recipe** (empty title) and **Regenerate Meal** so the user is never trapped.
 
 **State:** `_recipe`, `_isLoading`, `_error`, `_isSaved`, `_addedExtras`.
@@ -495,6 +496,24 @@ Two modes:
 - `OpenAIService` (`lib/services/openai_service.dart`) — generates the recipe text (hardcoded key constant; needs OpenAI account credits).
 - `FirestoreService.logFoodItem` — saves individual "You'll also need" extras.
 - Launched from: `PlansScreen` Meal tab → Recipe button (view mode) or `_reviewAndAccept` (accept mode).
+
+---
+
+### SavedMealsScreen
+**File:** `lib/screens/saved_meals_screen.dart`
+
+**Purpose:** Browsable list of all meals the user has bookmarked via RecipeScreen. Shows recipe name, calorie/macro summary, ingredient count, meal type badge, and date saved. Filter chips (All / Breakfast / Lunch / Dinner / Snack) narrow the list. Swipe-to-delete with confirmation dialog removes the `saved_meals` doc. Empty state shows a bookmark icon with helper text.
+
+**State:** `_meals` (full list from Firestore), `_loading`, `_filter` (active chip).
+
+**Key functions:**
+- `_load()` — fetches all saved meals via `FirestoreService().getSavedMeals(uid)`.
+- `_delete(meal)` — confirmation dialog → `FirestoreService().deleteSavedMeal(uid, docId)`.
+- `_filtered` — getter filtering `_meals` by `_filter` meal type.
+
+**Connections:**
+- `FirestoreService.getSavedMeals` / `deleteSavedMeal` — reads/deletes from `users/{uid}/saved_meals`.
+- Launched from: `PlansScreen` Meal tab → bookmark icon button in the top bar.
 
 ---
 
