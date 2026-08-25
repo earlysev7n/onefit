@@ -6865,13 +6865,19 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
           pendingMeal ?? _mealFromLoggedFoods(mealType, loggedFoods);
     }
 
+    // Split logged foods: recipe items (stamped with a recipeName) vs
+    // standalone items added manually via "+ Add food" (recipeName == '').
+    final recipeFoods =
+        loggedFoods.where((f) => f.recipeName.isNotEmpty).toList();
+    final standaloneFoods =
+        loggedFoods.where((f) => f.recipeName.isEmpty).toList();
+
     // AI meals carry a human recipe name — on each logged ingredient (accepted
     // meals) or on the staged pending meal (Generate-All). Surface it as a
     // collapsible sub-header. Empty for manually-logged meals.
-    final recipeName = loggedFoods
-        .map((f) => f.recipeName)
-        .firstWhere((n) => n.isNotEmpty,
-            orElse: () => _pendingRecipeName[mealType] ?? '');
+    final recipeName = recipeFoods.isNotEmpty
+        ? recipeFoods.first.recipeName
+        : (_pendingRecipeName[mealType] ?? '');
     final ingredientsExpanded =
         recipeName.isEmpty || _expandedIngredients.contains(mealType);
 
@@ -6881,7 +6887,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
       children: [
         if (recipeName.isNotEmpty) _recipeSubHeader(mealType, recipeName),
         if (ingredientsExpanded)
-          ...loggedFoods.map(
+          ...recipeFoods.map(
             (food) => Dismissible(
               key: ValueKey(food.id),
             direction: DismissDirection.endToStart,
@@ -7020,6 +7026,74 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+        ],
+        if (standaloneFoods.isNotEmpty) ...[
+          if (recipeFoods.isNotEmpty) ...[
+            Divider(color: c.border.withValues(alpha: 0.5), height: 16),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                'Added',
+                style: GoogleFonts.inter(fontSize: 11, color: c.muted),
+              ),
+            ),
+          ],
+          ...standaloneFoods.map(
+            (food) => Dismissible(
+              key: ValueKey(food.id),
+              direction: DismissDirection.endToStart,
+              background: _deleteBg(),
+              onDismissed: (_) async {
+                final uid = FirebaseAuth.instance.currentUser?.uid;
+                if (uid == null) return;
+                await FirestoreService().deleteFoodLog(uid, food.id);
+                await _loadTodayLogs();
+                if (mounted) {
+                  context
+                      .read<ProfileProvider>()
+                      .recomputeGoal(uid)
+                      .ignore();
+                }
+              },
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: AppColors.orange,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        food.name,
+                        style: GoogleFonts.inter(
+                          color: c.onBackground,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      food.servingSizeUnit == 'g'
+                          ? '${(food.servingSize * food.quantity).round()}g'
+                          : '${food.quantity.toStringAsFixed(1)}× ${food.servingSize.round()}${food.servingSizeUnit}',
+                      style: GoogleFonts.inter(color: c.muted, fontSize: 12),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${food.totalCalories.round()} kcal',
+                      style:
+                          GoogleFonts.inter(color: c.subtle, fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

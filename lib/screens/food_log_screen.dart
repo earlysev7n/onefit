@@ -266,6 +266,7 @@ class _FoodLogScreenState extends State<FoodLogScreen> {
         userId: uid,
         loggedAt: appNow(),
         mealType: widget.mealType,
+        recipeName: '',
       );
       await _firestore.logFoodItem(relogged);
       if (mounted) {
