@@ -144,15 +144,34 @@ class _TodaySnapshot extends StatelessWidget {
                       calProgress,
                       AppColors.primary,
                       c.border,
+                      overflowFraction: prov.todayCalories > prov.calorieGoal
+                          ? (prov.todayCalories - prov.calorieGoal) /
+                              prov.calorieGoal
+                          : 0.0,
                     ),
                     child: Center(
-                      child: Text(
-                        '${prov.todayCalories.round()}',
-                        style: GoogleFonts.spaceGrotesk(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: c.onBackground,
-                        ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            prov.todayCalories > prov.calorieGoal
+                                ? '+${(prov.todayCalories.round() - prov.calorieGoal).abs()}'
+                                : '${prov.todayCalories.round()}',
+                            style: GoogleFonts.spaceGrotesk(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: c.onBackground,
+                            ),
+                          ),
+                          if (prov.todayCalories > prov.calorieGoal)
+                            Text(
+                              'kcal over',
+                              style: GoogleFonts.inter(
+                                fontSize: 8,
+                                color: c.muted,
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),
@@ -1396,7 +1415,9 @@ class _RingPainter extends CustomPainter {
   final double progress;
   final Color color;
   final Color trackColor;
-  _RingPainter(this.progress, this.color, this.trackColor);
+  final double overflowFraction;
+  _RingPainter(this.progress, this.color, this.trackColor,
+      {this.overflowFraction = 0.0});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1421,9 +1442,25 @@ class _RingPainter extends CustomPainter {
         ..strokeWidth = 7
         ..strokeCap = StrokeCap.round,
     );
+    if (overflowFraction > 0) {
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        -math.pi / 2,
+        2 * math.pi * overflowFraction.clamp(0.0, 1.0),
+        false,
+        Paint()
+          ..color = Colors.redAccent
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 7
+          ..strokeCap = StrokeCap.round,
+      );
+    }
   }
 
   @override
   bool shouldRepaint(_RingPainter old) =>
-      old.progress != progress || old.trackColor != trackColor;
+      old.progress != progress ||
+      old.trackColor != trackColor ||
+      old.color != color ||
+      old.overflowFraction != overflowFraction;
 }

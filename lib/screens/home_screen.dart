@@ -749,11 +749,8 @@ class _HomeDashboard extends StatelessWidget {
                               painter: _CaloriePainter(
                                 progress,
                                 trackColor: c.inputFill,
-                                isOverBudget: caloriesEaten > calorieGoal,
                                 overflowFraction: caloriesEaten > calorieGoal
-                                    ? ((caloriesEaten - calorieGoal) /
-                                            calorieGoal)
-                                        .clamp(0.0, 0.5)
+                                    ? (caloriesEaten - calorieGoal) / calorieGoal
                                     : 0.0,
                               ),
                               child: Center(
@@ -767,9 +764,7 @@ class _HomeDashboard extends StatelessWidget {
                                       style: GoogleFonts.spaceGrotesk(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w700,
-                                        color: caloriesEaten > calorieGoal
-                                            ? Colors.redAccent
-                                            : c.onBackground,
+                                        color: c.onBackground,
                                       ),
                                     ),
                                     Text(
@@ -778,9 +773,7 @@ class _HomeDashboard extends StatelessWidget {
                                           : 'kcal',
                                       style: GoogleFonts.inter(
                                         fontSize: 11,
-                                        color: caloriesEaten > calorieGoal
-                                            ? Colors.redAccent
-                                            : c.muted,
+                                        color: c.muted,
                                       ),
                                     ),
                                   ],
@@ -1402,47 +1395,45 @@ class _HomeDashboard extends StatelessWidget {
 class _CaloriePainter extends CustomPainter {
   final double progress;
   final Color trackColor;
-  final bool isOverBudget;
   final double overflowFraction;
   _CaloriePainter(this.progress,
-      {required this.trackColor,
-      this.isOverBudget = false,
-      this.overflowFraction = 0.0});
+      {required this.trackColor, this.overflowFraction = 0.0});
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2 - 8;
-    final bgPaint = Paint()
-      ..color = trackColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 8
-      ..strokeCap = StrokeCap.round;
-    final fgPaint = Paint()
-      ..color = isOverBudget ? Colors.redAccent : AppColors.primary
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 8
-      ..strokeCap = StrokeCap.round;
-    canvas.drawCircle(center, radius, bgPaint);
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = trackColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round,
+    );
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
       -math.pi / 2,
       2 * math.pi * progress.clamp(0.0, 1.0),
       false,
-      fgPaint,
+      Paint()
+        ..color = AppColors.primary
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round,
     );
     if (overflowFraction > 0) {
-      final overflowPaint = Paint()
-        ..color = Colors.red
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 10
-        ..strokeCap = StrokeCap.round;
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
         -math.pi / 2,
-        2 * math.pi * overflowFraction.clamp(0.0, 0.5),
+        2 * math.pi * overflowFraction.clamp(0.0, 1.0),
         false,
-        overflowPaint,
+        Paint()
+          ..color = Colors.redAccent
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 8
+          ..strokeCap = StrokeCap.round,
       );
     }
   }
@@ -1451,6 +1442,5 @@ class _CaloriePainter extends CustomPainter {
   bool shouldRepaint(_CaloriePainter old) =>
       old.progress != progress ||
       old.trackColor != trackColor ||
-      old.isOverBudget != isOverBudget ||
       old.overflowFraction != overflowFraction;
 }
