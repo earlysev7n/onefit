@@ -730,7 +730,7 @@ class FirestoreService {
         'totalProtein': meal.totalProtein,
         'totalCarbs': meal.totalCarbs,
         'totalFat': meal.totalFat,
-        'savedAt': FieldValue.serverTimestamp(),
+        'savedAt': Timestamp.now(),
       }),
       'saveMeal',
     );
@@ -738,29 +738,34 @@ class FirestoreService {
   }
 
   Future<List<SavedMealDoc>> getSavedMeals(String uid, {String? mealType}) async {
-    Query<Map<String, dynamic>> q = _db
-        .collection('users')
-        .doc(uid)
-        .collection('saved_meals')
-        .orderBy('savedAt', descending: true);
-    if (mealType != null) {
-      q = q.where('mealType', isEqualTo: mealType);
+    try {
+      Query<Map<String, dynamic>> q = _db
+          .collection('users')
+          .doc(uid)
+          .collection('saved_meals')
+          .orderBy('savedAt', descending: true);
+      if (mealType != null) {
+        q = q.where('mealType', isEqualTo: mealType);
+      }
+      final snap = await q.get();
+      return snap.docs.map((doc) {
+        final data = doc.data();
+        return SavedMealDoc(
+          id: doc.id,
+          mealType: data['mealType'] as String? ?? '',
+          recipeName: data['recipeName'] as String? ?? '',
+          meal: Meal.fromMap(data),
+          totalCalories: (data['totalCalories'] as num?)?.toDouble() ?? 0,
+          totalProtein: (data['totalProtein'] as num?)?.toDouble() ?? 0,
+          totalCarbs: (data['totalCarbs'] as num?)?.toDouble() ?? 0,
+          totalFat: (data['totalFat'] as num?)?.toDouble() ?? 0,
+          savedAt: (data['savedAt'] as Timestamp?)?.toDate(),
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint('getSavedMeals error: $e');
+      return [];
     }
-    final snap = await q.get();
-    return snap.docs.map((doc) {
-      final data = doc.data();
-      return SavedMealDoc(
-        id: doc.id,
-        mealType: data['mealType'] as String? ?? '',
-        recipeName: data['recipeName'] as String? ?? '',
-        meal: Meal.fromMap(data),
-        totalCalories: (data['totalCalories'] as num?)?.toDouble() ?? 0,
-        totalProtein: (data['totalProtein'] as num?)?.toDouble() ?? 0,
-        totalCarbs: (data['totalCarbs'] as num?)?.toDouble() ?? 0,
-        totalFat: (data['totalFat'] as num?)?.toDouble() ?? 0,
-        savedAt: (data['savedAt'] as Timestamp?)?.toDate(),
-      );
-    }).toList();
   }
 
   void deleteSavedMeal(String uid, String docId) {

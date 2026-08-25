@@ -5799,7 +5799,7 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                 ListTile(
                   leading: const Icon(
                     Icons.bookmark_rounded,
-                    color: AppColors.orange,
+                    color: AppColors.primary,
                   ),
                   title: Text(
                     'Use Saved Meal',
@@ -6375,14 +6375,27 @@ class _MealTabState extends State<_MealTab> with AutomaticKeepAliveClientMixin {
                 ),
               ),
               IconButton(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const SavedMealsScreen(),
-                  ),
-                ),
+                onPressed: () async {
+                  final didAdd = await Navigator.push<bool>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SavedMealsScreen(
+                        loggedCalsByMeal: {
+                          for (final m in [
+                            'breakfast',
+                            'lunch',
+                            'dinner',
+                            'snack'
+                          ])
+                            m: _loggedCals(m),
+                        },
+                      ),
+                    ),
+                  );
+                  if (didAdd == true && mounted) await _loadTodayLogs();
+                },
                 icon: const Icon(Icons.bookmark_rounded, size: 20),
-                color: AppColors.orange,
+                color: AppColors.primary,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(
                   minWidth: 36,

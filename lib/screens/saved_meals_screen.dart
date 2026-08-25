@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
+import '../algorithms/genetic_algorithm.dart';
+import '../providers/plan_provider.dart';
+import '../providers/profile_provider.dart';
 import '../services/firestore_service.dart';
 import '../theme/app_colors.dart';
 
 class SavedMealsScreen extends StatefulWidget {
-  const SavedMealsScreen({super.key});
+  const SavedMealsScreen({
+    super.key,
+    this.loggedCalsByMeal = const {},
+  });
+
+  final Map<String, double> loggedCalsByMeal;
 
   @override
   State<SavedMealsScreen> createState() => _SavedMealsScreenState();
@@ -26,14 +35,18 @@ class _SavedMealsScreenState extends State<SavedMealsScreen> {
 
   Future<void> _load() async {
     final uid = _uid;
-    if (uid == null) return;
+    if (uid == null) {
+      setState(() => _loading = false);
+      return;
+    }
     setState(() => _loading = true);
-    final meals = await FirestoreService().getSavedMeals(uid);
-    if (!mounted) return;
-    setState(() {
-      _meals = meals;
-      _loading = false;
-    });
+    try {
+      final meals = await FirestoreService().getSavedMeals(uid);
+      if (!mounted) return;
+      setState(() => _meals = meals);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   List<SavedMealDoc> get _filtered =>
@@ -76,6 +89,123 @@ class _SavedMealsScreenState extends State<SavedMealsScreen> {
     if (uid == null) return;
     FirestoreService().deleteSavedMeal(uid, meal.id);
     setState(() => _meals.removeWhere((m) => m.id == meal.id));
+  }
+
+  Future<void> _addToSlot(SavedMealDoc doc) async {
+    final slot = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+              child: Text(
+                'Add to meal slot',
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            for (final entry in const {
+              'breakfast': 'Breakfast',
+              'lunch': 'Lunch',
+              'dinner': 'Dinner',
+              'snack': 'Snack',
+            }.entries)
+              ListTile(
+                title: Text(
+                  entry.value,
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                onTap: () => Navigator.pop(ctx, entry.key),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (slot == null || !mounted) return;
+
+    final hasExisting = (widget.loggedCalsByMeal[slot] ?? 0) > 0;
+
+    if (hasExisting && mounted) {
+      final slotLabel = '${slot[0].toUpperCase()}${slot.substring(1)}';
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: Text(
+            'Replace $slotLabel?',
+            style: GoogleFonts.spaceGrotesk(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          content: Text(
+            'You already have a $slotLabel meal planned. Replace it with this one?',
+            style: GoogleFonts.inter(
+              color: const Color(0xFF888888),
+              fontSize: 14,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Keep current',
+                  style: GoogleFonts.inter(color: const Color(0xFF888888))),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Replace',
+                  style: GoogleFonts.inter(color: AppColors.primary)),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    final goal =
+        context.read<ProfileProvider>().dailyEffectiveGoal.toDouble();
+    final budget = GeneticAlgorithm.singleMealBudget(
+      goal: goal,
+      mealType: slot,
+      loggedCalsByMeal: widget.loggedCalsByMeal,
+    );
+
+    final scaled = doc.meal
+        .copyWith(mealType: slot)
+        .scaleToCalories(budget)
+        .closeResidual(budget);
+
+    if (!mounted) return;
+    await context.read<PlanProvider>().setMeal(
+          slot,
+          scaled,
+          saveToFirestore: true,
+          recipeName: doc.recipeName,
+        );
+
+    if (!mounted) return;
+    final label =
+        '${slot[0].toUpperCase()}${slot.substring(1)}';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Added to $label'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+    Navigator.pop(context, true);
   }
 
   @override
@@ -228,6 +358,21 @@ class _SavedMealsScreenState extends State<SavedMealsScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    onPressed: () => _addToSlot(meal),
+                    icon: const Icon(
+                      Icons.add_circle_outline_rounded,
+                      size: 22,
+                      color: AppColors.primary,
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
+                    tooltip: 'Add to meal slot',
                   ),
                 ],
               ),
