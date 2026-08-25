@@ -749,24 +749,38 @@ class _HomeDashboard extends StatelessWidget {
                               painter: _CaloriePainter(
                                 progress,
                                 trackColor: c.inputFill,
+                                isOverBudget: caloriesEaten > calorieGoal,
+                                overflowFraction: caloriesEaten > calorieGoal
+                                    ? ((caloriesEaten - calorieGoal) /
+                                            calorieGoal)
+                                        .clamp(0.0, 0.5)
+                                    : 0.0,
                               ),
                               child: Center(
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
-                                      '${caloriesEaten.round()}',
+                                      caloriesEaten > calorieGoal
+                                          ? '+${(caloriesEaten.round() - calorieGoal).abs()}'
+                                          : '${caloriesEaten.round()}',
                                       style: GoogleFonts.spaceGrotesk(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w700,
-                                        color: c.onBackground,
+                                        color: caloriesEaten > calorieGoal
+                                            ? Colors.redAccent
+                                            : c.onBackground,
                                       ),
                                     ),
                                     Text(
-                                      'kcal',
+                                      caloriesEaten > calorieGoal
+                                          ? 'kcal over'
+                                          : 'kcal',
                                       style: GoogleFonts.inter(
-                                        fontSize: 12,
-                                        color: c.muted,
+                                        fontSize: 11,
+                                        color: caloriesEaten > calorieGoal
+                                            ? Colors.redAccent
+                                            : c.muted,
                                       ),
                                     ),
                                   ],
@@ -803,9 +817,15 @@ class _HomeDashboard extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 8),
                                 _buildMacroRow(
-                                  'Remaining',
-                                  '${caloriesRemaining.round()} kcal',
-                                  AppColors.primary,
+                                  caloriesEaten > calorieGoal
+                                      ? 'Over'
+                                      : 'Remaining',
+                                  caloriesEaten > calorieGoal
+                                      ? '+${(caloriesEaten.round() - calorieGoal).abs()} kcal'
+                                      : '${caloriesRemaining.round()} kcal',
+                                  caloriesEaten > calorieGoal
+                                      ? Colors.redAccent
+                                      : AppColors.primary,
                                   colors: c,
                                 ),
                                 const SizedBox(height: 8),
@@ -1345,11 +1365,16 @@ class _HomeDashboard extends StatelessWidget {
                   ),
                   if (hasData && foodLogs.isNotEmpty)
                     Text(
-                      // Show first 2 food names as subtitle
-                      foodLogs.take(2).map((f) => f.name).join(', ') +
-                          (foodLogs.length > 2
-                              ? ' +${foodLogs.length - 2} more'
-                              : ''),
+                      () {
+                        final recipeName = foodLogs
+                            .map((f) => f.recipeName)
+                            .firstWhere((n) => n.isNotEmpty, orElse: () => '');
+                        if (recipeName.isNotEmpty) return recipeName;
+                        return foodLogs.take(2).map((f) => f.name).join(', ') +
+                            (foodLogs.length > 2
+                                ? ' +${foodLogs.length - 2} more'
+                                : '');
+                      }(),
                       style: GoogleFonts.inter(color: c.muted, fontSize: 12),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1377,7 +1402,12 @@ class _HomeDashboard extends StatelessWidget {
 class _CaloriePainter extends CustomPainter {
   final double progress;
   final Color trackColor;
-  _CaloriePainter(this.progress, {required this.trackColor});
+  final bool isOverBudget;
+  final double overflowFraction;
+  _CaloriePainter(this.progress,
+      {required this.trackColor,
+      this.isOverBudget = false,
+      this.overflowFraction = 0.0});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1389,7 +1419,7 @@ class _CaloriePainter extends CustomPainter {
       ..strokeWidth = 8
       ..strokeCap = StrokeCap.round;
     final fgPaint = Paint()
-      ..color = AppColors.primary
+      ..color = isOverBudget ? Colors.redAccent : AppColors.primary
       ..style = PaintingStyle.stroke
       ..strokeWidth = 8
       ..strokeCap = StrokeCap.round;
@@ -1401,9 +1431,26 @@ class _CaloriePainter extends CustomPainter {
       false,
       fgPaint,
     );
+    if (overflowFraction > 0) {
+      final overflowPaint = Paint()
+        ..color = Colors.red
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 10
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        -math.pi / 2,
+        2 * math.pi * overflowFraction.clamp(0.0, 0.5),
+        false,
+        overflowPaint,
+      );
+    }
   }
 
   @override
   bool shouldRepaint(_CaloriePainter old) =>
-      old.progress != progress || old.trackColor != trackColor;
+      old.progress != progress ||
+      old.trackColor != trackColor ||
+      old.isOverBudget != isOverBudget ||
+      old.overflowFraction != overflowFraction;
 }
